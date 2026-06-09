@@ -103,8 +103,9 @@ export function Hero() {
               transition={{ duration: 0.55, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
               className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base md:text-lg lg:mx-0"
             >
-              {APP.name} unites students, government, MSMEs, mentors, and jury around civic and industrial
-              challenges — with a polished, secure platform built for recurring editions.
+              Smart Kopargaon Hackathon is an innovation movement that brings together students, government, 
+              MSMEs, mentors, and industry experts to co-create impactful solutions for real civic and industrial 
+              challenges through a dynamic, scalable, and future-ready platform.
             </motion.p>
 
             <motion.div
