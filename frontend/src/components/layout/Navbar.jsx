@@ -47,11 +47,11 @@ export function Navbar() {
         {/* Logo */}
         <Link to="/" className="group flex items-center gap-3">
           {/* Sanjivani University Logo - placeholder, add sanjivani-logo.png to public folder */}
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110">
             <img 
               src="/sanjivani-logo.png" 
               alt="Sanjivani University" 
-              className="h-full w-full rounded-xl object-contain"
+              className="h-[90%] w-[90%] rounded-xl object-contain"
               onError={(e) => {
                 // Fallback to text if logo doesn't exist
                 e.target.style.display = 'none'
