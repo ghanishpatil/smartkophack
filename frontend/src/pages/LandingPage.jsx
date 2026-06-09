@@ -38,12 +38,6 @@ export function LandingPage() {
         <TracksSection />
       </div>
 
-      {/* ── PatronsSection with right-edge blob ── */}
-      <div className="relative">
-        <div className="pointer-events-none absolute -right-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-violet-500/15 blur-[70px]" aria-hidden />
-        <PatronsSection />
-      </div>
-
       {/* ── CollaborationSection with right-edge blob ── */}
       <div className="relative">
         <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-indigo-500/20 blur-[80px]" aria-hidden />
@@ -74,6 +68,12 @@ export function LandingPage() {
       <div className="relative">
         <div className="pointer-events-none absolute -right-20 top-1/3 h-64 w-64 rounded-full bg-brand-500/20 blur-[70px]" aria-hidden />
         <FAQSection />
+      </div>
+
+      {/* ── PatronsSection with left-edge blob ── */}
+      <div className="relative">
+        <div className="pointer-events-none absolute -left-20 top-1/2 h-72 w-72 -translate-y-1/2 rounded-full bg-violet-500/15 blur-[70px]" aria-hidden />
+        <PatronsSection />
       </div>
 
       {/* Final CTA */}
