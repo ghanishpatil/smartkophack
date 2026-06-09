@@ -63,7 +63,7 @@ export function Hero() {
         - content is positioned slightly ABOVE center (pb > pt) for premium SaaS feel
         - on mobile: compact, headline visible immediately
       */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-start px-6 pb-16 pt-[12%] sm:px-10 lg:px-16">
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-start px-6 pb-16 pt-[10%] sm:px-10 lg:px-16">
 
         {/* Two-column layout: text left, logo right */}
         <div className="flex w-full max-w-7xl items-center gap-8 lg:gap-16">
