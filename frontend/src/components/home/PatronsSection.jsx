@@ -66,23 +66,23 @@ export function PatronsSection() {
               whileHover={{ y: -8, transition: { duration: 0.3 } }}
               className="group relative"
             >
-              <div className="relative overflow-hidden rounded-3xl border-2 border-brand-500/20 bg-gradient-to-br from-white via-brand-50/30 to-cyan-50/30 p-10 shadow-xl transition-all duration-500 hover:border-brand-500/40 hover:shadow-2xl hover:shadow-brand-500/20">
+              <div className="relative overflow-hidden rounded-3xl border-2 border-brand-500/20 bg-gradient-to-br from-white via-brand-50/30 to-cyan-50/30 p-6 shadow-xl transition-all duration-500 hover:border-brand-500/40 hover:shadow-2xl hover:shadow-brand-500/20">
                 {/* Animated gradient overlay on hover */}
                 <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-brand-500/0 via-cyan-500/0 to-indigo-500/0 opacity-0 transition-all duration-500 group-hover:from-brand-500/10 group-hover:via-cyan-500/5 group-hover:to-indigo-500/10 group-hover:opacity-100" />
 
                 {/* Decorative corner patterns */}
-                <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-brand-400/20 to-cyan-400/20 blur-3xl transition-all duration-500 group-hover:scale-150 group-hover:from-brand-500/30 group-hover:to-cyan-500/30" />
-                <div className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-gradient-to-tr from-indigo-400/15 to-violet-400/15 blur-2xl transition-all duration-500 group-hover:scale-125" />
+                <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-brand-400/20 to-cyan-400/20 blur-3xl transition-all duration-500 group-hover:scale-150 group-hover:from-brand-500/30 group-hover:to-cyan-500/30" />
+                <div className="pointer-events-none absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-gradient-to-tr from-indigo-400/15 to-violet-400/15 blur-2xl transition-all duration-500 group-hover:scale-125" />
 
                 {/* Decorative lines */}
-                <div className="pointer-events-none absolute left-0 top-0 h-px w-24 bg-gradient-to-r from-brand-500/50 to-transparent" />
-                <div className="pointer-events-none absolute right-0 top-0 h-24 w-px bg-gradient-to-b from-brand-500/50 to-transparent" />
-                <div className="pointer-events-none absolute bottom-0 left-0 h-24 w-px bg-gradient-to-t from-cyan-500/50 to-transparent" />
-                <div className="pointer-events-none absolute bottom-0 right-0 h-px w-24 bg-gradient-to-l from-cyan-500/50 to-transparent" />
+                <div className="pointer-events-none absolute left-0 top-0 h-px w-20 bg-gradient-to-r from-brand-500/50 to-transparent" />
+                <div className="pointer-events-none absolute right-0 top-0 h-20 w-px bg-gradient-to-b from-brand-500/50 to-transparent" />
+                <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-px bg-gradient-to-t from-cyan-500/50 to-transparent" />
+                <div className="pointer-events-none absolute bottom-0 right-0 h-px w-20 bg-gradient-to-l from-cyan-500/50 to-transparent" />
 
                 <div className="relative flex flex-col items-center text-center">
                   {/* Profile Image with enhanced styling */}
-                  <div className="relative mb-8 h-44 w-44 overflow-hidden rounded-full border-4 border-white shadow-2xl ring-4 ring-brand-500/30 transition-all duration-500 group-hover:scale-105 group-hover:ring-8 group-hover:ring-brand-500/40">
+                  <div className="relative mb-5 h-32 w-32 overflow-hidden rounded-full border-4 border-white shadow-2xl ring-4 ring-brand-500/30 transition-all duration-500 group-hover:scale-105 group-hover:ring-8 group-hover:ring-brand-500/40">
                     {/* Inner gradient border */}
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-brand-500/30 via-cyan-500/20 to-indigo-500/30" />
                     
@@ -104,33 +104,33 @@ export function PatronsSection() {
                   </div>
 
                   {/* Badge/Label */}
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500/10 to-cyan-500/10 px-4 py-1.5 ring-1 ring-brand-500/20">
-                    <div className="h-2 w-2 animate-pulse rounded-full bg-brand-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">Patron</span>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500/10 to-cyan-500/10 px-3 py-1 ring-1 ring-brand-500/20">
+                    <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-700">Patron</span>
                   </div>
 
                   {/* Name */}
-                  <h3 className="font-display text-2xl font-bold tracking-tight text-ink-900 transition-colors duration-300 group-hover:text-brand-700">
+                  <h3 className="font-display text-xl font-bold tracking-tight text-ink-900 transition-colors duration-300 group-hover:text-brand-700">
                     {patron.name}
                   </h3>
 
                   {/* Decorative divider */}
-                  <div className="my-4 flex items-center gap-3">
-                    <div className="h-px w-8 bg-gradient-to-r from-transparent to-brand-500/40" />
-                    <div className="h-1.5 w-1.5 rotate-45 bg-brand-500/60" />
-                    <div className="h-px w-8 bg-gradient-to-l from-transparent to-brand-500/40" />
+                  <div className="my-3 flex items-center gap-2">
+                    <div className="h-px w-6 bg-gradient-to-r from-transparent to-brand-500/40" />
+                    <div className="h-1 w-1 rotate-45 bg-brand-500/60" />
+                    <div className="h-px w-6 bg-gradient-to-l from-transparent to-brand-500/40" />
                   </div>
 
                   {/* Designation */}
-                  <p className="text-base font-semibold text-ink-600 transition-colors duration-300 group-hover:text-ink-700">
+                  <p className="text-sm font-semibold text-ink-600 transition-colors duration-300 group-hover:text-ink-700">
                     {patron.designation}
                   </p>
 
                   {/* Bottom decorative element */}
-                  <div className="mt-6 flex items-center gap-2">
-                    <div className="h-1 w-12 rounded-full bg-gradient-to-r from-brand-500/0 via-brand-500/60 to-brand-500/0 transition-all duration-500 group-hover:w-16 group-hover:via-brand-500" />
+                  <div className="mt-4 flex items-center gap-2">
+                    <div className="h-1 w-10 rounded-full bg-gradient-to-r from-brand-500/0 via-brand-500/60 to-brand-500/0 transition-all duration-500 group-hover:w-12 group-hover:via-brand-500" />
                     <div className="h-1 w-1 rounded-full bg-cyan-500/60" />
-                    <div className="h-1 w-12 rounded-full bg-gradient-to-r from-cyan-500/0 via-cyan-500/60 to-cyan-500/0 transition-all duration-500 group-hover:w-16 group-hover:via-cyan-500" />
+                    <div className="h-1 w-10 rounded-full bg-gradient-to-r from-cyan-500/0 via-cyan-500/60 to-cyan-500/0 transition-all duration-500 group-hover:w-12 group-hover:via-cyan-500" />
                   </div>
                 </div>
               </div>
