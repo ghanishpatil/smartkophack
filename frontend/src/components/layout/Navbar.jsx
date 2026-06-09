@@ -40,13 +40,29 @@ export function Navbar() {
       <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:h-[4.5rem] lg:px-8">
         {/* Logo */}
         <Link to="/" className="group flex items-center gap-3">
+          {/* Sanjivani University Logo - placeholder, add sanjivani-logo.png to public folder */}
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110">
+            <img 
+              src="/sanjivani-logo.png" 
+              alt="Sanjivani University" 
+              className="h-full w-full rounded-xl object-contain"
+              onError={(e) => {
+                // Fallback to text if logo doesn't exist
+                e.target.style.display = 'none'
+                e.target.parentElement.innerHTML = '<span class="text-xs font-bold text-brand-600">SU</span>'
+              }}
+            />
+          </div>
+          
+          {/* SKH Logo */}
           <img src="/logo.png" alt={APP.shortName} className="h-11 w-11 rounded-xl object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110" />
+          
           <span className="flex flex-col leading-tight">
             <span className="font-display text-sm font-bold text-ink-900 sm:text-base">
-              {APP.shortName}
+              Smart Kopargaon Hackathon
             </span>
-            <span className="hidden text-[10px] font-medium tracking-wide text-ink-500 sm:block">
-              {APP.name}
+            <span className="text-[10px] font-medium text-ink-500">
+              Powered by Sanjivani University
             </span>
           </span>
         </Link>
