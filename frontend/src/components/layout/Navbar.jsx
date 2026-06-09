@@ -9,13 +9,19 @@ import { roleHome, ROLES } from '@/utils/roles.js'
 
 const links = [
   { to: '/', label: 'Home' },
-  { to: '/about', label: 'About' },
-  { to: '/problems', label: 'Problem Statements' },
-  { to: '/timeline', label: 'Timeline' },
+  { to: '/about', label: 'About SKH' },
+  { to: '/problems', label: 'Problem Bank' },
+  { to: '/timeline', label: 'Event Timeline' },
   { to: '/announcements', label: 'Announcements' },
+  { to: '/faq', label: 'FAQ' },
+  { to: '/sponsors', label: 'Partners & Sponsors' },
+  { to: '/contact', label: 'Contact Us' },
+]
+
+const resourceLinks = [
+  { to: '/guidelines', label: 'Submission Guidelines' },
+  { to: '/code-of-conduct', label: 'Code of Conduct' },
   { to: '/results', label: 'Results' },
-  { to: '/sponsors', label: 'Sponsors' },
-  { to: '/contact', label: 'Contact' },
 ]
 
 export function Navbar() {
@@ -148,6 +154,10 @@ export function Navbar() {
             className="overflow-hidden border-t border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] md:hidden"
           >
             <div className="flex flex-col gap-1 px-4 py-5">
+              {/* Platform Links */}
+              <div className="mb-2 px-4 text-xs font-semibold uppercase tracking-wider text-ink-500">
+                Platform
+              </div>
               {links.map(({ to, label }, i) => (
                 <motion.div
                   key={to}
@@ -171,6 +181,35 @@ export function Navbar() {
                   </NavLink>
                 </motion.div>
               ))}
+
+              {/* Resources Links */}
+              <div className="mb-2 mt-4 px-4 text-xs font-semibold uppercase tracking-wider text-ink-500">
+                Resources
+              </div>
+              {resourceLinks.map(({ to, label }, i) => (
+                <motion.div
+                  key={to}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: (links.length + i) * 0.04 }}
+                >
+                  <NavLink
+                    to={to}
+                    onClick={() => setOpen(false)}
+                    className={({ isActive }) =>
+                      [
+                        'flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-brand-500/10 text-brand-600'
+                          : 'text-ink-700 hover:bg-[rgb(var(--surface-muted))]',
+                      ].join(' ')
+                    }
+                  >
+                    {label}
+                  </NavLink>
+                </motion.div>
+              ))}
+
               <div className="mt-3 border-t border-[rgb(var(--border))] pt-4">
                 <Link to={dash} onClick={() => setOpen(false)}>
                   <Button className="w-full">{user ? 'Dashboard' : 'Register / Login'}</Button>

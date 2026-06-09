@@ -16,6 +16,8 @@ import { TimelinePage } from '@/pages/TimelinePage.jsx'
 import { SponsorsPage } from '@/pages/SponsorsPage.jsx'
 import { FAQPage } from '@/pages/FAQPage.jsx'
 import { ResultsPage } from '@/pages/ResultsPage.jsx'
+import { GuidelinesPage } from '@/pages/GuidelinesPage.jsx'
+import { CodeOfConductPage } from '@/pages/CodeOfConductPage.jsx'
 import { NotFoundPage } from '@/pages/NotFoundPage.jsx'
 import { AuthActionPage } from '@/pages/AuthActionPage.jsx'
 import { ROLES } from '@/utils/roles.js'
@@ -233,6 +235,22 @@ export default function App() {
             element={
               <AnimatedOutlet>
                 <ResultsPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/guidelines"
+            element={
+              <AnimatedOutlet>
+                <GuidelinesPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/code-of-conduct"
+            element={
+              <AnimatedOutlet>
+                <CodeOfConductPage />
               </AnimatedOutlet>
             }
           />
