@@ -1281,7 +1281,7 @@ export function adminRouter() {
           // Domain (was: theme) — accept "domain" or legacy "theme" column. Must be one of 7 official domains.
           const DOMAINS = [
             'Health', 'Education', 'Transportation', 'Food Safety & Security',
-            'Waste Management', 'Agriculture', 'Industry & MSME Innovation',
+            'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
           ]
           let theme = ''
           const domainRaw = typeof row.domain === 'string' ? row.domain.trim() : (typeof row.theme === 'string' ? row.theme.trim() : '')
@@ -1850,7 +1850,7 @@ export function adminRouter() {
 
   const JUDGE_VALID_DOMAINS = [
     'Health', 'Education', 'Transportation', 'Food Safety & Security',
-    'Waste Management', 'Agriculture', 'Industry & MSME Innovation',
+    'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
   ]
   const JUDGE_VALID_TRACKS = ['Software', 'Hardware']
 
@@ -2511,7 +2511,7 @@ export function adminRouter() {
 
       const VALID_DOMAINS = [
         'Health', 'Education', 'Transportation', 'Food Safety & Security',
-        'Waste Management', 'Agriculture', 'Industry & MSME Innovation',
+        'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
       ]
       const VALID_TRACKS = ['Software', 'Hardware']
 

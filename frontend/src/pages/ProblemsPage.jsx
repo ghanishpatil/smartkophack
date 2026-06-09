@@ -12,7 +12,7 @@ import {
   Search, Building2, Layers, BookOpen, X, ChevronRight, Users as UsersIcon,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Copy, Check, Star,
   Filter, ExternalLink, Clock, AlertCircle, TrendingUp, Flame, ChevronLeft,
-  HeartPulse, GraduationCap, Bus, Utensils, Recycle, Sprout, Factory, Tag,
+  HeartPulse, GraduationCap, Bus, Utensils, Recycle, Sprout, Factory, Lightbulb, Tag,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -40,6 +40,7 @@ const DOMAINS = [
   'Waste Management',
   'Agriculture',
   'Industry & MSME Innovation',
+  'Open Innovation',
 ]
 
 const domainStyles = {
@@ -50,6 +51,7 @@ const domainStyles = {
   'Waste Management': { Icon: Recycle, text: 'text-emerald-700', bg: 'bg-emerald-50', iconBg: 'bg-emerald-100' },
   'Agriculture': { Icon: Sprout, text: 'text-lime-700', bg: 'bg-lime-50', iconBg: 'bg-lime-100' },
   'Industry & MSME Innovation': { Icon: Factory, text: 'text-indigo-700', bg: 'bg-indigo-50', iconBg: 'bg-indigo-100' },
+  'Open Innovation': { Icon: Lightbulb, text: 'text-amber-700', bg: 'bg-amber-50', iconBg: 'bg-amber-100' },
 }
 const defaultDomain = { Icon: Tag, text: 'text-ink-700', bg: 'bg-ink-100', iconBg: 'bg-ink-100' }
 

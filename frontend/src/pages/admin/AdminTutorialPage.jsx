@@ -53,7 +53,7 @@ const steps = [
       '• Set "Max Teams" to limit how many teams can pick this PS',
       '• Toggle "Published" to make it visible to participants',
       '',
-      '**7 Domains:** Health, Education, Transportation, Food Safety & Security, Waste Management, Agriculture, Industry & MSME Innovation',
+      '**Domains:** Health, Education, Transportation, Food Safety & Security, Waste Management, Agriculture, Industry & MSME Innovation, Open Innovation',
       '',
       '**2 Tracks:** Software, Hardware',
       '',

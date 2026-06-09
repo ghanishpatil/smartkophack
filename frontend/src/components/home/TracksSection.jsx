@@ -12,6 +12,7 @@ const domainConfig = [
   { iconBg: 'bg-emerald-500/20', iconColor: 'text-emerald-400', cardBg: 'from-emerald-500/10 to-emerald-500/5', border: 'border-emerald-500/30', titleColor: 'text-emerald-300', accentBar: 'bg-emerald-500' },
   { iconBg: 'bg-lime-500/20',    iconColor: 'text-lime-400',    cardBg: 'from-lime-500/10 to-lime-500/5',    border: 'border-lime-500/30',    titleColor: 'text-lime-300',    accentBar: 'bg-lime-500'    },
   { iconBg: 'bg-indigo-500/20',  iconColor: 'text-indigo-400',  cardBg: 'from-indigo-500/10 to-indigo-500/5',  border: 'border-indigo-500/30',  titleColor: 'text-indigo-300',  accentBar: 'bg-indigo-500'  },
+  { iconBg: 'bg-amber-500/20',   iconColor: 'text-amber-400',   cardBg: 'from-amber-500/10 to-amber-500/5',   border: 'border-amber-500/30',   titleColor: 'text-amber-300',   accentBar: 'bg-amber-500'   },
 ]
 
 const VISIBLE = 3
@@ -84,7 +85,7 @@ export function TracksSection() {
             Innovation Domains
           </span>
           <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-            Seven Domains of Impact
+            Domains of Impact
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-white/60 sm:text-base">
             No problem is too big… No idea is too small

@@ -13,7 +13,7 @@ import { publicApi } from '@/services/api.js'
 
 const DOMAIN_OPTIONS = [
   'Health', 'Education', 'Transportation', 'Food Safety & Security',
-  'Waste Management', 'Agriculture', 'Industry & MSME Innovation',
+  'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
 ]
 const TRACK_OPTIONS = ['Software', 'Hardware']
 

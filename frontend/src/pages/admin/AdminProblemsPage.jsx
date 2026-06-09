@@ -29,6 +29,7 @@ const DOMAIN_OPTIONS = [
   'Waste Management',
   'Agriculture',
   'Industry & MSME Innovation',
+  'Open Innovation',
 ]
 
 function slugPreview(raw) {
@@ -799,7 +800,7 @@ export function AdminProblemsPage() {
                   </div>
                   <div className="rounded-lg bg-[rgb(var(--surface-muted))]/60 p-2">
                     <p><code className="font-mono font-bold text-ink-900">domain</code></p>
-                    <p className="mt-0.5 text-ink-500">One of: Health · Education · Transportation · Food Safety &amp; Security · Waste Management · Agriculture · Industry &amp; MSME Innovation</p>
+                    <p className="mt-0.5 text-ink-500">One of: Health · Education · Transportation · Food Safety &amp; Security · Waste Management · Agriculture · Industry &amp; MSME Innovation · Open Innovation</p>
                   </div>
                   <div className="rounded-lg bg-[rgb(var(--surface-muted))]/60 p-2 sm:col-span-2">
                     <p><code className="font-mono font-bold text-ink-900">description</code></p>

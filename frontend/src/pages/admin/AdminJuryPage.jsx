@@ -28,6 +28,7 @@ const DOMAINS = [
   'Waste Management',
   'Agriculture',
   'Industry & MSME Innovation',
+  'Open Innovation',
 ]
 
 const TRACKS = ['Software', 'Hardware']

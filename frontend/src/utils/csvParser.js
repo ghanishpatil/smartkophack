@@ -115,7 +115,7 @@ export function buildProblemStatementTemplate() {
   // Note: `id` is intentionally omitted — system auto-assigns sequential IDs (skh001, skh002, ...).
   // `track` accepts: Software | Hardware
   // `domain` accepts: Health | Education | Transportation | Food Safety & Security |
-  //                   Waste Management | Agriculture | Industry & MSME Innovation
+  //                   Waste Management | Agriculture | Industry & MSME Innovation | Open Innovation
   const headers = ['title', 'organization', 'department', 'track', 'domain', 'description', 'published', 'maxTeams', 'order']
   const example1 = [
     'Civic engagement dashboard',

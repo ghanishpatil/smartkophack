@@ -64,7 +64,7 @@ SKH is a national-level hackathon platform built for Kopargaon Taluka, hosted by
 ### Problem Statements (PS)
 - Each PS has: title, organization, department, track (Software/Hardware), domain (one of 7), description, max teams cap.
 - PS IDs are auto-assigned as skh001, skh002, etc. on bulk import.
-- 7 official domains: Health, Education, Transportation, Food Safety & Security, Waste Management, Agriculture, Industry & MSME Innovation.
+- 8 official domains: Health, Education, Transportation, Food Safety & Security, Waste Management, Agriculture, Industry & MSME Innovation, Open Innovation.
 - 2 tracks: Software, Hardware.
 - Admin can bulk import via CSV, or add individually.
 

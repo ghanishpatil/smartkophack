@@ -51,6 +51,12 @@ export const TRACKS = [
     description: 'Operational efficiency, quality control, safety, automation, and digital tooling for local industries.',
     icon: 'Factory',
   },
+  {
+    id: 'open-innovation',
+    title: 'Open Innovation',
+    description: 'Creative solutions and breakthrough ideas that don\'t fit traditional categories but solve real-world problems.',
+    icon: 'Lightbulb',
+  },
 ]
 
 export const TIMELINE = [
@@ -88,7 +94,7 @@ export const FAQ_ITEMS = [
 ]
 
 export const STATS = [
-  { label: 'Problem Domains', value: '7' },
+  { label: 'Problem Domains', value: '8' },
   { label: 'Expected Teams', value: '250+' },
   { label: 'Partner Departments', value: '12+' },
   { label: 'Mentor Hours', value: '2k+' },
