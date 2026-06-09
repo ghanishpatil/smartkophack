@@ -14,8 +14,8 @@ const footerLinks = {
     { to: '/sponsors', label: 'Partners & Sponsors' },
     { to: '/auth', label: 'Participant Login' },
     { to: '/contact', label: 'Contact Us' },
-    { href: '#', label: 'Submission Guidelines' },
-    { href: '#', label: 'Code of Conduct' },
+    { to: '/guidelines', label: 'Submission Guidelines' },
+    { to: '/code-of-conduct', label: 'Code of Conduct' },
   ],
 }
 
