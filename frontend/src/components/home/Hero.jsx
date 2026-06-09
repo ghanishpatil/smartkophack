@@ -38,7 +38,7 @@ export function Hero() {
       {/* ── Background image — 1920×1080 banner, fills 16:9 frame edge to edge ── */}
       <div className="absolute inset-0">
         <img
-          src="/smart_kopargaon_bgc.png"
+          src="/smart_kopargaon_3.png"
           alt=""
           className="h-full w-full object-cover object-center"
           draggable={false}
