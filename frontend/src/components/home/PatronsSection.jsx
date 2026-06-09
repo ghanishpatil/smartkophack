@@ -11,7 +11,7 @@ const patrons = [
   {
     id: 2,
     name: "Hon'ble Shri. Amit Nitinrao Kolhe",
-    designation: "President's Desk",
+    designation: 'President, Sanjivani University',
     image: '/president.png',
   },
 ]
