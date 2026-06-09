@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
-import { Badge } from '@/components/ui/Badge.jsx'
 import { APP } from '@/utils/constants.js'
 
 /* ── Subtle animated network nodes ─────────────────────────── */
@@ -65,18 +64,6 @@ export function Hero() {
         - on mobile: compact, headline visible immediately
       */}
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-start px-6 pb-16 pt-[8%] sm:px-10 lg:px-16">
-
-        {/* Badge — sits just above the headline, not floating at the very top */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="mb-5 sm:mb-6"
-        >
-          <Badge tone="brand" dot pulse pill>
-            {APP.region} · {APP.university} · 2026 Edition
-          </Badge>
-        </motion.div>
 
         {/* Two-column layout: text left, logo right */}
         <div className="flex w-full max-w-7xl items-center gap-8 lg:gap-16">
