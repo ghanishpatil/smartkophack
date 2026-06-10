@@ -105,6 +105,7 @@ router.post(
 
       console.log('[SPONSORS POST] Saving file with buffer size:', req.file.buffer.length)
       
+      let logoUrl = ''
       try {
         await file.save(req.file.buffer, {
           metadata: {
@@ -119,7 +120,7 @@ router.post(
         console.log('[SPONSORS POST] File saved successfully')
 
         // Get public URL
-        const logoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
+        logoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
         console.log('[SPONSORS POST] Public URL:', logoUrl)
       } catch (uploadError) {
         console.error('[SPONSORS POST] Upload error:', uploadError)
