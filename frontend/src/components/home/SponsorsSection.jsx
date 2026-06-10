@@ -94,9 +94,9 @@ export function SponsorsSection() {
           />
         </div>
 
-        {/* Single carousel row - right to left */}
+        {/* Single carousel row - right to left, never stops */}
         <div className="relative mt-12">
-          <Marquee reverse pauseOnHover className="[--duration:15s]">
+          <Marquee reverse className="[--duration:15s]">
             {sortedSponsors.map((sponsor) => (
               <SponsorCard key={sponsor.id} sponsor={sponsor} />
             ))}
