@@ -103,19 +103,28 @@ router.post(
       const filename = `sponsors/${uuidv4()}-${Date.now()}${path.extname(req.file.originalname)}`
       const file = bucket.file(filename)
 
-      await file.save(req.file.buffer, {
-        metadata: {
-          contentType: req.file.mimetype,
+      console.log('[SPONSORS POST] Saving file with buffer size:', req.file.buffer.length)
+      
+      try {
+        await file.save(req.file.buffer, {
           metadata: {
-            firebaseStorageDownloadTokens: uuidv4(),
+            contentType: req.file.mimetype,
+            metadata: {
+              firebaseStorageDownloadTokens: uuidv4(),
+            },
           },
-        },
-      })
+          public: true, // Make it public during upload
+        })
 
-      // Make file publicly accessible
-      await file.makePublic()
+        console.log('[SPONSORS POST] File saved successfully')
 
-      const logoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
+        // Get public URL
+        const logoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
+        console.log('[SPONSORS POST] Public URL:', logoUrl)
+      } catch (uploadError) {
+        console.error('[SPONSORS POST] Upload error:', uploadError)
+        throw uploadError
+      }
 
       // Create sponsor document
       const sponsorData = {
@@ -213,9 +222,8 @@ router.put(
               firebaseStorageDownloadTokens: uuidv4(),
             },
           },
+          public: true, // Make it public during upload
         })
-
-        await file.makePublic()
 
         const logoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
         updateData.logoUrl = logoUrl

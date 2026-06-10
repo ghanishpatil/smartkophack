@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/Input.jsx'
 import { Card } from '@/components/ui/Card.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000'
+
 export function AdminSponsorsPage() {
   const [sponsors, setSponsors] = useState([])
   const [loading, setLoading] = useState(true)
@@ -20,7 +22,7 @@ export function AdminSponsorsPage() {
   async function fetchSponsors() {
     try {
       const token = await user.getIdToken()
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sponsors`, {
+      const res = await fetch(`${API_BASE}/api/sponsors`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -37,7 +39,7 @@ export function AdminSponsorsPage() {
     
     try {
       const token = await user.getIdToken()
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sponsors/${id}`, {
+      const res = await fetch(`${API_BASE}/api/sponsors/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -205,8 +207,8 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
       if (logoFile) formData.append('logo', logoFile)
 
       const url = sponsor
-        ? `${import.meta.env.VITE_API_BASE_URL}/api/sponsors/${sponsor.id}`
-        : `${import.meta.env.VITE_API_BASE_URL}/api/sponsors`
+        ? `${API_BASE}/api/sponsors/${sponsor.id}`
+        : `${API_BASE}/api/sponsors`
       
       const res = await fetch(url, {
         method: sponsor ? 'PUT' : 'POST',

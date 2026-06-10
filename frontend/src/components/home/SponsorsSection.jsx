@@ -9,7 +9,8 @@ export function SponsorsSection() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sponsors`)
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000'
+    fetch(`${API_BASE}/api/sponsors`)
       .then(res => res.json())
       .then(data => {
         setSponsors(Array.isArray(data) ? data : [])

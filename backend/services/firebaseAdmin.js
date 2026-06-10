@@ -17,7 +17,7 @@ export function initFirebaseAdmin() {
     if (!getApps().length) {
       initializeApp({ 
         credential: cert(cred),
-        storageBucket: `${cred.project_id}.appspot.com`
+        storageBucket: 'verify-sih.firebasestorage.app'
       })
     }
     initialized = true
