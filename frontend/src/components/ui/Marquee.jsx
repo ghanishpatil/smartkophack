@@ -4,7 +4,7 @@ export function Marquee({
   children,
   speed = 30,
   reverse,
-  pauseOnHover = true,
+  pauseOnHover = false,
   className,
   innerClassName,
 }) {
@@ -28,10 +28,7 @@ export function Marquee({
           style={{
             animation: `${reverse ? 'marquee-reverse' : 'marquee'} ${duration} linear infinite`,
             animationPlayState: 'running',
-            ...(pauseOnHover ? {} : {}),
           }}
-          onMouseEnter={pauseOnHover ? (e) => { e.currentTarget.style.animationPlayState = 'paused' } : undefined}
-          onMouseLeave={pauseOnHover ? (e) => { e.currentTarget.style.animationPlayState = 'running' } : undefined}
         >
           {children}
         </div>
