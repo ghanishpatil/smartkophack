@@ -126,38 +126,28 @@ export function SponsorsSection() {
 function SponsorCard({ sponsor }) {
   return (
     <motion.div
-      whileHover={{ scale: 1.05, y: -4 }}
-      className="group relative mx-3 w-48 overflow-hidden rounded-2xl border border-brand-500/20 bg-gradient-to-br from-white via-brand-50/30 to-cyan-50/20 p-6 shadow-card transition-all duration-300 hover:border-brand-500/40 hover:shadow-card-hover"
+      whileHover={{ scale: 1.05 }}
+      className="group mx-4 flex w-40 flex-col items-center"
     >
-      {/* Decorative gradient */}
-      <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br from-brand-400/20 to-cyan-400/20 blur-2xl transition-all duration-500 group-hover:scale-125" />
-
-      <div className="relative flex flex-col items-center">
-        {/* Logo container */}
-        <div className="mb-3 flex h-20 w-full items-center justify-center overflow-hidden rounded-xl bg-white p-3 shadow-sm ring-1 ring-brand-500/10">
-          <img
-            src={sponsor.logoUrl}
-            alt={sponsor.name}
-            className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-110"
-            onError={(e) => {
-              e.target.style.display = 'none'
-              e.target.parentElement.innerHTML = `<div class="flex h-full w-full items-center justify-center"><svg class="h-8 w-8 text-ink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`
-            }}
-          />
-        </div>
-
-        {/* Organization name */}
-        <p className="font-display text-sm font-semibold text-ink-900 transition-colors duration-300 group-hover:text-brand-700">
-          {sponsor.name}
-        </p>
-
-        {/* Optional label (e.g., "Industry Partner", "Powered by") */}
-        {sponsor.label && (
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-400">
-            {sponsor.label}
-          </p>
-        )}
+      {/* Logo */}
+      <div className="flex h-24 w-full items-center justify-center p-2">
+        <img
+          src={sponsor.logoUrl}
+          alt={sponsor.name}
+          className="h-full w-full object-contain grayscale transition-all duration-300 group-hover:grayscale-0"
+          onError={(e) => {
+            e.target.style.display = 'none'
+            e.target.parentElement.innerHTML = `<div class="flex h-full w-full items-center justify-center"><svg class="h-8 w-8 text-ink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`
+          }}
+        />
       </div>
+
+      {/* Optional label */}
+      {sponsor.label && (
+        <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-ink-400">
+          {sponsor.label}
+        </p>
+      )}
     </motion.div>
   )
 }
