@@ -3,7 +3,6 @@ import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle,
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
-import { publicApi } from '@/services/api.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -12,7 +11,7 @@ import { Badge } from '@/components/ui/Badge.jsx'
 export function AdminSettingsPage() {
   usePageSeo({ title: 'Settings', description: 'Event configuration.' })
   const api = useApi()
-  const { eventId } = useEvent()
+  const { eventId, eventCfg } = useEvent()
   const [eventForm, setEventForm] = useState({
     registrationOpen: true,
     submissionsOpen: false,
@@ -26,24 +25,21 @@ export function AdminSettingsPage() {
   })
   const [msg, setMsg] = useState('')
 
+  // Sync form state with eventCfg from context (includes real-time updates)
   useEffect(() => {
-    let cancelled = false
-    publicApi.getEventConfig(eventId || undefined).then((c) => {
-      if (!c || cancelled) return
-      setEventForm({
-        registrationOpen: Boolean(c.registrationOpen),
-        submissionsOpen: Boolean(c.submissionsOpen),
-        evaluationsOpen: Boolean(c.evaluationsOpen),
-        resultsPublished: Boolean(c.resultsPublished),
-        entryFeeEnabled: Boolean(c.entryFeeEnabled),
-        entryFeeAmount: Number(c.entryFeeAmount) || 0,
-        currency: c.currency || 'INR',
-        minTeamSize: Number(c.minTeamSize) || 2,
-        maxTeamSize: Number(c.maxTeamSize) || 4,
-      })
+    if (!eventCfg) return
+    setEventForm({
+      registrationOpen: Boolean(eventCfg.registrationOpen),
+      submissionsOpen: Boolean(eventCfg.submissionsOpen),
+      evaluationsOpen: Boolean(eventCfg.evaluationsOpen),
+      resultsPublished: Boolean(eventCfg.resultsPublished),
+      entryFeeEnabled: Boolean(eventCfg.entryFeeEnabled),
+      entryFeeAmount: Number(eventCfg.entryFeeAmount) || 0,
+      currency: eventCfg.currency || 'INR',
+      minTeamSize: Number(eventCfg.minTeamSize) || 2,
+      maxTeamSize: Number(eventCfg.maxTeamSize) || 4,
     })
-    return () => { cancelled = true }
-  }, [eventId])
+  }, [eventCfg])
 
   async function save() {
     setMsg('')
