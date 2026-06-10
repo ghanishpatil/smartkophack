@@ -96,7 +96,7 @@ export function SponsorsSection() {
 
         {/* Single carousel row - right to left */}
         <div className="relative mt-12">
-          <Marquee reverse pauseOnHover className="[--duration:25s]">
+          <Marquee reverse pauseOnHover className="[--duration:15s]">
             {sortedSponsors.map((sponsor) => (
               <SponsorCard key={sponsor.id} sponsor={sponsor} />
             ))}
