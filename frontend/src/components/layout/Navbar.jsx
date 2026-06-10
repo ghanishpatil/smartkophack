@@ -35,24 +35,36 @@ export function Navbar() {
     setOpen(false)
   }, [location.pathname])
 
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [open])
+
   return (
     <header
       className={[
         'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
         'border-b border-white/20 bg-white/70 shadow-sm backdrop-blur-xl backdrop-saturate-150',
+        'safe-top', // iOS safe area
       ].join(' ')}
     >
-      <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:h-[4.5rem] lg:px-8">
-        {/* Logo */}
-        <Link to="/" className="group flex items-center gap-3">
-          {/* Sanjivani University Logo - placeholder, add sanjivani-logo.png to public folder */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110">
+      <div className="flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4 md:px-6 lg:h-[4.5rem] lg:px-8">
+        {/* Logo - Optimized for mobile */}
+        <Link to="/" className="group flex shrink-0 items-center gap-1.5 sm:gap-2 md:gap-3">
+          {/* Sanjivani University Logo */}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-12 md:w-12 md:rounded-xl">
             <img 
               src="/sanjivani-logo.png" 
               alt="Sanjivani University" 
-              className="h-[90%] w-[90%] rounded-xl object-contain"
+              className="h-[90%] w-[90%] rounded-lg object-contain md:rounded-xl"
               onError={(e) => {
-                // Fallback to text if logo doesn't exist
                 e.target.style.display = 'none'
                 e.target.parentElement.innerHTML = '<span class="text-xs font-bold text-brand-600">SU</span>'
               }}
@@ -60,27 +72,33 @@ export function Navbar() {
           </div>
           
           {/* SKH Logo */}
-          <img src="/logo.png" alt={APP.shortName} className="h-11 w-11 rounded-xl object-contain shadow-md shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110" />
+          <img 
+            src="/logo.png" 
+            alt={APP.shortName} 
+            className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-11 md:w-11 md:rounded-xl" 
+          />
           
-          <span className="flex flex-col leading-tight">
-            <span className="font-display text-sm font-bold text-ink-900 sm:text-base">
-              Smart Kopargaon Hackathon
+          {/* Text - Hide on very small screens, show abbreviated on small, full on larger */}
+          <span className="hidden flex-col leading-tight xs:flex">
+            <span className="font-display text-xs font-bold text-ink-900 sm:text-sm md:text-base">
+              <span className="hidden sm:inline">Smart Kopargaon Hackathon</span>
+              <span className="sm:hidden">SKH</span>
             </span>
-            <span className="text-[10px] font-medium text-ink-500">
+            <span className="hidden text-[9px] font-medium text-ink-500 sm:block sm:text-[10px]">
               Powered by Sanjivani University
             </span>
           </span>
         </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-0.5 md:flex">
+        {/* Desktop nav - Hidden on mobile/tablet */}
+        <nav className="hidden items-center gap-0.5 lg:flex xl:gap-1">
           {links.map(({ to, label }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 [
-                  'relative rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
+                  'relative whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium transition-colors duration-200 xl:px-3 xl:text-sm',
                   isActive
                     ? 'text-brand-600'
                     : 'text-ink-600 hover:text-ink-900',
@@ -104,25 +122,28 @@ export function Navbar() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
-          <Link to={dash} className="hidden sm:block">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Dashboard/Login button - Hide on very small screens */}
+          <Link to={dash} className="hidden xs:block">
             {user ? (
-              <Button size="sm" variant="secondary" className="gap-1.5">
-                Dashboard
-                <ChevronRight className="h-3.5 w-3.5" />
+              <Button size="sm" variant="secondary" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
+                <span className="hidden sm:inline">Dashboard</span>
+                <span className="sm:hidden">Dash</span>
+                <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
             ) : (
-              <Button size="sm" className="gap-1.5">
-                Register / Login
-                <ChevronRight className="h-3.5 w-3.5" />
+              <Button size="sm" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
+                <span className="hidden sm:inline">Register / Login</span>
+                <span className="sm:hidden">Login</span>
+                <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
             )}
           </Link>
 
-          {/* Mobile menu toggle */}
+          {/* Mobile menu toggle - Better touch target */}
           <button
             type="button"
-            className="rounded-lg p-2 text-ink-700 transition-colors hover:bg-[rgb(var(--surface-muted))] md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-700 transition-colors hover:bg-[rgb(var(--surface-muted))] active:scale-95 lg:hidden"
             aria-label={open ? 'Close menu' : 'Open menu'}
             onClick={() => setOpen((o) => !o)}
           >
@@ -142,7 +163,7 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Mobile full-screen overlay */}
+      {/* Mobile full-screen overlay - Optimized for all mobile devices */}
       <AnimatePresence>
         {open ? (
           <motion.div
@@ -150,11 +171,14 @@ export function Navbar() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden border-t border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] md:hidden"
+            className="max-h-[calc(100vh-3.5rem)] overflow-y-auto overscroll-contain border-t border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] lg:hidden"
+            style={{ 
+              WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+            }}
           >
-            <div className="flex flex-col gap-1 px-4 py-5">
+            <div className="flex flex-col gap-1 px-3 py-4 pb-safe sm:px-4 sm:py-5">
               {/* Platform Links */}
-              <div className="mb-2 px-4 text-xs font-semibold uppercase tracking-wider text-ink-500">
+              <div className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-500 sm:mb-2 sm:px-4 sm:text-xs">
                 Platform
               </div>
               {links.map(({ to, label }, i) => (
@@ -169,7 +193,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className={({ isActive }) =>
                       [
-                        'flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-colors',
+                        'flex min-h-[44px] items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors active:scale-[0.98] sm:px-4 sm:py-3',
                         isActive
                           ? 'bg-brand-500/10 text-brand-600'
                           : 'text-ink-700 hover:bg-[rgb(var(--surface-muted))]',
@@ -182,7 +206,7 @@ export function Navbar() {
               ))}
 
               {/* Resources Links */}
-              <div className="mb-2 mt-4 px-4 text-xs font-semibold uppercase tracking-wider text-ink-500">
+              <div className="mb-1 mt-3 px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-500 sm:mb-2 sm:mt-4 sm:px-4 sm:text-xs">
                 Resources
               </div>
               {resourceLinks.map(({ to, label }, i) => (
@@ -197,7 +221,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className={({ isActive }) =>
                       [
-                        'flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-colors',
+                        'flex min-h-[44px] items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors active:scale-[0.98] sm:px-4 sm:py-3',
                         isActive
                           ? 'bg-brand-500/10 text-brand-600'
                           : 'text-ink-700 hover:bg-[rgb(var(--surface-muted))]',
@@ -209,9 +233,12 @@ export function Navbar() {
                 </motion.div>
               ))}
 
-              <div className="mt-3 border-t border-[rgb(var(--border))] pt-4">
+              {/* Dashboard/Login button in mobile menu */}
+              <div className="mt-3 border-t border-[rgb(var(--border))] pt-3 sm:pt-4">
                 <Link to={dash} onClick={() => setOpen(false)}>
-                  <Button className="w-full">{user ? 'Dashboard' : 'Register / Login'}</Button>
+                  <Button className="min-h-[44px] w-full active:scale-[0.98]">
+                    {user ? 'Dashboard' : 'Register / Login'}
+                  </Button>
                 </Link>
               </div>
             </div>
