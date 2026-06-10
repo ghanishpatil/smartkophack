@@ -251,9 +251,6 @@ export function ParticipantRegistrationPage() {
       setBusy(false)
     }
   }
-      setBusy(false)
-    }
-  }
 
   async function registerEvent() {
     setMsg('')
