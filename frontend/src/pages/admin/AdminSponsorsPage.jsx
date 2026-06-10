@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Building2, Plus, Upload, X, Pencil, Trash2, Save, Loader2, ImageIcon } from 'lucide-react'
+import { Building2, Plus, Upload, X, Pencil, Trash2, Save, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
 import { Card } from '@/components/ui/Card.jsx'
@@ -201,7 +201,7 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
       const formData = new FormData()
       formData.append('name', name.trim())
       formData.append('label', label.trim())
-      formData.append('order', order)
+      formData.append('order', String(order))
       if (logoFile) formData.append('logo', logoFile)
 
       const url = sponsor
@@ -210,19 +210,22 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
       
       const res = await fetch(url, {
         method: sponsor ? 'PUT' : 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          'Authorization': `Bearer ${token}`
+        },
         body: formData
       })
 
       if (res.ok) {
         onSuccess()
       } else {
-        const error = await res.json()
-        alert(error.error || 'Failed to save sponsor')
+        const error = await res.json().catch(() => ({ error: 'Unknown error' }))
+        alert(error.error || error.message || 'Failed to save sponsor')
+        console.error('Server error:', error)
       }
     } catch (error) {
       console.error('Failed to save sponsor:', error)
-      alert('Failed to save sponsor')
+      alert(`Failed to save sponsor: ${error.message}`)
     } finally {
       setSubmitting(false)
     }

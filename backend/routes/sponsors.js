@@ -1,5 +1,4 @@
 import express from 'express'
-import { body, validationResult, param } from 'express-validator'
 import { getDb } from '../services/firebaseAdmin.js'
 import { getStorage } from 'firebase-admin/storage'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
@@ -61,23 +60,24 @@ router.post(
   loadUserRole,
   requireRole('admin'),
   upload.single('logo'),
-  [
-    body('name').trim().notEmpty().withMessage('Organization name is required'),
-    body('label').optional().trim(),
-    body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative integer'),
-  ],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
+      // Manual validation since express-validator doesn't work well with multer
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: 'Organization name is required' })
       }
 
       if (!req.file) {
         return res.status(400).json({ error: 'Logo file is required' })
       }
 
-      const { name, label, order } = req.body
+      const name = req.body.name.trim()
+      const label = req.body.label ? req.body.label.trim() : ''
+      const order = req.body.order ? parseInt(req.body.order) : 0
+
+      if (isNaN(order) || order < 0) {
+        return res.status(400).json({ error: 'Order must be a non-negative integer' })
+      }
 
       // Upload logo to Firebase Storage
       const bucket = getStorage().bucket()
@@ -100,9 +100,9 @@ router.post(
 
       // Create sponsor document
       const sponsorData = {
-        name: name.trim(),
-        label: label ? label.trim() : '',
-        order: order ? parseInt(order) : 0,
+        name,
+        label,
+        order,
         logoUrl,
         logoPath: filename,
         createdAt: new Date().toISOString(),
@@ -133,21 +133,21 @@ router.put(
   loadUserRole,
   requireRole('admin'),
   upload.single('logo'),
-  [
-    param('id').notEmpty().withMessage('Sponsor ID is required'),
-    body('name').optional().trim().notEmpty().withMessage('Name cannot be empty'),
-    body('label').optional().trim(),
-    body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative integer'),
-  ],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
+      const { id } = req.params
+
+      // Manual validation
+      if (req.body.name && !req.body.name.trim()) {
+        return res.status(400).json({ error: 'Name cannot be empty' })
       }
 
-      const { id } = req.params
-      const { name, label, order } = req.body
+      if (req.body.order !== undefined) {
+        const orderNum = parseInt(req.body.order)
+        if (isNaN(orderNum) || orderNum < 0) {
+          return res.status(400).json({ error: 'Order must be a non-negative integer' })
+        }
+      }
 
       // Check if sponsor exists
       const db = getDb()
@@ -163,9 +163,9 @@ router.put(
         updatedBy: req.user.uid,
       }
 
-      if (name) updateData.name = name.trim()
-      if (label !== undefined) updateData.label = label ? label.trim() : ''
-      if (order !== undefined) updateData.order = parseInt(order)
+      if (req.body.name) updateData.name = req.body.name.trim()
+      if (req.body.label !== undefined) updateData.label = req.body.label ? req.body.label.trim() : ''
+      if (req.body.order !== undefined) updateData.order = parseInt(req.body.order)
 
       // If new logo is uploaded, delete old one and upload new one
       if (req.file) {
@@ -221,15 +221,13 @@ router.delete(
   verifyFirebaseToken,
   loadUserRole,
   requireRole('admin'),
-  [param('id').notEmpty().withMessage('Sponsor ID is required')],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
-      }
-
       const { id } = req.params
+
+      if (!id || !id.trim()) {
+        return res.status(400).json({ error: 'Sponsor ID is required' })
+      }
 
       const db = getDb()
       const sponsorRef = db.collection('sponsors').doc(id)
