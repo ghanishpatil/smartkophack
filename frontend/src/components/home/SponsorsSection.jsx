@@ -113,7 +113,7 @@ function SponsorCard({ sponsor }) {
   const content = (
     <>
       {/* Logo */}
-      <div className="flex h-24 w-full items-center justify-center p-2">
+      <div className="flex h-20 w-full items-center justify-center p-3">
         <img
           src={sponsor.logoUrl}
           alt={sponsor.name}
@@ -127,35 +127,31 @@ function SponsorCard({ sponsor }) {
 
       {/* Optional label */}
       {sponsor.label && (
-        <p className="mt-2 text-center text-[10px] font-medium uppercase tracking-wider text-ink-400">
+        <p className="mt-1 text-center text-[9px] font-medium uppercase tracking-wider text-ink-400">
           {sponsor.label}
         </p>
       )}
     </>
   )
 
-  const containerClasses = "group mx-4 flex w-40 flex-col items-center"
+  const containerClasses = "group mx-6 flex w-32 shrink-0 flex-col items-center"
 
   if (sponsor.website) {
     return (
-      <motion.a
+      <a
         href={sponsor.website}
         target="_blank"
         rel="noopener noreferrer"
-        whileHover={{ scale: 1.05 }}
         className={containerClasses}
       >
         {content}
-      </motion.a>
+      </a>
     )
   }
 
   return (
-    <motion.div
-      whileHover={{ scale: 1.05 }}
-      className={containerClasses}
-    >
+    <div className={containerClasses}>
       {content}
-    </motion.div>
+    </div>
   )
 }
