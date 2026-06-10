@@ -86,10 +86,23 @@ router.post(
 
       const name = req.body.name.trim()
       const label = req.body.label ? req.body.label.trim() : ''
+      const website = req.body.website ? req.body.website.trim() : ''
       const order = req.body.order ? parseInt(req.body.order) : 0
 
       if (isNaN(order) || order < 0) {
         return res.status(400).json({ error: 'Order must be a non-negative integer' })
+      }
+
+      // Validate website URL if provided
+      if (website) {
+        try {
+          const url = new URL(website)
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            return res.status(400).json({ error: 'Website must be a valid HTTP/HTTPS URL' })
+          }
+        } catch {
+          return res.status(400).json({ error: 'Website must be a valid URL' })
+        }
       }
 
       // Upload logo to Firebase Storage
@@ -131,6 +144,7 @@ router.post(
       const sponsorData = {
         name,
         label,
+        website,
         order,
         logoUrl,
         logoPath: filename,
@@ -196,6 +210,20 @@ router.put(
 
       if (req.body.name) updateData.name = req.body.name.trim()
       if (req.body.label !== undefined) updateData.label = req.body.label ? req.body.label.trim() : ''
+      if (req.body.website !== undefined) {
+        const website = req.body.website ? req.body.website.trim() : ''
+        if (website) {
+          try {
+            const url = new URL(website)
+            if (!['http:', 'https:'].includes(url.protocol)) {
+              return res.status(400).json({ error: 'Website must be a valid HTTP/HTTPS URL' })
+            }
+          } catch {
+            return res.status(400).json({ error: 'Website must be a valid URL' })
+          }
+        }
+        updateData.website = website
+      }
       if (req.body.order !== undefined) updateData.order = parseInt(req.body.order)
 
       // If new logo is uploaded, delete old one and upload new one

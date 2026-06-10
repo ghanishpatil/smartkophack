@@ -165,6 +165,7 @@ export function AdminSponsorsPage() {
 function SponsorModal({ sponsor, onClose, onSuccess }) {
   const [name, setName] = useState(sponsor?.name || '')
   const [label, setLabel] = useState(sponsor?.label || '')
+  const [website, setWebsite] = useState(sponsor?.website || '')
   const [order, setOrder] = useState(sponsor?.order || 0)
   const [logoFile, setLogoFile] = useState(null)
   const [preview, setPreview] = useState(sponsor?.logoUrl || null)
@@ -203,6 +204,7 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
       const formData = new FormData()
       formData.append('name', name.trim())
       formData.append('label', label.trim())
+      formData.append('website', website.trim())
       formData.append('order', String(order))
       if (logoFile) formData.append('logo', logoFile)
 
@@ -301,6 +303,20 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
               placeholder="e.g., Industry Partner, Powered by"
             />
             <p className="mt-1 text-xs text-ink-500">Appears below the logo in small text</p>
+          </div>
+
+          {/* Website */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink-700">
+              Website <span className="text-xs text-ink-500">(optional)</span>
+            </label>
+            <Input
+              type="url"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://example.com"
+            />
+            <p className="mt-1 text-xs text-ink-500">Make logo clickable (opens in new tab)</p>
           </div>
 
           {/* Order */}

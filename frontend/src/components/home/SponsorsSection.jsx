@@ -80,9 +80,8 @@ export function SponsorsSection() {
     )
   }
 
-  // Split sponsors into two rows for seamless infinite scroll
-  const firstRow = sponsors.slice(0, Math.ceil(sponsors.length / 2))
-  const secondRow = sponsors.slice(Math.ceil(sponsors.length / 2))
+  // Single row carousel sorted by order
+  const sortedSponsors = [...sponsors].sort((a, b) => a.order - b.order)
 
   return (
     <section className="relative border-t border-[rgb(var(--border))] py-20 sm:py-28">
@@ -95,46 +94,30 @@ export function SponsorsSection() {
           />
         </div>
 
-        {/* First carousel row */}
+        {/* Single carousel row - right to left */}
         <div className="relative mt-12">
-          <Marquee pauseOnHover className="[--duration:40s]">
-            {firstRow.map((sponsor) => (
+          <Marquee reverse pauseOnHover className="[--duration:25s]">
+            {sortedSponsors.map((sponsor) => (
               <SponsorCard key={sponsor.id} sponsor={sponsor} />
             ))}
           </Marquee>
           <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-[rgb(var(--page-bg))] to-transparent sm:w-32" />
           <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[rgb(var(--page-bg))] to-transparent sm:w-32" />
         </div>
-
-        {/* Second carousel row (reverse direction) */}
-        {secondRow.length > 0 && (
-          <div className="relative mt-6">
-            <Marquee reverse pauseOnHover className="[--duration:40s]">
-              {secondRow.map((sponsor) => (
-                <SponsorCard key={sponsor.id} sponsor={sponsor} />
-              ))}
-            </Marquee>
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-[rgb(var(--page-bg))] to-transparent sm:w-32" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[rgb(var(--page-bg))] to-transparent sm:w-32" />
-          </div>
-        )}
       </div>
     </section>
   )
 }
 
 function SponsorCard({ sponsor }) {
-  return (
-    <motion.div
-      whileHover={{ scale: 1.05 }}
-      className="group mx-4 flex w-40 flex-col items-center"
-    >
+  const content = (
+    <>
       {/* Logo */}
       <div className="flex h-24 w-full items-center justify-center p-2">
         <img
           src={sponsor.logoUrl}
           alt={sponsor.name}
-          className="h-full w-full object-contain grayscale transition-all duration-300 group-hover:grayscale-0"
+          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-110"
           onError={(e) => {
             e.target.style.display = 'none'
             e.target.parentElement.innerHTML = `<div class="flex h-full w-full items-center justify-center"><svg class="h-8 w-8 text-ink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`
@@ -144,10 +127,35 @@ function SponsorCard({ sponsor }) {
 
       {/* Optional label */}
       {sponsor.label && (
-        <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-ink-400">
+        <p className="mt-2 text-center text-[10px] font-medium uppercase tracking-wider text-ink-400">
           {sponsor.label}
         </p>
       )}
+    </>
+  )
+
+  const containerClasses = "group mx-4 flex w-40 flex-col items-center"
+
+  if (sponsor.website) {
+    return (
+      <motion.a
+        href={sponsor.website}
+        target="_blank"
+        rel="noopener noreferrer"
+        whileHover={{ scale: 1.05 }}
+        className={containerClasses}
+      >
+        {content}
+      </motion.a>
+    )
+  }
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.05 }}
+      className={containerClasses}
+    >
+      {content}
     </motion.div>
   )
 }
