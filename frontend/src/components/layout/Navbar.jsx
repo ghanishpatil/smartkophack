@@ -111,7 +111,7 @@ export function Navbar() {
               <span className="hidden md:inline">Smart Kopargaon Hackathon</span>
               <span className="md:hidden">SKH</span>
             </span>
-            <span className="hidden text-[9px] font-medium text-ink-500 sm:block sm:text-[10px]">
+            <span className="text-[9px] font-medium text-ink-500 sm:text-[10px]">
               Powered by Sanjivani University
             </span>
           </span>
