@@ -76,40 +76,38 @@ function DomainCard({ track, config }) {
   return (
     <div className="mx-4 w-80 shrink-0">
       <div
-        className={`group relative flex h-full flex-col items-center overflow-hidden rounded-3xl border bg-gradient-to-br p-8 text-center backdrop-blur-md transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl ${config.cardBg} ${config.border}`}
+        className={`relative flex h-full flex-col items-center overflow-hidden rounded-3xl border bg-gradient-to-br p-8 text-center backdrop-blur-md ${config.cardBg} ${config.border}`}
       >
-        {/* Animated top accent bar */}
-        <div className={`absolute left-0 right-0 top-0 h-1 ${config.accentBar}`}>
-          <div className={`h-full w-0 ${config.accentBar} opacity-50 transition-all duration-500 group-hover:w-full`} />
-        </div>
+        {/* Top accent bar */}
+        <div className={`absolute left-0 right-0 top-0 h-1 ${config.accentBar}`} />
         
-        {/* Multiple corner glows for depth */}
-        <div className={`pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full blur-3xl opacity-10 transition-opacity duration-500 group-hover:opacity-30 ${config.accentBar}`} />
+        {/* Corner glows */}
+        <div className={`pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full blur-3xl opacity-10 ${config.accentBar}`} />
         <div className={`pointer-events-none absolute -left-6 -bottom-6 h-24 w-24 rounded-full blur-2xl opacity-10 ${config.accentBar}`} />
 
-        {/* Icon with glass effect */}
-        <div className={`relative mb-6 flex h-24 w-24 items-center justify-center rounded-2xl ${config.iconBg} shadow-lg ring-1 ring-white/10 backdrop-blur-sm transition-all duration-300 group-hover:scale-110 group-hover:rotate-3`}>
-          <Icon className={`h-12 w-12 ${config.iconColor} transition-transform duration-300 group-hover:scale-110`} />
-          {/* Subtle shine effect */}
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 to-transparent" />
+        {/* Icon with glass shine effect */}
+        <div className={`relative mb-6 flex h-24 w-24 items-center justify-center rounded-2xl ${config.iconBg} shadow-lg ring-1 ring-white/10 backdrop-blur-sm`}>
+          <Icon className={`h-12 w-12 ${config.iconColor}`} />
+          {/* Glass shine effect - animated diagonal shine */}
+          <div className="absolute inset-0 overflow-hidden rounded-2xl">
+            <div className="absolute -inset-full animate-shine bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          </div>
         </div>
 
-        {/* Title with better spacing */}
+        {/* Title */}
         <h3 className={`mb-3 font-display text-base font-bold uppercase tracking-wider ${config.titleColor}`}>
           {track.title}
         </h3>
         
         {/* Decorative divider */}
-        <div className="relative mb-4 h-px w-16 overflow-hidden rounded-full bg-white/10">
-          <div className={`absolute h-full w-8 ${config.accentBar} opacity-60 transition-all duration-500 group-hover:w-full`} />
-        </div>
+        <div className={`mb-4 h-px w-16 rounded-full ${config.accentBar} opacity-40`} />
         
-        {/* Description with better readability */}
+        {/* Description */}
         <p className="text-sm leading-relaxed text-white/70">
           {track.description}
         </p>
         
-        {/* Bottom fade for polish */}
+        {/* Bottom fade */}
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/20 to-transparent" />
       </div>
     </div>
