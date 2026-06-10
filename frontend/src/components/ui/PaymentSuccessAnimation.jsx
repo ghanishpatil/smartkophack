@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRive } from '@rive-app/react-canvas'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -19,14 +19,12 @@ export function PaymentSuccessAnimation({ show, onComplete }) {
   const { RiveComponent: ProcessingAnimation, rive: processingRive } = useRive({
     src: '/credit-card-payment.riv',
     autoplay: false,
-    stateMachines: 'State Machine 1',
   })
 
   // Second animation - Payment done checkmark
   const { RiveComponent: SuccessAnimation, rive: successRive } = useRive({
     src: '/payment-done.riv',
     autoplay: false,
-    stateMachines: 'State Machine 1',
   })
 
   useEffect(() => {
@@ -37,35 +35,43 @@ export function PaymentSuccessAnimation({ show, onComplete }) {
 
     // Start the first animation (processing)
     if (processingRive && currentAnimation === 'processing') {
-      processingRive.play()
-
-      // Listen for animation completion
-      const checkProcessingComplete = setInterval(() => {
-        // Most Rive animations loop, so we'll use a timer instead
-        // Typically credit card animations are 2-3 seconds
-      }, 100)
+      try {
+        processingRive.play()
+      } catch (e) {
+        console.warn('Could not play processing animation:', e)
+      }
 
       // After 3 seconds, switch to success animation
       const timer = setTimeout(() => {
-        clearInterval(checkProcessingComplete)
-        processingRive.pause()
+        try {
+          processingRive.pause()
+        } catch (e) {
+          console.warn('Could not pause processing animation:', e)
+        }
         setCurrentAnimation('success')
       }, 3000)
 
       return () => {
         clearTimeout(timer)
-        clearInterval(checkProcessingComplete)
       }
     }
   }, [show, processingRive, currentAnimation])
 
   useEffect(() => {
     if (currentAnimation === 'success' && successRive) {
-      successRive.play()
+      try {
+        successRive.play()
+      } catch (e) {
+        console.warn('Could not play success animation:', e)
+      }
 
       // After success animation completes (typically 2-3 seconds)
       const timer = setTimeout(() => {
-        successRive.pause()
+        try {
+          successRive.pause()
+        } catch (e) {
+          console.warn('Could not pause success animation:', e)
+        }
         setCurrentAnimation('done')
         // Wait a bit before closing to show the final frame
         setTimeout(() => {
@@ -94,7 +100,7 @@ export function PaymentSuccessAnimation({ show, onComplete }) {
             className="relative flex flex-col items-center justify-center"
           >
             {/* Processing Animation */}
-            {currentAnimation === 'processing' && (
+            {currentAnimation === 'processing' && ProcessingAnimation && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -106,7 +112,7 @@ export function PaymentSuccessAnimation({ show, onComplete }) {
             )}
 
             {/* Success Animation */}
-            {currentAnimation === 'success' && (
+            {currentAnimation === 'success' && SuccessAnimation && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
