@@ -9,14 +9,25 @@ import Lenis from 'lenis'
  * reduced duration (1.4 → 0.8) to prevent sluggish feel.
  * Only enabled on landing page where it adds value.
  * Other public pages use native scroll (faster, no JS overhead).
+ * 
+ * MOBILE FIX: Disabled on touch devices to preserve native scrolling.
  */
 export function SmoothScroll({ children }) {
   const lenisRef = useRef(null)
   const location = useLocation()
 
-  // Only enable Lenis on the landing page where parallax effects benefit from it.
-  // All other pages use native scroll — faster, no requestAnimationFrame overhead.
-  const enableSmooth = location.pathname === '/'
+  // Detect if device is mobile/touch device
+  const isTouchDevice = () => {
+    return (
+      'ontouchstart' in window ||
+      navigator.maxTouchPoints > 0 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    )
+  }
+
+  // Only enable Lenis on the landing page AND on desktop (non-touch) devices.
+  // Mobile devices use native scroll for better performance and touch handling.
+  const enableSmooth = location.pathname === '/' && !isTouchDevice()
 
   useEffect(() => {
     if (lenisRef.current) {

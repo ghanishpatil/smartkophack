@@ -3,21 +3,35 @@
 @tailwind utilities;
 
 /* ── Lenis smooth scroll ────────────────────────────────────── */
-html.lenis, html.lenis body {
-  height: auto;
-  position: relative;
+/* Disable Lenis on mobile/touch devices */
+@media (hover: none) and (pointer: coarse) {
+  html.lenis, html.lenis body {
+    height: auto !important;
+    overflow: auto !important;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: smooth !important;
+  }
 }
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
-.lenis.lenis-scrolling iframe {
-  pointer-events: none;
+
+/* Desktop only Lenis styles */
+@media (hover: hover) and (pointer: fine) {
+  html.lenis, html.lenis body {
+    height: auto;
+    position: relative;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+  .lenis.lenis-scrolling iframe {
+    pointer-events: none;
+  }
 }
 
 @layer base {
@@ -48,14 +62,21 @@ html.lenis, html.lenis body {
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     /* Prevent content from overflowing viewport on mobile */
     overflow-x: hidden;
+    overflow-y: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     /* Better touch scrolling on iOS */
     -webkit-overflow-scrolling: touch;
-    /* Prevent pull-to-refresh on mobile Chrome - don't use contain on body */
-    overscroll-behavior-y: none;
-    /* Improve Android scrolling performance */
-    touch-action: pan-y;
+    /* Allow native mobile scrolling */
+    overscroll-behavior-y: auto;
+  }
+  
+  /* Prevent body scroll when mobile menu is open */
+  body.menu-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100vh;
   }
 
   /* iOS safe area utilities */
