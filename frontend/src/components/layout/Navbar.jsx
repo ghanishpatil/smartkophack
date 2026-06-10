@@ -13,7 +13,7 @@ const links = [
   { to: '/problems', label: 'Problem Statements' },
   { to: '/timeline', label: 'Event Timeline' },
   { to: '/announcements', label: 'Announcements' },
-  { to: '/faq', label: 'FAQ' },
+  { to: '/results', label: 'Results' },
   { to: '/sponsors', label: 'Partners & Sponsors' },
   { to: '/contact', label: 'Contact Us' },
 ]
@@ -21,7 +21,6 @@ const links = [
 const resourceLinks = [
   { to: '/guidelines', label: 'Submission Guidelines' },
   { to: '/code-of-conduct', label: 'Code of Conduct' },
-  { to: '/results', label: 'Results' },
 ]
 
 export function Navbar() {
