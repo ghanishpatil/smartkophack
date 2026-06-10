@@ -11,6 +11,8 @@ import { publicRouter, adminRouter, judgesRouter, mentorsRouter } from './routes
 import { participantRouter } from './routes/participant.js'
 import chatRouter from './routes/chat.js'
 import adminChatRouter from './routes/adminChat.js'
+import patronsRouter from './routes/patrons.js'
+import sponsorsRouter from './routes/sponsors.js'
 import { razorpayWebhookHandler } from './routes/webhooks.js'
 import { notFound, errorHandler } from './middleware/error.js'
 
@@ -146,6 +148,14 @@ app.use('/api/timeline', (_req, res, next) => {
 })
 app.use('/api/events', (_req, res, next) => {
   res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+  next()
+})
+app.use('/api/patrons', (_req, res, next) => {
+  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+  next()
+})
+app.use('/api/sponsors', (_req, res, next) => {
+  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
   next()
 })
 app.use('/api/results', (_req, res, next) => {
@@ -358,6 +368,8 @@ app.use('/api/participant/create-team', teamActionLimiter)
 app.use('/api/participant/join-team', teamActionLimiter)
 app.use('/api/participant', participantRouter)
 app.use('/api/chat', chatRouter)
+app.use('/api/patrons', patronsRouter)
+app.use('/api/sponsors', sponsorsRouter)
 app.use('/api/admin', adminRouter())
 app.use('/api/admin/chatbot', adminChatRouter)
 app.use('/api/judges', judgesRouter())

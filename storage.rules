@@ -77,6 +77,22 @@ service firebase.storage {
       allow read, write: if false;
     }
 
+    // Patron images (admin upload only, public read)
+    match /patrons/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdminUser()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Sponsor logos (admin upload only, public read)
+    match /sponsors/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdminUser()
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /media/{allPaths=**} {
       allow read, write: if false;
     }

@@ -110,6 +110,9 @@ const AdminTutorialPage = lazy(() =>
 const AdminTimelinePage = lazy(() =>
   import('@/pages/admin/AdminTimelinePage.jsx').then((m) => ({ default: m.AdminTimelinePage })),
 )
+const AdminSponsorsPage = lazy(() =>
+  import('@/pages/admin/AdminSponsorsPage.jsx').then((m) => ({ default: m.AdminSponsorsPage })),
+)
 const JudgeHomePage = lazy(() => import('@/pages/jury/JudgeHomePage.jsx').then((m) => ({ default: m.JudgeHomePage })))
 const JudgeAssignmentsPage = lazy(() =>
   import('@/pages/jury/JudgeAssignmentsPage.jsx').then((m) => ({ default: m.JudgeAssignmentsPage })),
@@ -322,6 +325,7 @@ export default function App() {
             <Route path="/admin/access" element={<AdminAccessPage />} />
             <Route path="/admin/audit" element={<AdminAuditPage />} />
             <Route path="/admin/timeline" element={<AdminTimelinePage />} />
+            <Route path="/admin/sponsors" element={<AdminSponsorsPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route path="/admin/health" element={<AdminHealthPage />} />
             <Route path="/admin/security" element={<AdminSecurityPage />} />
