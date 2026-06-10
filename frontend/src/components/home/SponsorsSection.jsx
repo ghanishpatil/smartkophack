@@ -80,8 +80,9 @@ export function SponsorsSection() {
     )
   }
 
-  // Single row carousel sorted by order
+  // Duplicate sponsors for seamless infinite scroll (no gaps)
   const sortedSponsors = [...sponsors].sort((a, b) => a.order - b.order)
+  const duplicatedSponsors = [...sortedSponsors, ...sortedSponsors]
 
   return (
     <section className="relative border-t border-[rgb(var(--border))] py-20 sm:py-28">
@@ -97,8 +98,8 @@ export function SponsorsSection() {
         {/* Single carousel row - right to left, never stops */}
         <div className="relative mt-12">
           <Marquee reverse className="[--duration:15s]">
-            {sortedSponsors.map((sponsor) => (
-              <SponsorCard key={sponsor.id} sponsor={sponsor} />
+            {duplicatedSponsors.map((sponsor, idx) => (
+              <SponsorCard key={`${sponsor.id}-${idx}`} sponsor={sponsor} />
             ))}
           </Marquee>
           <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-[rgb(var(--page-bg))] to-transparent sm:w-32" />
