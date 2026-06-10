@@ -113,7 +113,7 @@ export function Hero() {
                   variant="secondary"
                   className="w-full gap-2 border-gray-300 bg-white/80 text-gray-700 backdrop-blur-sm hover:border-gray-400 hover:bg-white sm:w-auto"
                 >
-                  Browse problem bank
+                  Browse problem statements
                 </Button>
               </Link>
             </motion.div>

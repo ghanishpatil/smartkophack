@@ -10,7 +10,7 @@ import { roleHome, ROLES } from '@/utils/roles.js'
 const links = [
   { to: '/', label: 'Home' },
   { to: '/about', label: 'About SKH' },
-  { to: '/problems', label: 'Problem Bank' },
+  { to: '/problems', label: 'Problem Statements' },
   { to: '/timeline', label: 'Event Timeline' },
   { to: '/announcements', label: 'Announcements' },
   { to: '/faq', label: 'FAQ' },
