@@ -9,6 +9,14 @@ import { v4 as uuidv4 } from 'uuid'
 
 const router = express.Router()
 
+// Handle OPTIONS preflight for CORS on all routes
+router.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+  next()
+})
+
 // Configure multer for memory storage
 const storage = multer.memoryStorage()
 const upload = multer({
