@@ -114,14 +114,14 @@ function SponsorCard({ sponsor }) {
   const content = (
     <>
       {/* Logo */}
-      <div className="flex h-20 w-full items-center justify-center p-3">
+      <div className="flex h-28 w-full items-center justify-center p-3">
         <img
           src={sponsor.logoUrl}
           alt={sponsor.name}
           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-110"
           onError={(e) => {
             e.target.style.display = 'none'
-            e.target.parentElement.innerHTML = `<div class="flex h-full w-full items-center justify-center"><svg class="h-8 w-8 text-ink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`
+            e.target.parentElement.innerHTML = `<div class="flex h-full w-full items-center justify-center"><svg class="h-10 w-10 text-ink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`
           }}
         />
       </div>
@@ -135,7 +135,7 @@ function SponsorCard({ sponsor }) {
     </>
   )
 
-  const containerClasses = "group mx-6 flex w-32 shrink-0 flex-col items-center"
+  const containerClasses = "group mx-6 flex w-40 shrink-0 flex-col items-center"
 
   if (sponsor.website) {
     return (
