@@ -55,9 +55,9 @@ export function TracksSection() {
   const visibleIndices = Array.from({ length: VISIBLE }, (_, i) => (current + i) % total)
 
   const slideVariants = {
-    enter: (dir) => ({ opacity: 0, x: dir > 0 ? 100 : -100 }),
-    center: { opacity: 1, x: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
-    exit:  (dir) => ({ opacity: 0, x: dir > 0 ? -100 : 100, transition: { duration: 0.25 } }),
+    enter: (dir) => ({ opacity: 0, x: dir > 0 ? 80 : -80, scale: 0.95 }),
+    center: { opacity: 1, x: 0, scale: 1, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+    exit:  (dir) => ({ opacity: 0, x: dir > 0 ? -80 : 80, scale: 0.95, transition: { duration: 0.4 } }),
   }
 
   return (
@@ -124,19 +124,18 @@ export function TracksSection() {
                       <motion.div
                         key={track.id}
                         whileHover={{ y: -8, scale: 1.03 }}
-                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        transition={{ duration: 0.3, ease: 'easeOut' }}
                         style={{ overflow: 'visible' }}
-                        className={`group relative flex flex-col items-center rounded-2xl border bg-gradient-to-br p-8 text-center backdrop-blur-sm transition-shadow duration-300 hover:shadow-2xl ${cfg.cardBg} ${cfg.border}`}
+                        className={`group relative flex flex-col items-center rounded-3xl border bg-gradient-to-br p-8 text-center backdrop-blur-sm transition-shadow duration-300 hover:shadow-2xl ${cfg.cardBg} ${cfg.border}`}
                       >
                         {/* Top accent bar */}
-                        <div className={`absolute left-0 right-0 top-0 h-1 rounded-t-2xl ${cfg.accentBar}`} />
+                        <div className={`absolute left-0 right-0 top-0 h-1 rounded-t-3xl ${cfg.accentBar}`} />
                         {/* Corner glow */}
                         <div className={`pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full blur-2xl opacity-20 ${cfg.accentBar}`} />
 
                         {/* Icon */}
                         <div className={`relative flex h-20 w-20 items-center justify-center rounded-full ${cfg.iconBg} ring-2 ring-white/10 shadow-xl`}>
                           <Icon className={`h-10 w-10 ${cfg.iconColor}`} />
-                          <div className={`absolute inset-0 animate-ping rounded-full opacity-20 ${cfg.iconBg}`} />
                         </div>
 
                         <h3 className={`mt-4 font-display text-sm font-bold uppercase tracking-widest ${cfg.titleColor}`}>
