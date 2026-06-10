@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { SnitchLoader } from '@/components/ui/SnitchLoader.jsx'
+import { PaymentSuccessAnimation } from '@/components/ui/PaymentSuccessAnimation.jsx'
 import { loadRazorpayScript } from '@/utils/loadRazorpay.js'
 import { isRegistrationComplete } from '@/utils/teamRegistrationDisplay.js'
 import { formatLifecyclePhase } from '@/utils/eventLifecycleDisplay.js'
@@ -68,6 +69,7 @@ export function ParticipantRegistrationPage() {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [showSnitchLoader, setShowSnitchLoader] = useState(false)
+  const [showPaymentAnimation, setShowPaymentAnimation] = useState(false)
   const [nowMs, setNowMs] = useState(null)
   const [roster, setRoster] = useState(null)
 
@@ -230,6 +232,10 @@ export function ParticipantRegistrationPage() {
       }
 
       const response = await openRazorpayCheckout()
+      
+      // Show payment success animation immediately after Razorpay closes
+      setShowPaymentAnimation(true)
+      
       await api.verifyRazorpayPayment({
         razorpay_order_id: response.razorpay_order_id,
         razorpay_payment_id: response.razorpay_payment_id,
@@ -239,8 +245,12 @@ export function ParticipantRegistrationPage() {
       await reload()
       setMsg('Payment verified. Your team is fully registered!')
     } catch (e) {
+      setShowPaymentAnimation(false)
       setMsg(e.message || 'Could not complete payment.')
     } finally {
+      setBusy(false)
+    }
+  }
       setBusy(false)
     }
   }
@@ -272,6 +282,10 @@ export function ParticipantRegistrationPage() {
         if (eventCfg?.razorpayConfigured) {
           try {
             const response = await openRazorpayCheckout()
+            
+            // Show payment success animation immediately after Razorpay closes
+            setShowPaymentAnimation(true)
+            
             await api.verifyRazorpayPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -281,6 +295,7 @@ export function ParticipantRegistrationPage() {
             await reload()
             setMsg('Payment verified. Your team is fully registered.')
           } catch (payErr) {
+            setShowPaymentAnimation(false)
             setMsg(
               payErr?.message ||
                 'Payment still pending. Use Pay below when you are ready — registration completes after payment.',
@@ -717,6 +732,12 @@ export function ParticipantRegistrationPage() {
 
     {/* Snitch loader overlay when opening Razorpay */}
     {showSnitchLoader && <SnitchLoader message="Opening payment gateway..." />}
+    
+    {/* Payment success animation - plays after successful payment */}
+    <PaymentSuccessAnimation 
+      show={showPaymentAnimation} 
+      onComplete={() => setShowPaymentAnimation(false)} 
+    />
     </>
   )
 }
