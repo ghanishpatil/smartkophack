@@ -212,6 +212,9 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
         ? `${API_BASE}/api/sponsors/${sponsor.id}`
         : `${API_BASE}/api/sponsors`
       
+      console.log('Submitting to:', url)
+      console.log('Method:', sponsor ? 'PUT' : 'POST')
+      
       const res = await fetch(url, {
         method: sponsor ? 'PUT' : 'POST',
         headers: { 
@@ -220,12 +223,14 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
         body: formData
       })
 
+      console.log('Response status:', res.status)
+
       if (res.ok) {
         onSuccess()
       } else {
         const error = await res.json().catch(() => ({ error: 'Unknown error' }))
-        alert(error.error || error.message || 'Failed to save sponsor')
         console.error('Server error:', error)
+        alert(error.error || error.message || 'Failed to save sponsor')
       }
     } catch (error) {
       console.error('Failed to save sponsor:', error)
