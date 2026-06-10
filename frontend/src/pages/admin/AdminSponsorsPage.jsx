@@ -172,8 +172,8 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
   function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Logo file must be less than 2MB')
+      if (file.size > 15 * 1024 * 1024) {
+        alert('Logo file must be less than 15MB')
         return
       }
       setLogoFile(file)
@@ -272,7 +272,7 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
                 />
               </label>
             </div>
-            <p className="mt-1 text-xs text-ink-500">PNG, JPG, WebP, SVG • Max 2MB</p>
+            <p className="mt-1 text-xs text-ink-500">PNG, JPG, WebP, SVG • Max 15MB</p>
           </div>
 
           {/* Name */}
