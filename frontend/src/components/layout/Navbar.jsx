@@ -105,13 +105,13 @@ export function Navbar() {
             className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-11 md:w-11 md:rounded-xl" 
           />
           
-          {/* Text - Show full name on tablets (md+), abbreviated on small phones */}
-          <span className="hidden flex-col leading-tight xs:flex">
-            <span className="font-display text-xs font-bold text-ink-900 sm:text-sm md:text-base">
+          {/* Text - Always visible */}
+          <span className="flex flex-col leading-tight">
+            <span className="font-display text-[10px] font-bold text-ink-900 xs:text-xs sm:text-sm md:text-base">
               <span className="hidden md:inline">Smart Kopargaon Hackathon</span>
               <span className="md:hidden">SKH</span>
             </span>
-            <span className="text-[9px] font-medium text-ink-500 sm:text-[10px]">
+            <span className="text-[8px] font-medium text-ink-500 xs:text-[9px] sm:text-[10px]">
               Powered by Sanjivani University
             </span>
           </span>
