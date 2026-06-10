@@ -52,8 +52,10 @@ html.lenis, html.lenis body {
     text-size-adjust: 100%;
     /* Better touch scrolling on iOS */
     -webkit-overflow-scrolling: touch;
-    /* Prevent pull-to-refresh on mobile Chrome */
-    overscroll-behavior-y: contain;
+    /* Prevent pull-to-refresh on mobile Chrome - don't use contain on body */
+    overscroll-behavior-y: none;
+    /* Improve Android scrolling performance */
+    touch-action: pan-y;
   }
 
   /* iOS safe area utilities */

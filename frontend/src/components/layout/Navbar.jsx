@@ -38,12 +38,21 @@ export function Navbar() {
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (open) {
+      // Store original body overflow
+      const originalOverflow = document.body.style.overflow
+      const originalPosition = document.body.style.position
+      
+      // Prevent scroll on mobile
       document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
+      document.body.style.position = 'fixed'
+      document.body.style.width = '100%'
+      
+      return () => {
+        // Restore original values
+        document.body.style.overflow = originalOverflow
+        document.body.style.position = originalPosition
+        document.body.style.width = ''
+      }
     }
   }, [open])
 
@@ -78,11 +87,11 @@ export function Navbar() {
             className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-11 md:w-11 md:rounded-xl" 
           />
           
-          {/* Text - Hide on very small screens, show abbreviated on small, full on larger */}
+          {/* Text - Show full name on tablets (md+), abbreviated on small phones */}
           <span className="hidden flex-col leading-tight xs:flex">
             <span className="font-display text-xs font-bold text-ink-900 sm:text-sm md:text-base">
-              <span className="hidden sm:inline">Smart Kopargaon Hackathon</span>
-              <span className="sm:hidden">SKH</span>
+              <span className="hidden md:inline">Smart Kopargaon Hackathon</span>
+              <span className="md:hidden">SKH</span>
             </span>
             <span className="hidden text-[9px] font-medium text-ink-500 sm:block sm:text-[10px]">
               Powered by Sanjivani University
