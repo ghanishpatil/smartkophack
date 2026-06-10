@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
-import { APP } from '@/utils/constants.js'
+import { useAuth } from '@/context/AuthContext.jsx'
+import { roleHome, ROLES } from '@/utils/roles.js'
 
 /* ── Subtle animated network nodes ─────────────────────────── */
 const NODES = [
@@ -33,6 +34,11 @@ function NetworkNodes() {
 }
 
 export function Hero() {
+  const { user, profile, firebaseReady } = useAuth()
+  const role = profile?.role || ROLES.PARTICIPANT
+  const dashboardLink = user && firebaseReady ? roleHome(role) : '/auth'
+  const ctaText = user ? 'Access your dashboard' : 'Register your team'
+  
   return (
     <section className="relative w-full overflow-hidden border-b border-gray-200" style={{ aspectRatio: '16/9' }}>
       {/* ── Background image — 1920×1080 banner, fills 16:9 frame edge to edge ── */}
@@ -101,9 +107,9 @@ export function Hero() {
               transition={{ duration: 0.5, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="mt-6 flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4 lg:justify-start"
             >
-              <Link to="/auth" className="w-full sm:w-auto">
+              <Link to={dashboardLink} className="w-full sm:w-auto">
                 <Button size="lg" className="w-full gap-2 shadow-glow-brand sm:w-auto">
-                  Register your team
+                  {ctaText}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>

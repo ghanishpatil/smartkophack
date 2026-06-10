@@ -123,18 +123,18 @@ export function Navbar() {
 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {/* Dashboard/Login button - Hide on very small screens */}
-          <Link to={dash} className="hidden xs:block">
+          {/* Dashboard/Login button - Show on tablets and up */}
+          <Link to={dash} className="hidden sm:block">
             {user ? (
               <Button size="sm" variant="secondary" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
-                <span className="hidden sm:inline">Dashboard</span>
-                <span className="sm:hidden">Dash</span>
+                <span className="hidden md:inline">Dashboard</span>
+                <span className="md:hidden">Dash</span>
                 <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
             ) : (
               <Button size="sm" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
-                <span className="hidden sm:inline">Register / Login</span>
-                <span className="sm:hidden">Login</span>
+                <span className="hidden md:inline">Register / Login</span>
+                <span className="md:hidden">Login</span>
                 <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
             )}
