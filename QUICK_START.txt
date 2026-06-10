@@ -1,0 +1,29 @@
+═══════════════════════════════════════════════════════════════════
+  CSV PROBLEM STATEMENT UPLOAD - READY TO GO! ✅
+═══════════════════════════════════════════════════════════════════
+
+📁 UPLOAD THESE FILES IN ORDER:
+
+   1️⃣  sih2025_ps_batch1.csv  (200 problem statements)
+   2️⃣  sih2025_ps_batch2.csv  (38 problem statements)
+
+🚀 HOW TO UPLOAD:
+
+   1. Open admin dashboard
+   2. Go to: Admin → Problems
+   3. Click "Bulk import (CSV)" button
+   4. Select sih2025_ps_batch1.csv → Upload
+   5. Wait for success ✅
+   6. Click "Bulk import (CSV)" again
+   7. Select sih2025_ps_batch2.csv → Upload
+   8. Done! 🎉
+
+✅ WHAT WAS FIXED:
+
+   • Domain values corrected (SIH → SKH format)
+   • File split into 2 batches (200 row limit)
+   • All data preserved and formatted correctly
+
+📖 MORE INFO: See UPLOAD_READY.md
+
+═══════════════════════════════════════════════════════════════════

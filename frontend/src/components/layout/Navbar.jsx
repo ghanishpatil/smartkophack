@@ -38,20 +38,38 @@ export function Navbar() {
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (open) {
-      // Store original body overflow
+      // Get current scroll position
+      const scrollY = window.scrollY
+      
+      // Add class to body for CSS-based lock
+      document.body.classList.add('menu-open')
+      
+      // Store original body styles
       const originalOverflow = document.body.style.overflow
       const originalPosition = document.body.style.position
+      const originalTop = document.body.style.top
+      const originalWidth = document.body.style.width
       
-      // Prevent scroll on mobile
+      // Lock body scroll - works on iOS and Android
       document.body.style.overflow = 'hidden'
       document.body.style.position = 'fixed'
+      document.body.style.top = `-${scrollY}px`
       document.body.style.width = '100%'
+      document.body.style.height = '100vh'
       
       return () => {
+        // Remove class
+        document.body.classList.remove('menu-open')
+        
         // Restore original values
         document.body.style.overflow = originalOverflow
         document.body.style.position = originalPosition
-        document.body.style.width = ''
+        document.body.style.top = originalTop
+        document.body.style.width = originalWidth
+        document.body.style.height = ''
+        
+        // Restore scroll position
+        window.scrollTo(0, scrollY)
       }
     }
   }, [open])

@@ -1,0 +1,66 @@
+╔════════════════════════════════════════════════════════════════════╗
+║                 FIREBASE MIGRATION TODO CHECKLIST                  ║
+║                                                                    ║
+║                   Project: verify-sih                              ║
+║              Super Admin: nexxus975@gmail.com                      ║
+╚════════════════════════════════════════════════════════════════════╝
+
+✅ DONE - Automatic Updates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[✓] Frontend Firebase config updated to verify-sih
+[✓] Super admin email set in frontend .env
+[✓] Super admin email set in backend .env
+[✓] Project ID updated in .firebaserc
+[✓] Security rules files prepared
+[✓] Changes committed to git
+[✓] Changes pushed to repository
+
+🔴 REQUIRED - Manual Steps (DO THESE NOW!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] STEP 1: Get New Service Account JSON (5 min)
+    └─ Go to: https://console.firebase.google.com/
+    └─ Select: verify-sih project
+    └─ Navigate: Settings ⚙️ → Project settings → Service accounts
+    └─ Click: "Generate new private key"
+    └─ Download the JSON file
+    └─ Open: backend/.env
+    └─ Replace FIREBASE_SERVICE_ACCOUNT_JSON value with new JSON
+
+[ ] STEP 2: Deploy Security Rules (2 min)
+    └─ Run: firebase login
+    └─ Run: firebase use verify-sih
+    └─ Run: firebase deploy --only firestore,storage
+
+[ ] STEP 3: Create Super Admin User (3 min)
+    └─ Option A (Easy):
+       • Start backend: cd backend && npm start
+       • Start frontend: cd frontend && npm run dev
+       • Sign in with: nexxus975@gmail.com
+       • Go to Firestore Console → users collection
+       • Change role from "participant" to "admin"
+    
+    └─ Option B (Manual):
+       • Firebase Console → Authentication → Add user
+       • Email: nexxus975@gmail.com
+       • Copy the UID
+       • Firestore Console → Create users collection
+       • Add document with ID = UID
+       • Add fields: email, role: "admin", displayName, teamId: ""
+
+[ ] STEP 4: Verify Everything Works (5 min)
+    └─ Backend starts without errors
+    └─ Can sign in with nexxus975@gmail.com
+    └─ User has admin role
+    └─ Can access admin panel
+    └─ No console errors
+
+🎯 ESTIMATED TOTAL TIME: 15 minutes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 Detailed Instructions: See NEXT_STEPS_REQUIRED.md
+🔧 Technical Details: See DEPLOY_NEW_FIREBASE.md
+📊 Full Summary: See MIGRATION_SUMMARY.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

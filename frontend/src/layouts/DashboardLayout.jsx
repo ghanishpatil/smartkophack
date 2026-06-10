@@ -195,9 +195,9 @@ export function DashboardLayout({ variant = 'default' }) {
       <nav
         data-lenis-prevent
         className={[
-          'flex min-h-0 gap-0.5 px-2 pb-3 pt-3',
-          /* Mobile / tablet: horizontal strip of links */
-          'max-lg:flex-row max-lg:flex-nowrap max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:no-scrollbar',
+          'flex min-h-0 flex-col gap-0.5 px-2 pb-3 pt-3',
+          /* Mobile / tablet: vertical scrollable list */
+          'max-lg:flex-1 max-lg:overflow-y-auto max-lg:overflow-x-hidden',
           /* Desktop: fill sidebar and scroll vertically */
           'lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain lg:px-3 lg:pb-3 lg:touch-pan-y',
         ].join(' ')}
@@ -206,7 +206,7 @@ export function DashboardLayout({ variant = 'default' }) {
           if (item.group) {
             if (isParticipantShell && collapsed) return null
             return (
-              <p key={item.group} className="mt-5 mb-1.5 hidden px-3 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-400 first:mt-0 lg:block">
+              <p key={item.group} className="mt-5 mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-400 first:mt-0">
                 {item.group}
               </p>
             )
