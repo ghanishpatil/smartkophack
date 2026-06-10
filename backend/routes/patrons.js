@@ -1,7 +1,5 @@
 import express from 'express'
-import { body, validationResult, param } from 'express-validator'
-import { getDb } from '../services/firebaseAdmin.js'
-import { getStorage } from 'firebase-admin/storage'
+import { getDb, getBucket } from '../services/firebaseAdmin.js'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
 import multer from 'multer'
 import path from 'path'
@@ -69,26 +67,31 @@ router.post(
   loadUserRole,
   requireRole('admin'),
   upload.single('image'),
-  [
-    body('name').trim().notEmpty().withMessage('Name is required'),
-    body('designation').trim().notEmpty().withMessage('Designation is required'),
-    body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative integer'),
-  ],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
+      // Manual validation
+      if (!req.body.name || !req.body.name.trim()) {
+        return res.status(400).json({ error: 'Name is required' })
+      }
+      
+      if (!req.body.designation || !req.body.designation.trim()) {
+        return res.status(400).json({ error: 'Designation is required' })
       }
 
       if (!req.file) {
         return res.status(400).json({ error: 'Image file is required' })
       }
 
-      const { name, designation, order } = req.body
+      const name = req.body.name.trim()
+      const designation = req.body.designation.trim()
+      const order = req.body.order ? parseInt(req.body.order) : 0
+      
+      if (isNaN(order) || order < 0) {
+        return res.status(400).json({ error: 'Order must be a non-negative integer' })
+      }
 
       // Upload image to Firebase Storage
-      const bucket = getStorage().bucket()
+      const bucket = getBucket()
       const filename = `patrons/${uuidv4()}-${Date.now()}${path.extname(req.file.originalname)}`
       const file = bucket.file(filename)
 
@@ -108,9 +111,9 @@ router.post(
 
       // Create patron document
       const patronData = {
-        name: name.trim(),
-        designation: designation.trim(),
-        order: order ? parseInt(order) : 0,
+        name,
+        designation,
+        order,
         imageUrl,
         imagePath: filename,
         createdAt: new Date().toISOString(),
@@ -140,21 +143,25 @@ router.put(
   loadUserRole,
   requireRole('admin'),
   upload.single('image'),
-  [
-    param('id').notEmpty().withMessage('Patron ID is required'),
-    body('name').optional().trim().notEmpty().withMessage('Name cannot be empty'),
-    body('designation').optional().trim().notEmpty().withMessage('Designation cannot be empty'),
-    body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative integer'),
-  ],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
-      }
-
       const { id } = req.params
-      const { name, designation, order } = req.body
+      
+      // Manual validation
+      if (req.body.name && !req.body.name.trim()) {
+        return res.status(400).json({ error: 'Name cannot be empty' })
+      }
+      
+      if (req.body.designation && !req.body.designation.trim()) {
+        return res.status(400).json({ error: 'Designation cannot be empty' })
+      }
+      
+      if (req.body.order !== undefined) {
+        const orderNum = parseInt(req.body.order)
+        if (isNaN(orderNum) || orderNum < 0) {
+          return res.status(400).json({ error: 'Order must be a non-negative integer' })
+        }
+      }
 
       // Check if patron exists
       const patronRef = getDb().collection('patrons').doc(id)
@@ -169,13 +176,13 @@ router.put(
         updatedBy: req.user.uid,
       }
 
-      if (name) updateData.name = name.trim()
-      if (designation) updateData.designation = designation.trim()
-      if (order !== undefined) updateData.order = parseInt(order)
+      if (req.body.name) updateData.name = req.body.name.trim()
+      if (req.body.designation) updateData.designation = req.body.designation.trim()
+      if (req.body.order !== undefined) updateData.order = parseInt(req.body.order)
 
       // If new image is uploaded, delete old one and upload new one
       if (req.file) {
-        const bucket = getStorage().bucket()
+        const bucket = getBucket()
         const oldImagePath = patronDoc.data().imagePath
 
         // Delete old image if exists
@@ -227,15 +234,13 @@ router.delete(
   verifyFirebaseToken,
   loadUserRole,
   requireRole('admin'),
-  [param('id').notEmpty().withMessage('Patron ID is required')],
   async (req, res, next) => {
     try {
-      const errors = validationResult(req)
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() })
-      }
-
       const { id } = req.params
+      
+      if (!id || !id.trim()) {
+        return res.status(400).json({ error: 'Patron ID is required' })
+      }
 
       const patronRef = getDb().collection('patrons').doc(id)
       const patronDoc = await patronRef.get()
@@ -249,7 +254,7 @@ router.delete(
       // Delete image from storage
       if (patronData.imagePath) {
         try {
-          const bucket = getStorage().bucket()
+          const bucket = getBucket()
           await bucket.file(patronData.imagePath).delete()
         } catch (error) {
           console.error('Error deleting patron image:', error)

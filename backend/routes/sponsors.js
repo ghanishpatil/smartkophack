@@ -1,6 +1,5 @@
 import express from 'express'
-import { getDb } from '../services/firebaseAdmin.js'
-import { getStorage } from 'firebase-admin/storage'
+import { getDb, getBucket } from '../services/firebaseAdmin.js'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
 import multer from 'multer'
 import path from 'path'
@@ -70,12 +69,18 @@ router.post(
   upload.single('logo'),
   async (req, res, next) => {
     try {
+      console.log('[SPONSORS POST] Request received')
+      console.log('[SPONSORS POST] Body:', req.body)
+      console.log('[SPONSORS POST] File:', req.file ? 'present' : 'missing')
+      
       // Manual validation since express-validator doesn't work well with multer
       if (!req.body.name || !req.body.name.trim()) {
+        console.log('[SPONSORS POST] Validation failed: name missing')
         return res.status(400).json({ error: 'Organization name is required' })
       }
 
       if (!req.file) {
+        console.log('[SPONSORS POST] Validation failed: file missing')
         return res.status(400).json({ error: 'Logo file is required' })
       }
 
@@ -88,7 +93,13 @@ router.post(
       }
 
       // Upload logo to Firebase Storage
-      const bucket = getStorage().bucket()
+      const bucket = getBucket()
+      if (!bucket) {
+        console.error('[SPONSORS POST] Firebase Storage not initialized')
+        return res.status(500).json({ error: 'Storage not configured' })
+      }
+      
+      console.log('[SPONSORS POST] Uploading to bucket:', bucket.name)
       const filename = `sponsors/${uuidv4()}-${Date.now()}${path.extname(req.file.originalname)}`
       const file = bucket.file(filename)
 
@@ -125,6 +136,8 @@ router.post(
         ...sponsorData,
       })
     } catch (error) {
+      console.error('Error creating sponsor:', error)
+      console.error('Error stack:', error.stack)
       next(error)
     }
   }
@@ -177,7 +190,7 @@ router.put(
 
       // If new logo is uploaded, delete old one and upload new one
       if (req.file) {
-        const bucket = getStorage().bucket()
+        const bucket = getBucket()
         const oldLogoPath = sponsorDoc.data().logoPath
 
         // Delete old logo if exists
@@ -250,7 +263,7 @@ router.delete(
       // Delete logo from storage
       if (sponsorData.logoPath) {
         try {
-          const bucket = getStorage().bucket()
+          const bucket = getBucket()
           await bucket.file(sponsorData.logoPath).delete()
         } catch (error) {
           console.error('Error deleting sponsor logo:', error)

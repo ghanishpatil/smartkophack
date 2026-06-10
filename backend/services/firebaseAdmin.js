@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { getApps, initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getStorage } from 'firebase-admin/storage'
 
 let initialized = false
 
@@ -14,7 +15,10 @@ export function initFirebaseAdmin() {
   try {
     const cred = JSON.parse(json)
     if (!getApps().length) {
-      initializeApp({ credential: cert(cred) })
+      initializeApp({ 
+        credential: cert(cred),
+        storageBucket: `${cred.project_id}.appspot.com`
+      })
     }
     initialized = true
     return true
@@ -27,4 +31,9 @@ export function initFirebaseAdmin() {
 export function getDb() {
   if (!initFirebaseAdmin()) return null
   return getFirestore()
+}
+
+export function getBucket() {
+  if (!initFirebaseAdmin()) return null
+  return getStorage().bucket()
 }
