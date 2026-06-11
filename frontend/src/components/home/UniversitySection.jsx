@@ -37,7 +37,7 @@ export function UniversitySection() {
                 
                 <iframe
                   className="h-full w-full relative z-10"
-                  src="https://www.youtube.com/embed/thBG6VIutp8?si=96ge7jRY80O_gLrT"
+                  src="https://www.youtube.com/embed/thBG6VIutp8?si=96ge7jRY80O_gLrT&controls=0"
                   title="Sanjivani University - Smart Kopargaon Hackathon"
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -62,8 +62,8 @@ export function UniversitySection() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
             className="space-y-6"
           >
-            {/* Logo */}
-            <div className="flex items-center justify-center lg:justify-start">
+            {/* Logo - Left aligned like video */}
+            <div className="flex items-center justify-start">
               <motion.div
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.3 }}
@@ -77,16 +77,16 @@ export function UniversitySection() {
               </motion.div>
             </div>
 
-            {/* Title */}
-            <div className="text-center lg:text-left">
+            {/* Title - Left aligned */}
+            <div className="text-left">
               <h3 className="font-display text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl lg:text-4xl">
                 About Sanjivani University
               </h3>
-              <div className="mt-2 h-1 w-24 bg-gradient-to-r from-brand-500 to-cyan-500 rounded-full mx-auto lg:mx-0" />
+              <div className="mt-2 h-1 w-24 bg-gradient-to-r from-brand-500 to-cyan-500 rounded-full" />
             </div>
 
-            {/* Description */}
-            <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-6 shadow-lg">
+            {/* Description - Left aligned text */}
+            <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-6 shadow-lg text-left">
               <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-brand-500/5 blur-3xl" />
               <div className="absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-cyan-500/5 blur-3xl" />
               
@@ -103,17 +103,17 @@ export function UniversitySection() {
               </p>
             </div>
 
-            {/* Stats or Highlights */}
-            <div className="grid grid-cols-3 gap-4 pt-4">
-              <div className="text-center">
+            {/* Stats - Left aligned */}
+            <div className="grid grid-cols-3 gap-4 pt-4 text-left">
+              <div>
                 <div className="text-2xl font-bold text-brand-600">10+</div>
                 <div className="text-xs text-gray-600 uppercase tracking-wider">Programs</div>
               </div>
-              <div className="text-center">
+              <div>
                 <div className="text-2xl font-bold text-cyan-600">5000+</div>
                 <div className="text-xs text-gray-600 uppercase tracking-wider">Students</div>
               </div>
-              <div className="text-center">
+              <div>
                 <div className="text-2xl font-bold text-violet-600">100+</div>
                 <div className="text-xs text-gray-600 uppercase tracking-wider">Faculty</div>
               </div>
