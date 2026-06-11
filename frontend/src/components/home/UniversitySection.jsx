@@ -19,26 +19,29 @@ export function UniversitySection() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             className="relative group"
           >
-            {/* Decorative gradient background */}
+            {/* Blue background layer (peeking out) */}
+            <div className="absolute -inset-4 bg-gradient-to-br from-brand-600 to-brand-700 rounded-3xl transform rotate-2 opacity-80" />
+            
+            {/* Decorative gradient glow */}
             <div className="absolute -inset-2 bg-gradient-to-r from-brand-500/20 via-cyan-500/20 to-violet-500/20 rounded-3xl blur-xl opacity-75 group-hover:opacity-100 transition-opacity duration-500" />
             
-            {/* Video container */}
-            <div className="relative overflow-hidden rounded-2xl border-2 border-gray-200 bg-gradient-to-br from-white via-gray-50 to-white p-3 shadow-2xl group-hover:shadow-3xl transition-all duration-300">
+            {/* Main video container (dark card on top) */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 p-3 shadow-2xl group-hover:shadow-3xl transition-all duration-300 transform -rotate-1">
               {/* Inner glow effect */}
               <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
               
-              {/* Video frame with play button overlay effect */}
-              <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-gradient-to-br from-gray-900 to-black shadow-inner">
+              {/* Video frame */}
+              <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-black shadow-inner">
                 {/* Decorative corner accents */}
-                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-brand-400/30 rounded-tl-xl" />
-                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-cyan-400/30 rounded-tr-xl" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-violet-400/30 rounded-bl-xl" />
-                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-brand-400/30 rounded-br-xl" />
+                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-brand-400/30 rounded-tl-xl z-20" />
+                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-cyan-400/30 rounded-tr-xl z-20" />
+                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-violet-400/30 rounded-bl-xl z-20" />
+                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-brand-400/30 rounded-br-xl z-20" />
                 
                 <iframe
                   className="h-full w-full relative z-10"
-                  src="https://www.youtube.com/embed/thBG6VIutp8?si=96ge7jRY80O_gLrT&controls=0"
-                  title="Sanjivani University - Smart Kopargaon Hackathon"
+                  src="https://www.youtube.com/embed/thBG6VIutp8?si=96ge7jRY80O_gLrT"
+                  title="YouTube video player"
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   referrerPolicy="strict-origin-when-cross-origin"
@@ -47,7 +50,7 @@ export function UniversitySection() {
               </div>
               
               {/* Bottom label */}
-              <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-600">
+              <div className="mt-3 flex items-center justify-center gap-2 text-sm text-white/80">
                 <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
                 <span className="font-medium">Watch Our Story</span>
               </div>
