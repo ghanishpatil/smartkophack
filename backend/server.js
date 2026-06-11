@@ -13,6 +13,7 @@ import chatRouter from './routes/chat.js'
 import adminChatRouter from './routes/adminChat.js'
 import patronsRouter from './routes/patrons.js'
 import sponsorsRouter from './routes/sponsors.js'
+import registrationRouter from './routes/registration.js'
 import { razorpayWebhookHandler } from './routes/webhooks.js'
 import { notFound, errorHandler } from './middleware/error.js'
 
@@ -370,6 +371,7 @@ app.use('/api/participant', participantRouter)
 app.use('/api/chat', chatRouter)
 app.use('/api/patrons', patronsRouter)
 app.use('/api/sponsors', sponsorsRouter)
+app.use('/api/registrations', registrationRouter)
 app.use('/api/admin', adminRouter())
 app.use('/api/admin/chatbot', adminChatRouter)
 app.use('/api/judges', judgesRouter())
