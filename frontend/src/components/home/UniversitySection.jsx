@@ -19,24 +19,30 @@ export function UniversitySection() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             className="relative group"
           >
-            {/* Blue background layer (peeking out) */}
-            <div className="absolute -inset-4 bg-gradient-to-br from-brand-600 to-brand-700 rounded-3xl transform rotate-2 opacity-80" />
+            {/* Blue background layer (larger, more prominent) */}
+            <div className="absolute -inset-6 bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-[2rem] transform rotate-3 opacity-90 group-hover:opacity-100 transition-all duration-500 shadow-2xl" />
             
-            {/* Decorative gradient glow */}
-            <div className="absolute -inset-2 bg-gradient-to-r from-brand-500/20 via-cyan-500/20 to-violet-500/20 rounded-3xl blur-xl opacity-75 group-hover:opacity-100 transition-opacity duration-500" />
+            {/* Ambient glow effect */}
+            <div className="absolute -inset-8 bg-gradient-to-r from-brand-400/30 via-cyan-400/30 to-violet-400/30 rounded-[2.5rem] blur-2xl opacity-60 group-hover:opacity-80 transition-opacity duration-500" />
             
-            {/* Main video container (dark card on top) */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 p-3 shadow-2xl group-hover:shadow-3xl transition-all duration-300 transform -rotate-1">
-              {/* Inner glow effect */}
-              <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
+            {/* Main video container (premium dark card) */}
+            <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] group-hover:shadow-[0_25px_80px_-15px_rgba(0,0,0,0.6)] transition-all duration-500 transform -rotate-1 border border-gray-700/50">
+              {/* Glossy overlay effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none" />
               
-              {/* Video frame */}
-              <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-black shadow-inner">
-                {/* Decorative corner accents */}
-                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-brand-400/30 rounded-tl-xl z-20" />
-                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-cyan-400/30 rounded-tr-xl z-20" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-violet-400/30 rounded-bl-xl z-20" />
-                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-brand-400/30 rounded-br-xl z-20" />
+              {/* Inner decorative glow */}
+              <div className="absolute inset-0 bg-gradient-to-br from-brand-500/10 via-transparent to-cyan-500/10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              
+              {/* Video frame with enhanced styling */}
+              <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-[inset_0_2px_20px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
+                {/* Premium corner accents with glow */}
+                <div className="absolute top-2 left-2 w-20 h-20 border-t-[3px] border-l-[3px] border-brand-400 rounded-tl-2xl z-20 shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+                <div className="absolute top-2 right-2 w-20 h-20 border-t-[3px] border-r-[3px] border-cyan-400 rounded-tr-2xl z-20 shadow-[0_0_15px_rgba(6,182,212,0.5)]" />
+                <div className="absolute bottom-2 left-2 w-20 h-20 border-b-[3px] border-l-[3px] border-violet-400 rounded-bl-2xl z-20 shadow-[0_0_15px_rgba(139,92,246,0.5)]" />
+                <div className="absolute bottom-2 right-2 w-20 h-20 border-b-[3px] border-r-[3px] border-brand-400 rounded-br-2xl z-20 shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+                
+                {/* Subtle scan line effect */}
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/[0.02] to-transparent pointer-events-none z-10" />
                 
                 <iframe
                   className="h-full w-full relative z-10"
@@ -49,10 +55,13 @@ export function UniversitySection() {
                 />
               </div>
               
-              {/* Bottom label */}
-              <div className="mt-3 flex items-center justify-center gap-2 text-sm text-white/80">
-                <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="font-medium">Watch Our Story</span>
+              {/* Premium bottom label with backdrop */}
+              <div className="mt-4 flex items-center justify-center gap-2.5 py-2 px-4 rounded-xl bg-gradient-to-r from-gray-800/80 to-gray-900/80 backdrop-blur-sm border border-white/5">
+                <div className="relative">
+                  <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  <div className="absolute inset-0 h-2 w-2 rounded-full bg-red-500 animate-ping opacity-75" />
+                </div>
+                <span className="font-semibold text-sm text-white/90 tracking-wide">Watch Our Story</span>
               </div>
             </div>
           </motion.div>

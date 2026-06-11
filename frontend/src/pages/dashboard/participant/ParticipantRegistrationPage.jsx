@@ -9,7 +9,6 @@ import {
   Sparkles,
   Users,
   AlertCircle,
-  Clock,
   FileCheck,
 } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -21,7 +20,7 @@ import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { SnitchLoader } from '@/components/ui/SnitchLoader.jsx'
 import { PaymentSuccessAnimation } from '@/components/ui/PaymentSuccessAnimation.jsx'
-import { MemberRegistrationForm } from '@/components/participant/MemberRegistrationForm.jsx'
+import { TeamMemberRegistrationForm } from '@/components/participant/TeamMemberRegistrationForm.jsx'
 import { loadRazorpayScript } from '@/utils/loadRazorpay.js'
 import { isRegistrationComplete } from '@/utils/teamRegistrationDisplay.js'
 import { formatLifecyclePhase } from '@/utils/eventLifecycleDisplay.js'
@@ -67,7 +66,6 @@ export function ParticipantRegistrationPage() {
   const [nowMs, setNowMs] = useState(null)
   const [roster, setRoster] = useState(null)
   const [memberRegistrations, setMemberRegistrations] = useState([])
-  const [loadingRegistrations, setLoadingRegistrations] = useState(false)
 
   // Load team roster
   useEffect(() => {
@@ -83,7 +81,6 @@ export function ParticipantRegistrationPage() {
 
   async function loadMemberRegistrations() {
     if (!team || !user) return
-    setLoadingRegistrations(true)
     try {
       const token = await user.getIdToken()
       const res = await fetch(`${API_BASE}/api/registrations/team/${team.id}/members`, {
@@ -95,8 +92,6 @@ export function ParticipantRegistrationPage() {
       }
     } catch (error) {
       console.error('Failed to load member registrations:', error)
-    } finally {
-      setLoadingRegistrations(false)
     }
   }
 
@@ -351,12 +346,12 @@ export function ParticipantRegistrationPage() {
               <p className="mt-2 text-sm leading-relaxed text-ink-600">
                 {feeRequired ? (
                   <>
-                    Each team member submits their details, then the team leader completes registration and pays{' '}
+                    Team leader fills all member details, then completes registration and pays{' '}
                     <span className="font-medium text-ink-800">{paymentLabel || 'the fee'}</span> via Razorpay.
                   </>
                 ) : (
                   <>
-                    Each team member submits their details, then confirm registration — no fee required for this edition.
+                    Team leader fills all member details, then confirms registration — no fee required for this edition.
                   </>
                 )}
               </p>
@@ -507,79 +502,21 @@ export function ParticipantRegistrationPage() {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-ink-500">
-                  Each team member must submit their registration details (name, institute, email, phone, ID card) before the team can proceed.
+                  Team leader must fill all member registration details (name, institute, email, phone, ID card) before the team can proceed.
                 </p>
               </Card>
             </motion.div>
 
-            {/* Member Forms */}
-            {loadingRegistrations ? (
+            {/* Member Forms - Only show if leader and not submitted */}
+            {!allMembersSubmitted && team?.isLeader && roster?.members && (
               <motion.div variants={cardVariants}>
-                <Card className="py-8 text-center">
-                  <div className="inline-flex items-center gap-2 text-ink-500">
-                    <Clock className="h-5 w-5 animate-spin" />
-                    <span className="text-sm">Loading member registrations...</span>
-                  </div>
-                </Card>
+                <TeamMemberRegistrationForm
+                  members={roster.members}
+                  teamId={team.id}
+                  user={user}
+                  onSuccess={loadMemberRegistrations}
+                />
               </motion.div>
-            ) : (
-              <>
-                {roster?.members?.map((member) => {
-                  const hasSubmitted = memberRegistrations.some(r => r.userId === member.uid)
-                  const isCurrentUser = member.uid === user?.uid
-                  const registration = memberRegistrations.find(r => r.userId === member.uid)
-
-                  return (
-                    <motion.div key={member.uid} variants={cardVariants}>
-                      {hasSubmitted ? (
-                        <Card className="bg-green-500/5 border-green-500/20">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-                                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-ink-900">{registration?.name || member.displayName}</h3>
-                                <p className="text-sm text-ink-600">{member.email}</p>
-                                {member.isLeader && <Badge tone="brand" className="mt-1">Team Leader</Badge>}
-                              </div>
-                            </div>
-                            <Badge tone="success" uppercase={false}>Submitted</Badge>
-                          </div>
-                          <div className="mt-4 grid gap-2 text-sm text-ink-600 sm:grid-cols-2">
-                            <div><span className="font-medium">Institute:</span> {registration?.institute}</div>
-                            <div><span className="font-medium">Phone:</span> {registration?.phone}</div>
-                          </div>
-                        </Card>
-                      ) : isCurrentUser ? (
-                        <MemberRegistrationForm
-                          member={member}
-                          teamId={team.id}
-                          onSuccess={loadMemberRegistrations}
-                          user={user}
-                        />
-                      ) : (
-                        <Card className="bg-amber-500/5 border-amber-500/20">
-                          <div className="flex items-start gap-4">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-                              <AlertCircle className="h-5 w-5 text-amber-600" />
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-ink-900">{member.displayName || 'Team Member'}</h3>
-                              <p className="text-sm text-ink-600">{member.email}</p>
-                              {member.isLeader && <Badge tone="brand" className="mt-1">Team Leader</Badge>}
-                              <p className="mt-2 text-sm text-amber-700">
-                                Waiting for this member to submit their registration details.
-                              </p>
-                            </div>
-                            <Badge tone="warn" uppercase={false}>Pending</Badge>
-                          </div>
-                        </Card>
-                      )}
-                    </motion.div>
-                  )
-                })}
-              </>
             )}
 
             {/* Event Registration Card - Only show if all members submitted */}
@@ -704,9 +641,19 @@ export function ParticipantRegistrationPage() {
                       <AlertCircle className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-ink-900">Complete Member Registrations First</h3>
+                      <h3 className="font-semibold text-ink-900">
+                        {team?.isLeader ? 'Complete Team Registration' : 'Waiting for Team Leader'}
+                      </h3>
                       <p className="mt-1 text-sm text-ink-600">
-                        All {totalMembers} team members must submit their registration details before you can proceed with event registration.
+                        {team?.isLeader ? (
+                          <>
+                            As team leader, fill out registration details for all {totalMembers} team members above before proceeding.
+                          </>
+                        ) : (
+                          <>
+                            The team leader must complete registration for all {totalMembers} team members before you can proceed.
+                          </>
+                        )}
                       </p>
                       <p className="mt-2 text-sm font-medium text-amber-700">
                         Currently: {submittedMembers} of {totalMembers} completed
