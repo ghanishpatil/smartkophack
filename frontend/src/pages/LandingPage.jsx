@@ -5,6 +5,7 @@ import { TopBanner } from '@/components/home/TopBanner.jsx'
 import { Hero } from '@/components/home/Hero.jsx'
 import { StatsSection } from '@/components/home/StatsSection.jsx'
 import { TracksSection } from '@/components/home/TracksSection.jsx'
+import { UniversitySection } from '@/components/home/UniversitySection.jsx'
 import { PatronsSection } from '@/components/home/PatronsSection.jsx'
 import { CollaborationSection } from '@/components/home/CollaborationSection.jsx'
 import { TimelineSection } from '@/components/home/TimelineSection.jsx'
@@ -30,6 +31,13 @@ export function LandingPage() {
       <div className="relative">
         <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-brand-500/25 blur-[70px]" aria-hidden />
         <StatsSection />
+      </div>
+
+      {/* ── UniversitySection with right-edge blob ── */}
+      <div className="relative">
+        <div className="pointer-events-none absolute -right-24 top-1/3 h-72 w-72 rounded-full bg-violet-500/20 blur-[70px]" aria-hidden />
+        <div className="pointer-events-none absolute -left-20 bottom-0 h-64 w-64 rounded-full bg-brand-500/15 blur-[60px]" aria-hidden />
+        <UniversitySection />
       </div>
 
       {/* ── TracksSection with left-edge blob ── */}
