@@ -108,6 +108,10 @@ router.post(
         return res.status(400).json({ error: 'Team ID is required' })
       }
 
+      if (!req.body.userId || !req.body.userId.trim()) {
+        return res.status(400).json({ error: 'User ID is required' })
+      }
+
       if (!req.file) {
         return res.status(400).json({ error: 'ID card PDF is required' })
       }
@@ -117,30 +121,45 @@ router.post(
       const email = req.body.email.trim().toLowerCase()
       const phone = req.body.phone.trim()
       const teamId = req.body.teamId.trim()
+      const userId = req.body.userId.trim()
 
       const db = getDb()
 
-      // Verify team exists and user is a member
+      // Verify team exists
       const teamDoc = await db.collection('teams').doc(teamId).get()
       if (!teamDoc.exists) {
         return res.status(404).json({ error: 'Team not found' })
       }
 
       const teamData = teamDoc.data()
-      const isMember = teamData.members?.some(m => m.uid === req.user.uid)
-      if (!isMember) {
+      
+      // Verify the authenticated user is a member of this team
+      const isAuthUserMember = teamData.members?.some(m => m.uid === req.user.uid)
+      if (!isAuthUserMember) {
         return res.status(403).json({ error: 'You are not a member of this team' })
       }
 
-      // Check if this user already submitted registration for this team
+      // Verify the authenticated user is the team leader
+      const isLeader = teamData.members?.some(m => m.uid === req.user.uid && m.isLeader === true)
+      if (!isLeader) {
+        return res.status(403).json({ error: 'Only the team leader can register members' })
+      }
+
+      // Verify the userId being registered is actually a member of the team
+      const isTargetUserMember = teamData.members?.some(m => m.uid === userId)
+      if (!isTargetUserMember) {
+        return res.status(400).json({ error: 'The user being registered is not a member of this team' })
+      }
+
+      // Check if this specific member already has a registration for this team
       const existingReg = await db.collection('memberRegistrations')
         .where('teamId', '==', teamId)
-        .where('userId', '==', req.user.uid)
+        .where('userId', '==', userId)
         .limit(1)
         .get()
 
       if (!existingReg.empty) {
-        return res.status(400).json({ error: 'You have already submitted registration for this team' })
+        return res.status(400).json({ error: `Registration already exists for this member` })
       }
 
       // Check for duplicate email within team
@@ -212,9 +231,10 @@ router.post(
         phone,
         idCardUrl,
         idCardPath: filename,
-        userId: req.user.uid,
+        userId: userId,
         teamId,
         teamName: teamData.name || 'Unnamed Team',
+        registeredBy: req.user.uid, // Track who submitted this registration
         status: 'pending',
         createdAt: new Date().toISOString(),
       }

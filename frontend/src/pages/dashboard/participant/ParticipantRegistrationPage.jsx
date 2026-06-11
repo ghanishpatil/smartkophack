@@ -508,14 +508,24 @@ export function ParticipantRegistrationPage() {
             </motion.div>
 
             {/* Member Forms - Only show if leader and not submitted */}
-            {!allMembersSubmitted && team?.isLeader && roster?.members && (
+            {!allMembersSubmitted && team?.isLeader && (
               <motion.div variants={cardVariants}>
-                <TeamMemberRegistrationForm
-                  members={roster.members}
-                  teamId={team.id}
-                  user={user}
-                  onSuccess={loadMemberRegistrations}
-                />
+                {!roster ? (
+                  <Card className="p-6">
+                    <p className="text-sm text-ink-600">Loading team members...</p>
+                  </Card>
+                ) : roster.members && roster.members.length > 0 ? (
+                  <TeamMemberRegistrationForm
+                    members={roster.members}
+                    teamId={team.id}
+                    user={user}
+                    onSuccess={loadMemberRegistrations}
+                  />
+                ) : (
+                  <Card className="p-6">
+                    <p className="text-sm text-red-600">No team members found. Please refresh or contact support.</p>
+                  </Card>
+                )}
               </motion.div>
             )}
 
