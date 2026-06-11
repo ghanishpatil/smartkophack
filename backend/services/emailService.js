@@ -531,13 +531,49 @@ export async function sendTeamMemberJoinedEmail({ to, name, teamName, newMemberN
   return sendEmail({ to, toName: name, subject, htmlContent })
 }
 
-// 7. Admin Announcement Email
+// 7. Admin Announcement Email using SKH branded template
 export async function sendAnnouncementEmail({ to, name, title, message, link }) {
+  const fs = await import('fs/promises')
+  const path = await import('path')
+  const { fileURLToPath } = await import('url')
+  
+  // Get template path
+  const __filename = fileURLToPath(import.meta.url)
+  const __dirname = path.dirname(__filename)
+  const templatePath = path.join(__dirname, 'emailTemplates', 'announcement.html')
+  
+  let htmlTemplate
+  try {
+    htmlTemplate = await fs.readFile(templatePath, 'utf-8')
+  } catch (error) {
+    console.error('[Email] Failed to read announcement template:', error)
+    // Fallback to simple template
+    return sendAnnouncementEmailSimple({ to, name, title, message, link })
+  }
+  
+  const safeName = escapeHtml(name)
+  const safeTitle = escapeHtml(title)
+  // Convert newlines to <br> tags for HTML
+  const safeMessage = escapeHtml(message).replace(/\n/g, '<br>')
+  const currentYear = new Date().getFullYear()
+  
+  // Replace template placeholders
+  let htmlContent = htmlTemplate
+    .replace(/{{TITLE}}/g, safeTitle)
+    .replace(/{{MESSAGE}}/g, safeMessage)
+    .replace(/{{YEAR}}/g, currentYear.toString())
+  
+  const subject = `📢 Announcement: ${safeTitle}`
+  
+  return sendEmail({ to, toName: safeName, subject, htmlContent })
+}
+
+// Fallback simple announcement email (if template fails)
+function sendAnnouncementEmailSimple({ to, name, title, message, link }) {
   const safeName = escapeHtml(name)
   const safeTitle = escapeHtml(title)
   const safeMessage = escapeHtml(message)
   const safeLink = escapeHtml(link || '')
-  // Prevent javascript: protocol in links
   const linkUrl = (link || '').trim().toLowerCase()
   const linkSafe = linkUrl.startsWith('http://') || linkUrl.startsWith('https://') || linkUrl === '' ? safeLink : ''
   const subject = `📢 Announcement: ${safeTitle}`

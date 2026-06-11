@@ -198,9 +198,9 @@ export function DashboardLayout({ variant = 'default' }) {
         className={[
           'flex min-h-0 flex-col gap-0.5 px-2 pb-3 pt-3',
           /* Mobile / tablet: vertical scrollable list */
-          'max-lg:flex-1 max-lg:overflow-y-auto max-lg:overflow-x-hidden',
+          'flex-1 overflow-y-auto overflow-x-hidden',
           /* Desktop: fill sidebar and scroll vertically */
-          'lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain lg:px-3 lg:pb-3 lg:touch-pan-y',
+          'lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain lg:px-3 lg:pb-3 lg:touch-pan-y',
         ].join(' ')}
       >
         {items.map((item) => {

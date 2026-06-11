@@ -2,12 +2,11 @@ import express from 'express'
 import { getDb, getBucket } from '../services/firebaseAdmin.js'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
 import multer from 'multer'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 const router = express.Router()
 
-// Handle OPTIONS preflight
+// Handle OPTIONS preflight for CORS
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
@@ -62,19 +61,19 @@ router.get(
 )
 
 /**
- * @route   POST /api/registrations
- * @desc    Create a new registration
+ * @route   POST /api/registrations/member
+ * @desc    Submit individual member registration for a team
  * @access  Private (Authenticated)
  */
 router.post(
-  '/',
+  '/member',
   verifyFirebaseToken,
   upload.single('idCard'),
   async (req, res, next) => {
     try {
-      console.log('[REGISTRATION POST] Request received')
-      console.log('[REGISTRATION POST] Body:', req.body)
-      console.log('[REGISTRATION POST] File:', req.file ? 'present' : 'missing')
+      console.log('[MEMBER REGISTRATION POST] Request received')
+      console.log('[MEMBER REGISTRATION POST] Body:', req.body)
+      console.log('[MEMBER REGISTRATION POST] File:', req.file ? 'present' : 'missing')
 
       // Manual validation
       if (!req.body.name || !req.body.name.trim()) {
@@ -105,6 +104,10 @@ router.post(
         return res.status(400).json({ error: 'Phone number must be 10 digits' })
       }
 
+      if (!req.body.teamId || !req.body.teamId.trim()) {
+        return res.status(400).json({ error: 'Team ID is required' })
+      }
+
       if (!req.file) {
         return res.status(400).json({ error: 'ID card PDF is required' })
       }
@@ -113,40 +116,67 @@ router.post(
       const institute = req.body.institute.trim()
       const email = req.body.email.trim().toLowerCase()
       const phone = req.body.phone.trim()
+      const teamId = req.body.teamId.trim()
 
-      // Check for duplicate email
       const db = getDb()
-      const existingEmail = await db.collection('registrations')
+
+      // Verify team exists and user is a member
+      const teamDoc = await db.collection('teams').doc(teamId).get()
+      if (!teamDoc.exists) {
+        return res.status(404).json({ error: 'Team not found' })
+      }
+
+      const teamData = teamDoc.data()
+      const isMember = teamData.members?.some(m => m.uid === req.user.uid)
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of this team' })
+      }
+
+      // Check if this user already submitted registration for this team
+      const existingReg = await db.collection('memberRegistrations')
+        .where('teamId', '==', teamId)
+        .where('userId', '==', req.user.uid)
+        .limit(1)
+        .get()
+
+      if (!existingReg.empty) {
+        return res.status(400).json({ error: 'You have already submitted registration for this team' })
+      }
+
+      // Check for duplicate email within team
+      const existingEmail = await db.collection('memberRegistrations')
+        .where('teamId', '==', teamId)
         .where('email', '==', email)
         .limit(1)
         .get()
 
       if (!existingEmail.empty) {
-        return res.status(400).json({ error: 'This email is already registered' })
+        return res.status(400).json({ error: 'This email is already used by another team member' })
       }
 
-      // Check for duplicate phone
-      const existingPhone = await db.collection('registrations')
+      // Check for duplicate phone within team
+      const existingPhone = await db.collection('memberRegistrations')
+        .where('teamId', '==', teamId)
         .where('phone', '==', phone)
         .limit(1)
         .get()
 
       if (!existingPhone.empty) {
-        return res.status(400).json({ error: 'This phone number is already registered' })
+        return res.status(400).json({ error: 'This phone number is already used by another team member' })
       }
 
       // Upload ID card to Firebase Storage
       const bucket = getBucket()
       if (!bucket) {
-        console.error('[REGISTRATION POST] Firebase Storage not initialized')
+        console.error('[MEMBER REGISTRATION POST] Firebase Storage not initialized')
         return res.status(500).json({ error: 'Storage not configured' })
       }
 
-      console.log('[REGISTRATION POST] Uploading to bucket:', bucket.name)
-      const filename = `registrations/${uuidv4()}-${Date.now()}.pdf`
+      console.log('[MEMBER REGISTRATION POST] Uploading to bucket:', bucket.name)
+      const filename = `member-registrations/${teamId}/${req.user.uid}-${Date.now()}.pdf`
       const file = bucket.file(filename)
 
-      console.log('[REGISTRATION POST] Saving file with buffer size:', req.file.buffer.length)
+      console.log('[MEMBER REGISTRATION POST] Saving file with buffer size:', req.file.buffer.length)
 
       let idCardUrl = ''
       try {
@@ -157,24 +187,24 @@ router.post(
               firebaseStorageDownloadTokens: uuidv4(),
             },
           },
-          public: false, // Keep ID cards private
+          public: false,
         })
 
-        console.log('[REGISTRATION POST] File saved successfully')
+        console.log('[MEMBER REGISTRATION POST] File saved successfully')
 
-        // Get signed URL valid for 1 hour
+        // Get signed URL valid for 1 year
         const [url] = await file.getSignedUrl({
           action: 'read',
-          expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
+          expires: Date.now() + 365 * 24 * 60 * 60 * 1000,
         })
         idCardUrl = url
-        console.log('[REGISTRATION POST] Signed URL generated')
+        console.log('[MEMBER REGISTRATION POST] Signed URL generated')
       } catch (uploadError) {
-        console.error('[REGISTRATION POST] Upload error:', uploadError)
+        console.error('[MEMBER REGISTRATION POST] Upload error:', uploadError)
         throw uploadError
       }
 
-      // Create registration document
+      // Create member registration document
       const registrationData = {
         name,
         institute,
@@ -183,19 +213,129 @@ router.post(
         idCardUrl,
         idCardPath: filename,
         userId: req.user.uid,
+        teamId,
+        teamName: teamData.name || 'Unnamed Team',
         status: 'pending',
         createdAt: new Date().toISOString(),
       }
 
-      const docRef = await db.collection('registrations').add(registrationData)
+      const docRef = await db.collection('memberRegistrations').add(registrationData)
 
       res.status(201).json({
         id: docRef.id,
         ...registrationData,
       })
     } catch (error) {
-      console.error('Error creating registration:', error)
+      console.error('Error creating member registration:', error)
       console.error('Error stack:', error.stack)
+      next(error)
+    }
+  }
+)
+
+/**
+ * @route   GET /api/registrations/team/:teamId/members
+ * @desc    Get all member registrations for a team
+ * @access  Private (Team member or Admin)
+ */
+router.get(
+  '/team/:teamId/members',
+  verifyFirebaseToken,
+  loadUserRole,
+  async (req, res, next) => {
+    try {
+      const { teamId } = req.params
+      const db = getDb()
+
+      // Verify team exists
+      const teamDoc = await db.collection('teams').doc(teamId).get()
+      if (!teamDoc.exists) {
+        return res.status(404).json({ error: 'Team not found' })
+      }
+
+      const teamData = teamDoc.data()
+
+      // Check authorization: must be admin or team member
+      const isMember = teamData.members?.some(m => m.uid === req.user.uid)
+      if (req.user.role !== 'admin' && !isMember) {
+        return res.status(403).json({ error: 'Access denied' })
+      }
+
+      const snapshot = await db.collection('memberRegistrations')
+        .where('teamId', '==', teamId)
+        .orderBy('createdAt', 'asc')
+        .get()
+
+      const registrations = []
+      snapshot.forEach(doc => {
+        registrations.push({ id: doc.id, ...doc.data() })
+      })
+
+      res.json({
+        teamId,
+        teamName: teamData.name || 'Unnamed Team',
+        totalMembers: teamData.members?.length || 0,
+        registeredMembers: registrations.length,
+        registrations,
+      })
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
+/**
+ * @route   GET /api/registrations/teams
+ * @desc    Get all teams with their member registration status (admin only)
+ * @access  Private (Admin)
+ */
+router.get(
+  '/teams',
+  verifyFirebaseToken,
+  loadUserRole,
+  requireRole('admin'),
+  async (req, res, next) => {
+    try {
+      const db = getDb()
+
+      // Get all teams
+      const teamsSnapshot = await db.collection('teams').get()
+      const teams = []
+
+      for (const teamDoc of teamsSnapshot.docs) {
+        const teamData = teamDoc.data()
+        const teamId = teamDoc.id
+
+        // Get member registrations for this team
+        const regsSnapshot = await db.collection('memberRegistrations')
+          .where('teamId', '==', teamId)
+          .get()
+
+        const registrations = []
+        regsSnapshot.forEach(doc => {
+          registrations.push({ id: doc.id, ...doc.data() })
+        })
+
+        teams.push({
+          id: teamId,
+          name: teamData.name || 'Unnamed Team',
+          totalMembers: teamData.members?.length || 0,
+          registeredMembers: registrations.length,
+          eventRegistered: teamData.eventRegistered || false,
+          paymentStatus: teamData.paymentStatus || 'unpaid',
+          createdAt: teamData.createdAt,
+        })
+      }
+
+      // Sort by created date
+      teams.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return dateB - dateA
+      })
+
+      res.json(teams)
+    } catch (error) {
       next(error)
     }
   }

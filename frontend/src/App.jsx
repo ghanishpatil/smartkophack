@@ -18,7 +18,6 @@ import { FAQPage } from '@/pages/FAQPage.jsx'
 import { ResultsPage } from '@/pages/ResultsPage.jsx'
 import { GuidelinesPage } from '@/pages/GuidelinesPage.jsx'
 import { CodeOfConductPage } from '@/pages/CodeOfConductPage.jsx'
-import { RegistrationPage } from '@/pages/RegistrationPage.jsx'
 import { NotFoundPage } from '@/pages/NotFoundPage.jsx'
 import { AuthActionPage } from '@/pages/AuthActionPage.jsx'
 import { ROLES } from '@/utils/roles.js'
@@ -56,6 +55,9 @@ const AdminOverviewPage = lazy(() =>
 )
 const AdminRegistrationsPage = lazy(() =>
   import('@/pages/admin/AdminRegistrationsPage.jsx').then((m) => ({ default: m.AdminRegistrationsPage })),
+)
+const AdminTeamRegistrationsPage = lazy(() =>
+  import('@/pages/admin/AdminTeamRegistrationsPage.jsx').then((m) => ({ default: m.AdminTeamRegistrationsPage })),
 )
 const AdminTeamsPage = lazy(() =>
   import('@/pages/admin/AdminTeamsPage.jsx').then((m) => ({ default: m.AdminTeamsPage })),
@@ -243,14 +245,6 @@ export default function App() {
             }
           />
           <Route
-            path="/register"
-            element={
-              <AnimatedOutlet>
-                <RegistrationPage />
-              </AnimatedOutlet>
-            }
-          />
-          <Route
             path="/guidelines"
             element={
               <AnimatedOutlet>
@@ -319,7 +313,8 @@ export default function App() {
             <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
             <Route path="/admin/overview" element={<AdminOverviewPage />} />
             <Route path="/admin/events" element={<Navigate to="/admin/problems" replace />} />
-            <Route path="/admin/registrations" element={<AdminRegistrationsPage />} />
+            <Route path="/admin/registrations" element={<AdminTeamRegistrationsPage />} />
+            <Route path="/admin/registrations-old" element={<AdminRegistrationsPage />} />
             <Route path="/admin/teams" element={<AdminTeamsPage />} />
             <Route path="/admin/payments" element={<AdminPaymentsPage />} />
             <Route path="/admin/problems" element={<AdminProblemsPage />} />

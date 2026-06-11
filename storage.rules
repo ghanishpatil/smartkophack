@@ -101,6 +101,15 @@ service firebase.storage {
         && request.resource.contentType == 'application/pdf';
     }
 
+    // Member Registrations (per-member ID cards, team-based)
+    match /member-registrations/{teamId}/{allPaths=**} {
+      allow read: if isAdminUser() || isTeamMemberForSubmission(teamId);
+      allow write: if isTeamMemberForSubmission(teamId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow delete: if isAdminUser();
+    }
+
     match /media/{allPaths=**} {
       allow read, write: if false;
     }
