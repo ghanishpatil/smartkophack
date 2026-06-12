@@ -118,6 +118,9 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/judges/assignments-overview'),
     recordTeamPayment: (body) =>
       authReq('/api/admin/record-team-payment', { method: 'POST', body }),
+    // BUG FIX #8: Admin endpoint to manually record team registration
+    recordTeamRegistration: (body) =>
+      authReq('/api/admin/record-team-registration', { method: 'POST', body }),
     broadcastAnnouncement: (payload) =>
       authReq('/api/admin/announcements', { method: 'POST', body: payload }),
     listAnnouncements: () =>
@@ -148,6 +151,15 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}`, { method: 'PATCH', body }),
     deleteAdminTeamRegistration: (teamId) =>
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}/registration`, { method: 'DELETE' }),
+    // BUG FIX #6: Cleanup orphaned member registrations
+    cleanupOrphanedRegistrations: (teamId) =>
+      authReq(`/api/registrations/team/${encodeURIComponent(teamId)}/cleanup`, { method: 'DELETE' }),
+    // BUG FIX #7: Update member registration status
+    updateMemberRegistrationStatus: (registrationId, status) =>
+      authReq(`/api/registrations/member/${encodeURIComponent(registrationId)}/status`, { method: 'PUT', body: { status } }),
+    // BUG FIX #6: Delete single member registration
+    deleteMemberRegistration: (registrationId) =>
+      authReq(`/api/registrations/member/${encodeURIComponent(registrationId)}`, { method: 'DELETE' }),
     bulkOperation: (body) =>
       authReq('/api/admin/bulk-operation', { method: 'POST', body }),
     exportTeams: () => authReq('/api/admin/export/teams'),

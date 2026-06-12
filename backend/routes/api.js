@@ -1984,6 +1984,83 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * BUG FIX #8: Admin endpoint to manually mark teams as registered
+   * Useful for special cases: waived fees, offline registration, manual approvals
+   */
+  router.post('/record-team-registration', async (req, res, next) => {
+    try {
+      const { teamId, registrationStatus, paymentStatus } = req.body || {}
+      const allowedRegStatus = ['registered', 'pending', 'blocked', 'rejected']
+      const allowedPayStatus = ['paid', 'waived', 'pending', 'not_required']
+      
+      if (!teamId) {
+        return res.status(400).json({ error: 'teamId required' })
+      }
+      
+      if (registrationStatus && !allowedRegStatus.includes(registrationStatus)) {
+        return res.status(400).json({ error: `Invalid registrationStatus. Allowed: ${allowedRegStatus.join(', ')}` })
+      }
+      
+      if (paymentStatus && !allowedPayStatus.includes(paymentStatus)) {
+        return res.status(400).json({ error: `Invalid paymentStatus. Allowed: ${allowedPayStatus.join(', ')}` })
+      }
+
+      const teamRef = db().doc(`teams/${teamId}`)
+      const teamSnap = await teamRef.get()
+      
+      if (!teamSnap.exists) {
+        return res.status(404).json({ error: 'Team not found' })
+      }
+
+      const patch = {
+        updatedAt: FieldValue.serverTimestamp(),
+        registrationRecordedBy: req.user.uid,
+        registrationRecordedAt: FieldValue.serverTimestamp(),
+      }
+
+      // Set registration status
+      if (registrationStatus) {
+        patch.registrationStatus = registrationStatus
+        
+        if (registrationStatus === 'registered') {
+          patch.eventRegistered = true
+          patch.eventRegisteredAt = FieldValue.serverTimestamp()
+        } else if (registrationStatus === 'pending') {
+          patch.eventRegistered = false
+          patch.registrationRequestedAt = FieldValue.serverTimestamp()
+        } else if (registrationStatus === 'blocked' || registrationStatus === 'rejected') {
+          patch.eventRegistered = false
+        }
+      }
+
+      // Set payment status
+      if (paymentStatus) {
+        patch.paymentStatus = paymentStatus
+        
+        if (paymentStatus === 'paid' || paymentStatus === 'waived' || paymentStatus === 'not_required') {
+          patch.eventRegistered = true
+          patch.registrationStatus = 'registered'
+          patch.eventRegisteredAt = FieldValue.serverTimestamp()
+        }
+      }
+
+      await teamRef.set(patch, { merge: true })
+      
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'registration.record',
+        targetType: 'team',
+        targetId: teamId,
+        metadata: { registrationStatus, paymentStatus },
+      })
+      
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /** Bulk operations endpoint - apply same operation to multiple teams at once */
   router.post('/bulk-operation', async (req, res, next) => {
     try {

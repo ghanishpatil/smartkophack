@@ -255,6 +255,22 @@ r.post('/register-team-event', async (req, res, next) => {
       })
     }
 
+    // BUG FIX #1: Validate that ALL team members have submitted their registration details
+    const memberRegsSnap = await db.collection('memberRegistrations')
+      .where('teamId', '==', teamId)
+      .get()
+
+    const submittedCount = memberRegsSnap.size
+    const requiredCount = currentSize
+
+    if (submittedCount < requiredCount) {
+      return res.status(400).json({ 
+        error: `All ${requiredCount} team members must submit their registration details before team registration. Currently: ${submittedCount}/${requiredCount} completed.`,
+        requiredCount,
+        submittedCount,
+      })
+    }
+
     const feeRequired = feeRequiredForEvent(merged)
     const paymentChoice = String(req.body?.paymentChoice || '').toLowerCase() // 'now' or 'later'
     const paymentStatus = feeRequired ? 'pending' : 'not_required'
