@@ -211,10 +211,7 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
       const url = sponsor
         ? `${API_BASE}/api/sponsors/${sponsor.id}`
         : `${API_BASE}/api/sponsors`
-      
-      console.log('Submitting to:', url)
-      console.log('Method:', sponsor ? 'PUT' : 'POST')
-      
+
       const res = await fetch(url, {
         method: sponsor ? 'PUT' : 'POST',
         headers: { 
@@ -222,8 +219,6 @@ function SponsorModal({ sponsor, onClose, onSuccess }) {
         },
         body: formData
       })
-
-      console.log('Response status:', res.status)
 
       if (res.ok) {
         onSuccess()

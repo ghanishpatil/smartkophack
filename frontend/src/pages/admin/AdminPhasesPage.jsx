@@ -6,6 +6,7 @@ import {
 import { motion } from 'framer-motion'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -79,6 +80,10 @@ export function AdminPhasesPage() {
   const [confirm, setConfirm] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [timelinePhases, setTimelinePhases] = useState([])
+  // Real-time: signals that the event's phases changed elsewhere (another admin
+  // or a date-driven transition) while this editor is open. We don't auto-reload
+  // because that would clobber unsaved edits — we surface a banner instead.
+  const [staleFromRemote, setStaleFromRemote] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -90,6 +95,7 @@ export function AdminPhasesPage() {
       setPhases(Array.isArray(data?.phases) ? data.phases : [])
       const tl = Array.isArray(tlData?.phases) ? tlData.phases : Array.isArray(tlData) ? tlData : []
       setTimelinePhases(tl)
+      setStaleFromRemote(false)
     } catch (e) {
       setMsg(e.message || 'Could not load phases')
     } finally {
@@ -98,6 +104,10 @@ export function AdminPhasesPage() {
   }, [api])
 
   useEffect(() => { void load() }, [load])
+
+  // Real-time: flag (don't auto-apply) when the event doc changes elsewhere so
+  // the admin can choose to reload without losing unsaved edits in this editor.
+  useRealtimeRefresh('events', () => setStaleFromRemote(true))
 
   /** Copy everything from Timeline — names, dates, descriptions. Just keep status/requirements here. */
   function copyFromTimeline() {
@@ -270,6 +280,18 @@ export function AdminPhasesPage() {
           </p>
         </Card>
       </div>
+
+      {staleFromRemote && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+          <span>
+            Phases changed elsewhere (another admin or a date-driven transition). Reload to see the
+            latest — note this discards any unsaved edits on this screen.
+          </span>
+          <Button size="sm" variant="secondary" type="button" onClick={() => load()}>
+            Reload
+          </Button>
+        </div>
+      )}
 
       {msg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${

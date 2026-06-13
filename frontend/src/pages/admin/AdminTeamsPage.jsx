@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { AdminDrawer } from '@/components/admin/AdminDrawer.jsx'
 import { ConfirmModal } from '@/components/admin/ConfirmModal.jsx'
@@ -43,8 +44,8 @@ export function AdminTeamsPage() {
   const globalFilter = useAdminFiltersStore((s) => s.teamsGlobalFilter)
   const setGlobalFilter = useAdminFiltersStore((s) => s.setTeamsGlobalFilter)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [rows, users] = await Promise.all([
         api.adminTeams(),
@@ -58,9 +59,9 @@ export function AdminTeamsPage() {
       }
       setUsersMap(map)
     } catch {
-      setTeams([])
+      if (!silent) setTeams([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [api])
 
@@ -75,6 +76,9 @@ export function AdminTeamsPage() {
     void load()
   }, [load])
 
+  // Real-time: refresh the team table in place when any team doc changes.
+  useRealtimeRefresh('teams', () => load(true))
+
   const drawerId = drawerTeam?.id
   useEffect(() => {
     if (!drawerId) return
@@ -83,6 +87,19 @@ export function AdminTeamsPage() {
   }, [teams, drawerId])
 
   const selectedIds = useMemo(() => Object.keys(rowSelection).filter((id) => rowSelection[id]), [rowSelection])
+
+  // Newest first: most recently created/registered teams show at the top.
+  const sortedTeams = useMemo(() => {
+    const ms = (t) => {
+      const v = t?.createdAt ?? t?.eventRegisteredAt
+      if (!v) return 0
+      if (typeof v === 'object' && typeof v._seconds === 'number') return v._seconds * 1000
+      if (typeof v === 'object' && typeof v.seconds === 'number') return v.seconds * 1000
+      const n = new Date(v).getTime()
+      return Number.isNaN(n) ? 0 : n
+    }
+    return [...teams].sort((a, b) => ms(b) - ms(a))
+  }, [teams])
 
   const selectedTeams = useMemo(() => teams.filter((t) => selectedIds.includes(t.id)), [teams, selectedIds])
 
@@ -99,6 +116,18 @@ export function AdminTeamsPage() {
       await api.deleteAdminTeamRegistration(teamId)
       await load()
       setDrawerTeam((prev) => (prev?.id === teamId ? null : prev))
+    },
+    [api, load],
+  )
+
+  const deleteTeam = useCallback(
+    async (teamId) => {
+      await api.deleteAdminTeam(teamId)
+      // Optimistically drop the row so it disappears immediately; the realtime
+      // listener + reload keep everything consistent.
+      setTeams((prev) => prev.filter((t) => t.id !== teamId))
+      setDrawerTeam((prev) => (prev?.id === teamId ? null : prev))
+      await load(true)
     },
     [api, load],
   )
@@ -407,7 +436,7 @@ export function AdminTeamsPage() {
 
       <DataTable
         columns={columns}
-        data={teams}
+        data={sortedTeams}
         globalFilter={globalFilter}
         onGlobalFilterChange={setGlobalFilter}
         enableRowSelection
@@ -479,6 +508,33 @@ export function AdminTeamsPage() {
                   Delete registration
                 </Button>
               ) : null}
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                className="border-red-500/40 text-red-700 hover:bg-red-500/10"
+                onClick={() =>
+                  setConfirm({
+                    title: 'Delete team',
+                    body: `Permanently delete “${drawerTeam.name}” and everything tied to it — submission, evaluations, member registrations, and problem selection? Members are detached from the team. This cannot be undone.`,
+                    variant: 'danger',
+                    confirmLabel: 'Delete team permanently',
+                    action: async () => {
+                      setConfirm(null)
+                      setBulkBusy(true)
+                      try {
+                        await deleteTeam(drawerTeam.id)
+                      } catch (e) {
+                        globalThis.alert(e.message || 'Delete failed')
+                      } finally {
+                        setBulkBusy(false)
+                      }
+                    },
+                  })
+                }
+              >
+                Delete team
+              </Button>
             </div>
           ) : null
         }

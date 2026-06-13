@@ -13,6 +13,7 @@ import {
 import { formatDate } from '@/utils/format.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
@@ -47,8 +48,8 @@ export function AdminOverviewPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setErr('')
     try {
       const [s, logs] = await Promise.all([api.adminStats(), api.listAuditLogs(15)])
@@ -56,15 +57,23 @@ export function AdminOverviewPage() {
       setAudit(Array.isArray(logs) ? logs : [])
     } catch (e) {
       setErr(e.message || 'Could not load overview.')
-      setStats(null)
+      if (!silent) setStats(null)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [api])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Real-time: re-compute metrics in place whenever any underlying collection
+  // changes (registrations, payments, submissions, evaluations, phase changes,
+  // or new audit rows). Silent so cards/tables update without flashing skeletons.
+  useRealtimeRefresh(
+    ['teams', 'submissions', 'evaluations', 'problemStatements', 'events', 'auditLogs'],
+    () => void load(true),
+  )
 
   const maxSel = Math.max(1, ...(stats?.problemStatementsTop || []).map((p) => p.selectionCount || 0))
 

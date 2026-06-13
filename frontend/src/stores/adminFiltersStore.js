@@ -14,4 +14,6 @@ export const useAdminFiltersStore = create((set) => ({
   setEvaluationsGlobalFilter: (evaluationsGlobalFilter) => set({ evaluationsGlobalFilter }),
   accessGlobalFilter: '',
   setAccessGlobalFilter: (accessGlobalFilter) => set({ accessGlobalFilter }),
+  usersGlobalFilter: '',
+  setUsersGlobalFilter: (usersGlobalFilter) => set({ usersGlobalFilter }),
 }))

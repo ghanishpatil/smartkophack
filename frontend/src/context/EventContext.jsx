@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '@/firebase/client.js'
 import { publicApi } from '@/services/api.js'
+import { getActivePhase } from '@/utils/phaseStatus.js'
 
 const EventContext = createContext(null)
 
@@ -69,18 +70,7 @@ export function EventProvider({ children }) {
 
         // Recompute activePhase from the fresh snapshot data
         const phases = Array.isArray(data.competitionPhases) ? data.competitionPhases : []
-        const activePhase = (() => {
-          const manual = phases.find((p) => p.status === 'ACTIVE')
-          if (manual) return manual
-          const now = Date.now()
-          for (const p of phases) {
-            if (p.status !== 'UPCOMING') continue
-            const start = p.startDate ? new Date(p.startDate).getTime() : null
-            const end = p.deadline ? new Date(p.deadline).getTime() : null
-            if (start && now >= start && (!end || now <= end)) return p
-          }
-          return null
-        })()
+        const activePhase = getActivePhase(phases)
 
         setEventCfg((prev) => ({
           // Keep API-computed fields that Firestore doesn't have

@@ -47,6 +47,10 @@ async function mergedPublicSnapshot(eventId) {
   const rz = isRazorpayConfigured()
   // Include competition phases (publicly readable for participant UI)
   const phases = Array.isArray(merged.competitionPhases) ? merged.competitionPhases : []
+  // Use the canonical getActivePhase() so the public snapshot, submission gating,
+  // and participant UI all agree on what "active" means (manual ACTIVE override,
+  // or date-driven UPCOMING within its window).
+  const { getActivePhase } = await import('../services/competitionPhases.js')
   return {
     eventId: merged.eventId,
     lifecyclePhase: merged.lifecyclePhase,
@@ -65,20 +69,7 @@ async function mergedPublicSnapshot(eventId) {
     razorpayConfigured: rz,
     razorpayKeyId: rz ? getRazorpayPublicKeyId() : null,
     competitionPhases: phases,
-    activePhase: (() => {
-      // Auto-detect active phase: manual ACTIVE status takes priority,
-      // then date-based detection only for UPCOMING phases
-      const manualActive = phases.find((p) => p.status === 'ACTIVE')
-      if (manualActive) return manualActive
-      const now = Date.now()
-      for (const p of phases) {
-        if (p.status !== 'UPCOMING') continue
-        const start = p.startDate ? new Date(p.startDate).getTime() : null
-        const end = p.deadline ? new Date(p.deadline).getTime() : null
-        if (start && now >= start && (!end || now <= end)) return p
-      }
-      return null
-    })(),
+    activePhase: getActivePhase({ competitionPhases: phases }),
   }
 }
 
@@ -491,6 +482,23 @@ export function adminRouter() {
       if (newStatus === PHASE_STATES.SUBMISSION_LOCKED && phase.order === 1) {
         eventPatch.registrationOpen = false
       }
+
+      // When any phase enters EVALUATION or SHORTLISTING, auto-enable judge scoring
+      if (newStatus === PHASE_STATES.EVALUATION || newStatus === PHASE_STATES.SHORTLISTING) {
+        eventPatch.evaluationsOpen = true
+      }
+
+      // When a phase moves out of EVALUATION/SHORTLISTING to COMPLETED/ARCHIVED,
+      // close evaluations (only if no other phase is still in eval/shortlisting)
+      if ((newStatus === PHASE_STATES.COMPLETED || newStatus === PHASE_STATES.ARCHIVED) &&
+          (fromStatus === PHASE_STATES.EVALUATION || fromStatus === PHASE_STATES.SHORTLISTING)) {
+        const anyOtherInEval = updatedPhases.some(p =>
+          p.id !== phaseId && (p.status === PHASE_STATES.EVALUATION || p.status === PHASE_STATES.SHORTLISTING)
+        )
+        if (!anyOtherInEval) {
+          eventPatch.evaluationsOpen = false
+        }
+      }
       
       // MIGRATION FIX: If any phase with order=1 is already ACTIVE, ensure registrationOpen is set
       // This handles existing deployments where phases were activated before this auto-flag logic
@@ -530,10 +538,11 @@ export function adminRouter() {
       // arrayUnion is atomic and idempotent — safe under concurrent admin operations.
       // We still check existence to count actual updates, but no longer read the array.
       let updated = 0
+      const skipped = []
       for (const teamId of teamIds) {
         const teamRef = db().doc(`teams/${teamId}`)
         const snap = await teamRef.get()
-        if (!snap.exists) continue
+        if (!snap.exists) { skipped.push(teamId); continue }
         await teamRef.set({
           shortlistedPhases: FieldValue.arrayUnion(phaseId),
           shortlisted: true,
@@ -547,10 +556,10 @@ export function adminRouter() {
         action: 'phases.shortlist',
         targetType: 'phase',
         targetId: phaseId,
-        metadata: { count: updated },
+        metadata: { count: updated, skipped: skipped.length },
       })
 
-      res.json({ ok: true, shortlisted: updated })
+      res.json({ ok: true, shortlisted: updated, skipped })
     } catch (e) {
       next(e)
     }
@@ -563,23 +572,28 @@ export function adminRouter() {
       const teamIds = Array.isArray(req.body?.teamIds) ? req.body.teamIds : []
       if (teamIds.length === 0) return res.status(400).json({ error: 'teamIds required' })
 
-      // HIGH-07: Use FieldValue.arrayRemove instead of read-modify-write loop.
-      // After removing, read back the array to determine if shortlisted flag should clear.
+      // HIGH-07: Use FieldValue.arrayRemove inside a transaction so the
+      // `shortlisted` flag is derived from a fresh read — prevents two concurrent
+      // unshortlist (or shortlist) operations from leaving the flag inconsistent.
       let updated = 0
       for (const teamId of teamIds) {
         const teamRef = db().doc(`teams/${teamId}`)
-        const snap = await teamRef.get()
-        if (!snap.exists) continue
-        const currentPhases = Array.isArray(snap.data().shortlistedPhases) ? snap.data().shortlistedPhases : []
-        if (!currentPhases.includes(phaseId)) continue // Not in list — skip
+        const didRemove = await db().runTransaction(async (tx) => {
+          const snap = await tx.get(teamRef)
+          if (!snap.exists) return false
+          const currentPhases = Array.isArray(snap.data().shortlistedPhases) ? snap.data().shortlistedPhases : []
+          if (!currentPhases.includes(phaseId)) return false // Not in list — skip
 
-        await teamRef.set({
-          shortlistedPhases: FieldValue.arrayRemove(phaseId),
-          // shortlisted flag: clear only if this was the last phase
-          shortlisted: currentPhases.filter((p) => p !== phaseId).length > 0,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true })
-        updated++
+          const remaining = currentPhases.filter((p) => p !== phaseId)
+          tx.set(teamRef, {
+            shortlistedPhases: FieldValue.arrayRemove(phaseId),
+            // Clear the flag only if this was the team's last shortlisted phase.
+            shortlisted: remaining.length > 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true })
+          return true
+        })
+        if (didRemove) updated++
       }
 
       await appendAuditLog({
@@ -1019,6 +1033,77 @@ export function adminRouter() {
           previousRegistrationStatus: team.registrationStatus || null,
           previousPaymentStatus: team.paymentStatus || null,
         },
+      })
+
+      res.json({ ok: true, teamId })
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message })
+      next(e)
+    }
+  })
+
+  /** Full team delete — purges the team doc and all associated data. */
+  router.delete('/teams/:teamId', async (req, res, next) => {
+    try {
+      const { teamId } = req.params
+      if (!isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid team ID.' })
+      const teamRef = db().doc(`teams/${teamId}`)
+      const snap = await teamRef.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Team not found.' })
+
+      const team = snap.data()
+      const memberIds = Array.isArray(team.memberIds) ? team.memberIds : []
+      const oldPid = team.problemStatementId || ''
+
+      // 1. Decrement the selected problem statement's count.
+      if (oldPid) {
+        try {
+          const psRef = db().doc(`problemStatements/${oldPid}`)
+          const psSnap = await psRef.get()
+          if (psSnap.exists) {
+            const c = psSnap.data().selectionCount || 0
+            await psRef.update({
+              selectionCount: Math.max(0, c - 1),
+              updatedAt: FieldValue.serverTimestamp(),
+            })
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 2. Detach every member user from the team.
+      for (const uid of memberIds) {
+        try {
+          await db().doc(`users/${uid}`).set(
+            { teamId: '', updatedAt: FieldValue.serverTimestamp() },
+            { merge: true },
+          )
+        } catch { /* ignore */ }
+      }
+
+      // 3. Delete the submission doc (id === teamId).
+      try { await db().doc(`submissions/${teamId}`).delete() } catch { /* ignore */ }
+
+      // 4. Delete evaluations for this team.
+      try {
+        const evalSnap = await db().collection('evaluations').where('teamId', '==', teamId).limit(500).get()
+        for (const d of evalSnap.docs) await d.ref.delete()
+      } catch { /* ignore */ }
+
+      // 5. Delete member registrations for this team.
+      try {
+        const regSnap = await db().collection('memberRegistrations').where('teamId', '==', teamId).limit(500).get()
+        for (const d of regSnap.docs) await d.ref.delete()
+      } catch { /* ignore */ }
+
+      // 6. Delete the team doc itself.
+      await teamRef.delete()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'team.delete',
+        targetType: 'team',
+        targetId: teamId,
+        metadata: { name: team.name || null, memberCount: memberIds.length },
       })
 
       res.json({ ok: true, teamId })
@@ -2919,7 +3004,9 @@ export function judgesRouter() {
       const assigned = Array.isArray(profile?.assignedProblemStatementIds) ? profile.assignedProblemStatementIds : []
 
       const merged = await getActiveEventConfig()
-      const criteria = resolveEvaluationCriteria(merged)
+      const { getEvaluationPhase } = await import('../services/competitionPhases.js')
+      const evalPhase = getEvaluationPhase(merged)
+      const criteria = resolveEvaluationCriteria(merged, evalPhase)
       const edition = {
         submissionDeadline: tsIso(merged.submissionDeadline),
         lifecyclePhase: merged.lifecyclePhase,
@@ -3045,7 +3132,9 @@ export function judgesRouter() {
 
       const evtId = teamRaw.eventId || req.eventId || null
       const merged = await getActiveEventConfig()
-      const criteria = resolveEvaluationCriteria(merged)
+      const { getEvaluationPhase: getEvalPhaseReview } = await import('../services/competitionPhases.js')
+      const evalPhaseReview = getEvalPhaseReview(merged)
+      const criteria = resolveEvaluationCriteria(merged, evalPhaseReview)
       const edition = {
         submissionDeadline: tsIso(merged.submissionDeadline),
         lifecyclePhase: merged.lifecyclePhase,
@@ -3143,7 +3232,9 @@ export function judgesRouter() {
         }
       }
 
-      const criteria = resolveEvaluationCriteria(merged)
+      const { getEvaluationPhase: getEvalPhaseSubmit } = await import('../services/competitionPhases.js')
+      const evalPhaseSubmit = getEvalPhaseSubmit(merged)
+      const criteria = resolveEvaluationCriteria(merged, evalPhaseSubmit)
       let normalizedScores
       try {
         normalizedScores = normalizeJudgeScores(scores, criteria)

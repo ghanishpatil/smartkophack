@@ -87,19 +87,42 @@ export function getPhaseById(eventData, phaseId) {
   return getPhases(eventData).find((p) => p.id === phaseId) || null
 }
 
+/**
+ * Returns true if a phase is open for submissions based on status + dates.
+ * This MUST stay consistent with getActivePhase():
+ *   - A phase manually set to ACTIVE is open.
+ *   - A phase still in UPCOMING status auto-opens once the current time is
+ *     within its [startDate, deadline] window (date-driven activation).
+ * Once a phase is SUBMISSION_LOCKED, EVALUATION, etc. it is never open,
+ * regardless of dates.
+ */
+export function isPhaseSubmissionOpen(phase, now = Date.now()) {
+  if (!phase) return false
+  const start = phase.startDate ? new Date(phase.startDate).getTime() : null
+  const end = phase.deadline ? new Date(phase.deadline).getTime() : null
+
+  const isManualActive = phase.status === PHASE_STATES.ACTIVE
+  const isDateDrivenActive =
+    phase.status === PHASE_STATES.UPCOMING &&
+    start != null && now >= start &&
+    (end == null || now <= end)
+
+  if (!isManualActive && !isDateDrivenActive) return false
+
+  // Respect the deadline even when the phase is manually ACTIVE.
+  if (end && now > end) return false
+
+  return true
+}
+
 /** Check if a team can submit to a specific phase */
 export function canTeamSubmit(team, phase) {
   if (!team || !phase) return false
-  
-  // Only phases with status ACTIVE accept submissions.
-  // Date-based auto-activation is handled by getActivePhase() which only promotes UPCOMING phases.
-  // Once a phase is SUBMISSION_LOCKED, EVALUATION, etc. — no submissions allowed regardless of dates.
-  if (phase.status !== PHASE_STATES.ACTIVE) return false
 
-  // Even if status is ACTIVE, respect the deadline if set
-  const now = Date.now()
-  const end = phase.deadline ? new Date(phase.deadline).getTime() : null
-  if (end && now > end) return false // Past deadline always blocks
+  // Phase must be open for submissions (status ACTIVE, or date-driven UPCOMING).
+  // BUGFIX: previously this required status === 'ACTIVE' only, which blocked
+  // submissions during date-driven phases that getActivePhase() reports as active.
+  if (!isPhaseSubmissionOpen(phase)) return false
 
   // First phase is open to all registered teams
   if (phase.order === 1) return true

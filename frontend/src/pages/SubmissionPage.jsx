@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage'
 import { Link } from 'react-router-dom'
-import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle } from 'lucide-react'
+import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle, CheckCircle } from 'lucide-react'
 import { storage } from '@/firebase/client.js'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge.jsx'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { submissionCompleteness } from '@/pages/dashboard/participant/progressUtils.js'
+import { isPhaseSubmissionOpen } from '@/utils/phaseStatus.js'
 
 const MAX_PPT_BYTES = 35 * 1024 * 1024
 const MAX_PDF_BYTES = 35 * 1024 * 1024
@@ -114,12 +115,10 @@ export function SubmissionPage() {
   const isPhase1 = activePhase && phases.find((p) => p.id === activePhase.id)?.order === 1
   const teamShortlistedPhases = teamData?.shortlistedPhases || []
   const teamCanAccessActivePhase = !activePhase || isPhase1 || teamShortlistedPhases.includes(activePhase.id)
-  // Phase is open if: status is ACTIVE (matches backend canTeamSubmit logic)
-  const phaseSubmissionsOpen = (() => {
-    if (!activePhase) return true
-    if (activePhase.status === 'ACTIVE') return true
-    return false
-  })()
+  // Phase is open if backend would accept a submission. Shared helper keeps this
+  // consistent with backend isPhaseSubmissionOpen()/canTeamSubmit() so the UI
+  // doesn't grey out uploads while the phase is genuinely open.
+  const phaseSubmissionsOpen = !activePhase || isPhaseSubmissionOpen(activePhase)
   const phaseDeadlinePassed = activePhase?.deadline && new Date(activePhase.deadline).getTime() < Date.now()
   const phaseRequirements = activePhase?.requirements || {
     pptRequired: true,
@@ -222,251 +221,257 @@ export function SubmissionPage() {
 
   if (!teamId) {
     return (
-      <div className="mx-auto max-w-lg text-center">
-        <p className="text-ink-600">Join a team before uploading submissions.</p>
-        <Link to="/dashboard/team" className="mt-4 inline-block text-brand-600 hover:underline">
-          Go to My Team
+      <div className="mx-auto flex max-w-lg flex-col items-center justify-center py-20 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/20 to-cyan-500/20">
+          <Upload className="h-7 w-7 text-brand-600" />
+        </div>
+        <p className="mt-4 text-lg font-semibold text-ink-900">No team yet</p>
+        <p className="mt-1 text-sm text-ink-500">Join or create a team before uploading submissions.</p>
+        <Link to="/dashboard/team" className="mt-6 inline-flex items-center gap-2 rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600">
+          Go to My Team <ArrowLeft className="h-4 w-4 rotate-180" />
         </Link>
       </div>
     )
   }
 
+  const uploadsDisabled = locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <Link
-        to="/dashboard"
-        className="inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:underline"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Home
-      </Link>
-      <div>
-        <h1 className="font-display text-3xl font-bold text-ink-900">Submission Center</h1>
-        <p className="mt-2 text-sm text-ink-600">
-          Upload your files for the current competition phase. The admin sets which files are required for each phase.
-        </p>
+    <div className="mx-auto max-w-4xl space-y-8">
+      {/* ━━ Header with Phase Banner ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden rounded-3xl border border-[rgb(var(--border))] bg-gradient-to-br from-cyan-500/5 via-[rgb(var(--surface))] to-brand-500/5 p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -left-10 bottom-0 h-36 w-36 rounded-full bg-brand-500/10 blur-3xl" />
+
+        <div className="relative">
+          <Link to="/dashboard" className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:underline">
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
+          </Link>
+          <h1 className="mt-3 font-display text-3xl font-extrabold text-ink-900 sm:text-4xl">Submission Center</h1>
+          <p className="mt-2 max-w-lg text-sm text-ink-500">
+            Upload your files for the current competition phase. Required artifacts are marked below.
+          </p>
+
+          {/* Status chips */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Badge tone={sub?.status === 'submitted' || locked ? 'success' : 'brand'} dot={locked} pulse={locked}>
+              {locked ? 'Locked & Submitted' : sub?.status || 'Draft'}
+            </Badge>
+            <Badge tone="info">{progress.filled}/{progress.total} files uploaded</Badge>
+            {pct > 0 && <Badge tone="warn">Uploading {pct}%</Badge>}
+          </div>
+
+          {/* Phase info */}
+          {activePhase && (
+            <div className={`mt-5 rounded-2xl border p-4 ${
+              !teamCanAccessActivePhase ? 'border-red-500/30 bg-red-500/5' :
+              !phaseSubmissionsOpen || phaseDeadlinePassed ? 'border-amber-500/30 bg-amber-500/5' :
+              'border-emerald-500/30 bg-emerald-500/5'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-ink-500">Current Phase</p>
+                  <h2 className="mt-0.5 font-display text-lg font-bold text-ink-900">{activePhase.name}</h2>
+                  {activePhase.description && <p className="mt-0.5 text-xs text-ink-600">{activePhase.description}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {phaseSubmissionsOpen && !phaseDeadlinePassed ? (
+                    <Badge tone="success" dot pulse>Open</Badge>
+                  ) : phaseDeadlinePassed ? (
+                    <Badge tone="danger" dot>Deadline Passed</Badge>
+                  ) : (
+                    <Badge tone="warn" dot>Closed</Badge>
+                  )}
+                  {teamCanAccessActivePhase ? (
+                    <Badge tone="brand">Eligible</Badge>
+                  ) : (
+                    <Badge tone="danger">Not Shortlisted</Badge>
+                  )}
+                </div>
+              </div>
+              {activePhase.deadline && (
+                <p className="mt-2 text-xs font-medium text-ink-600">
+                  Deadline: {new Date(activePhase.deadline).toLocaleString()}
+                </p>
+              )}
+              {!teamCanAccessActivePhase && (
+                <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700">
+                  Your team is not shortlisted for this phase.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Phase Info Banner */}
-      {activePhase ? (
-        <Card className={`border-2 ${
-          !teamCanAccessActivePhase ? 'border-red-500/40 bg-red-500/5' :
-          !phaseSubmissionsOpen || phaseDeadlinePassed ? 'border-amber-500/40 bg-amber-500/5' :
-          'border-brand-500/40 bg-brand-500/5'
-        }`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-brand-600">Current Phase</p>
-              <h2 className="mt-1 font-display text-xl font-bold text-ink-900">{activePhase.name}</h2>
-              {activePhase.description && (
-                <p className="mt-1 text-sm text-ink-600">{activePhase.description}</p>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {phaseSubmissionsOpen && !phaseDeadlinePassed ? (
-                <Badge tone="success">Submissions Open</Badge>
-              ) : phaseDeadlinePassed ? (
-                <Badge tone="danger">Deadline Passed</Badge>
-              ) : (
-                <Badge tone="warn">Submissions Closed</Badge>
-              )}
-              {teamCanAccessActivePhase ? (
-                <Badge tone="brand">Eligible</Badge>
-              ) : (
-                <Badge tone="danger">Not Shortlisted</Badge>
-              )}
-            </div>
-          </div>
-          {activePhase.deadline && (
-            <p className="mt-3 text-xs font-medium text-amber-800">
-              Phase deadline: {new Date(activePhase.deadline).toLocaleString()}
-            </p>
-          )}
-          {!teamCanAccessActivePhase && (
-            <div className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-700">
-              Your team is not shortlisted for this phase. Wait for the admin to announce shortlists.
-            </div>
-          )}
-        </Card>
-      ) : null}
-
-      {locked ? (
-        <Card className="border-amber-500/40 bg-amber-500/10">
-          <div className="flex gap-3">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" />
-            <p className="text-sm text-amber-950">
-              This submission is <strong>locked</strong>. Uploads and link edits are disabled until an administrator unlocks your
-              team (if ever).
-            </p>
-          </div>
-        </Card>
-      ) : null}
-
-      {paymentPending ? (
-        <Card className="border-red-500/40 bg-red-500/10">
-          <div className="flex gap-3">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-red-700" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-red-950">
-                Payment Required to Submit
-              </p>
-              <p className="mt-1 text-sm text-red-900">
-                You chose "Pay Later" during registration. Complete your payment to unlock submissions.
-              </p>
-              <Link 
-                to="/dashboard/registration" 
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-              >
-                Go to Registration & Pay Now
-                <ArrowLeft className="h-4 w-4 rotate-180" />
-              </Link>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        <Badge tone={sub?.status === 'submitted' || locked ? 'success' : 'neutral'}>
-          {locked ? 'locked' : sub?.status || 'draft'}
-        </Badge>
-        <Badge tone="brand">
-          Progress {progress.filled}/{progress.total}
-        </Badge>
-        {pct > 0 ? <Badge tone="brand">Upload {pct}%</Badge> : null}
-      </div>
-
-      {status ? (
-        <div className={`fixed bottom-6 right-6 z-50 max-w-sm animate-slide-up rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm ${
-          status.startsWith('Uploaded') || status.startsWith('GitHub link saved') || status.startsWith('Submission finalized')
-            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800'
-            : status.includes('locked') || status.includes('not configured') || status.includes('Register') || status.includes('deadline') || status.includes('payment') || status.includes('Complete')
-              ? 'border-red-500/30 bg-red-50 text-red-800'
-              : 'border-amber-500/30 bg-amber-50 text-amber-800'
-        }`}>
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p className="text-sm">{status}</p>
+      {/* Alerts */}
+      {locked && (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-5 py-4">
+          <Lock className="h-5 w-5 shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-900">Submission is <strong>locked</strong>. Edits disabled until an admin unlocks your team.</p>
+        </div>
+      )}
+      {paymentPending && (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/5 px-5 py-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <div>
+            <p className="text-sm font-semibold text-red-900">Payment Required</p>
+            <p className="mt-1 text-xs text-red-700">Complete your payment to unlock submissions.</p>
+            <Link to="/dashboard/registration" className="mt-2 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-medium text-white hover:bg-red-700">
+              Pay Now <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+            </Link>
           </div>
         </div>
-      ) : null}
+      )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* PPT Upload */}
+      {/* ━━ Upload Grid ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="grid gap-5 md:grid-cols-2">
+        {/* PPT */}
         {phaseRequirements.pptRequired && (
-          <Card className={locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed ? 'pointer-events-none opacity-60' : ''}>
-            <h2 className="flex items-center gap-2 font-display font-semibold text-ink-900">
-              <FileText className="h-4 w-4 text-brand-600" />
-              PPT / Presentation
-              <Badge tone="danger" className="ml-auto text-[9px]">REQUIRED</Badge>
-            </h2>
-            <p className="mt-2 text-xs text-ink-500">Max ~{Math.round(MAX_PPT_BYTES / (1024 * 1024))} MB. PPT or PPTX format.</p>
-            <label className="mt-4 block cursor-pointer rounded-xl border border-dashed border-[rgb(var(--border))] p-6 text-center text-sm hover:border-brand-500/50">
-              <Upload className="mx-auto h-8 w-8 text-ink-400" />
-              <span className="mt-2 block text-ink-600">{sub?.pptUrl ? 'Replace PPT' : 'Upload PPT / PPTX'}</span>
-              <input
-                type="file"
-                accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                className="hidden"
-                disabled={locked}
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) uploadFile('ppt', f)
-                }}
-              />
-            </label>
-          </Card>
+          <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-orange-500/10 blur-2xl transition-transform group-hover:scale-150" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-ink-900">PPT / Presentation</h3>
+                    <p className="text-[11px] text-ink-500">Max {Math.round(MAX_PPT_BYTES / (1024 * 1024))} MB · .ppt/.pptx</p>
+                  </div>
+                </div>
+                <Badge tone="danger" className="text-[9px]">Required</Badge>
+              </div>
+              {sub?.pptUrl ? (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" /> Uploaded
+                </div>
+              ) : null}
+              <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-6 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
+                <Upload className="h-6 w-6 text-ink-400" />
+                <span className="text-xs font-medium text-ink-600">{sub?.pptUrl ? 'Replace file' : 'Click to upload'}</span>
+                <input type="file" accept=".ppt,.pptx" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('ppt', f) }} />
+              </label>
+            </div>
+          </div>
         )}
 
-        {/* PDF Upload */}
+        {/* PDF */}
         {phaseRequirements.pdfRequired && (
-          <Card className={locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed ? 'pointer-events-none opacity-60' : ''}>
-            <h2 className="flex items-center gap-2 font-display font-semibold text-ink-900">
-              <FileText className="h-4 w-4 text-red-500" />
-              PDF Document
-              <Badge tone="danger" className="ml-auto text-[9px]">REQUIRED</Badge>
-            </h2>
-            <p className="mt-2 text-xs text-ink-500">Max ~{Math.round(MAX_PDF_BYTES / (1024 * 1024))} MB. PDF brief or report.</p>
-            <label className="mt-4 block cursor-pointer rounded-xl border border-dashed border-[rgb(var(--border))] p-6 text-center text-sm hover:border-brand-500/50">
-              <Upload className="mx-auto h-8 w-8 text-ink-400" />
-              <span className="mt-2 block text-ink-600">{sub?.pdfUrl ? 'Replace PDF' : 'Upload PDF'}</span>
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                disabled={locked}
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) uploadFile('pdf', f)
-                }}
-              />
-            </label>
-          </Card>
+          <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-red-500/10 blur-2xl transition-transform group-hover:scale-150" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-ink-900">PDF Document</h3>
+                    <p className="text-[11px] text-ink-500">Max {Math.round(MAX_PDF_BYTES / (1024 * 1024))} MB · .pdf</p>
+                  </div>
+                </div>
+                <Badge tone="danger" className="text-[9px]">Required</Badge>
+              </div>
+              {sub?.pdfUrl ? (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" /> Uploaded
+                </div>
+              ) : null}
+              <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-6 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
+                <Upload className="h-6 w-6 text-ink-400" />
+                <span className="text-xs font-medium text-ink-600">{sub?.pdfUrl ? 'Replace file' : 'Click to upload'}</span>
+                <input type="file" accept=".pdf" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('pdf', f) }} />
+              </label>
+            </div>
+          </div>
         )}
 
-        {/* Video Upload */}
+        {/* Video */}
         {phaseRequirements.videoRequired && (
-          <Card className={locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed ? 'pointer-events-none opacity-60' : ''}>
-            <h2 className="flex items-center gap-2 font-display font-semibold text-ink-900">
-              <Video className="h-4 w-4 text-blue-500" />
-              Demo Video
-              <Badge tone="danger" className="ml-auto text-[9px]">REQUIRED</Badge>
-            </h2>
-            <p className="mt-2 text-xs text-ink-500">Max ~{Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB. MP4 or WebM.</p>
-            <label className="mt-4 block cursor-pointer rounded-xl border border-dashed border-[rgb(var(--border))] p-8 text-center text-sm hover:border-brand-500/50">
-              <Upload className="mx-auto h-8 w-8 text-ink-400" />
-              <span className="mt-2 block text-ink-600">{sub?.videoUrl ? 'Replace Video' : 'Upload Video'}</span>
-              <input
-                type="file"
-                accept="video/*"
-                className="hidden"
-                disabled={locked}
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) uploadFile('video', f)
-                }}
-              />
-            </label>
-          </Card>
+          <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-blue-500/10 blur-2xl transition-transform group-hover:scale-150" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600">
+                    <Video className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-ink-900">Demo Video</h3>
+                    <p className="text-[11px] text-ink-500">Max {Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB · MP4/WebM</p>
+                  </div>
+                </div>
+                <Badge tone="danger" className="text-[9px]">Required</Badge>
+              </div>
+              {sub?.videoUrl ? (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" /> Uploaded
+                </div>
+              ) : null}
+              <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-8 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
+                <Upload className="h-6 w-6 text-ink-400" />
+                <span className="text-xs font-medium text-ink-600">{sub?.videoUrl ? 'Replace video' : 'Click to upload'}</span>
+                <input type="file" accept="video/*" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('video', f) }} />
+              </label>
+            </div>
+          </div>
         )}
 
-        {/* GitHub URL */}
+        {/* GitHub */}
         {phaseRequirements.githubRequired && (
-          <Card className={locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed ? 'pointer-events-none opacity-60' : ''}>
-            <h2 className="flex items-center gap-2 font-display font-semibold text-ink-900">
-              <Github className="h-4 w-4" />
-              GitHub Repository
-              <Badge tone="danger" className="ml-auto text-[9px]">REQUIRED</Badge>
-            </h2>
-            <p className="mt-2 text-xs text-ink-500">Public GitHub repository URL.</p>
-            <Input
-              className="mt-4"
-              value={githubUrl}
-              disabled={locked}
-              onChange={(e) => setGithubUrl(e.target.value)}
-              placeholder="https://github.com/org/repo"
-            />
-            <Button variant="secondary" className="mt-3 w-full gap-2" disabled={locked} onClick={saveLinks}>
-              <Github className="h-4 w-4" />
-              Save GitHub Link
-            </Button>
-          </Card>
+          <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-ink-200/30 blur-2xl transition-transform group-hover:scale-150" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ink-100 text-ink-700">
+                    <Github className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-ink-900">GitHub Repository</h3>
+                    <p className="text-[11px] text-ink-500">Public repo URL</p>
+                  </div>
+                </div>
+                <Badge tone="danger" className="text-[9px]">Required</Badge>
+              </div>
+              {sub?.githubUrl ? (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" /> Saved
+                </div>
+              ) : null}
+              <Input className="mt-4" value={githubUrl} disabled={locked} onChange={(e) => setGithubUrl(e.target.value)} placeholder="https://github.com/org/repo" />
+              <Button variant="secondary" className="mt-3 w-full gap-2" disabled={locked} onClick={saveLinks}>
+                <Github className="h-4 w-4" /> Save Link
+              </Button>
+            </div>
+          </div>
         )}
 
         {/* Deployed URL */}
         {phaseRequirements.deployedUrlRequired && (
-          <Card className={locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed ? 'pointer-events-none opacity-60' : ''}>
-            <h2 className="flex items-center gap-2 font-display font-semibold text-ink-900">
-              <FileText className="h-4 w-4 text-emerald-500" />
-              Deployed URL
-              <Badge tone="danger" className="ml-auto text-[9px]">REQUIRED</Badge>
-            </h2>
-            <p className="mt-2 text-xs text-ink-500">Live deployment link (Vercel, Netlify, etc.)</p>
-            <Input
-              className="mt-4"
-              defaultValue={sub?.deployedUrl || ''}
-              disabled={locked}
-              onChange={(e) => {
-                // HIGH-10: Debounce API call — was firing on every keystroke
+          <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-500/10 blur-2xl transition-transform group-hover:scale-150" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-ink-900">Deployed URL</h3>
+                    <p className="text-[11px] text-ink-500">Live deployment link</p>
+                  </div>
+                </div>
+                <Badge tone="danger" className="text-[9px]">Required</Badge>
+              </div>
+              {sub?.deployedUrl ? (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" /> Saved
+                </div>
+              ) : null}
+              <Input className="mt-4" defaultValue={sub?.deployedUrl || ''} disabled={locked} placeholder="https://your-app.vercel.app" onChange={(e) => {
                 const val = e.target.value
                 clearTimeout(deployedUrlTimer.current)
                 deployedUrlTimer.current = setTimeout(() => {
@@ -476,39 +481,52 @@ export function SubmissionPage() {
                       .catch((err) => setStatus(err.message || 'Failed to save'))
                   }
                 }, 600)
-              }}
-              placeholder="https://your-app.vercel.app"
-            />
-          </Card>
+              }} />
+            </div>
+          </div>
         )}
       </div>
 
-      <Card>
-        <h2 className="font-display font-semibold text-ink-900">Finalize</h2>
-        <p className="mt-2 text-xs text-ink-600">
-          Finalizing marks your package submitted and locks edits server-side. The API re-validates phase and deadlines — do not
-          rely on the Razorpay-style popup alone for submissions.
+      {/* ━━ Finalize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="rounded-2xl border border-[rgb(var(--border))] bg-gradient-to-r from-brand-500/5 to-cyan-500/5 p-6">
+        <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink-900">
+          <Lock className="h-5 w-5 text-brand-600" /> Finalize Submission
+        </h2>
+        <p className="mt-2 text-sm text-ink-600">
+          Finalizing locks edits server-side. The API verifies phase & deadline before accepting.
         </p>
-        <Button className="mt-4 gap-2" variant="secondary" disabled={locked} onClick={finalize}>
-          <Lock className="h-4 w-4" />
-          Finalize submission
+        <Button className="mt-4 gap-2 shadow-lg shadow-brand-500/20" disabled={locked} onClick={finalize}>
+          <Lock className="h-4 w-4" /> Finalize & Lock
         </Button>
-      </Card>
+      </div>
 
-      <Card>
-        <h2 className="font-display font-semibold text-ink-900">Your Submissions</h2>
+      {/* ━━ Submitted Files Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6">
+        <h2 className="font-display text-lg font-bold text-ink-900">Your Submissions</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <SubmittedFile label="Presentation (PPT)" url={sub?.pptUrl} icon="ppt" />
           <SubmittedFile label="PDF Document" url={sub?.pdfUrl} icon="pdf" />
           <SubmittedFile label="Video Demo" url={sub?.videoUrl} icon="video" />
           <SubmittedFile label="GitHub Repo" url={sub?.githubUrl} icon="github" />
+          {sub?.deployedUrl && <SubmittedFile label="Deployed URL" url={sub?.deployedUrl} icon="github" />}
         </div>
-      </Card>
+      </div>
+
+      {/* Floating Toast */}
+      {status && (
+        <div className={`fixed bottom-6 right-6 z-50 max-w-sm animate-slide-up rounded-2xl border px-5 py-4 shadow-xl backdrop-blur-md ${
+          status.startsWith('Uploaded') || status.includes('saved') || status.includes('finalized')
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800'
+            : status.includes('locked') || status.includes('not configured') || status.includes('payment') || status.includes('deadline')
+              ? 'border-red-500/30 bg-red-50 text-red-800'
+              : 'border-amber-500/30 bg-amber-50 text-amber-800'
+        }`}>
+          <p className="text-sm font-medium">{status}</p>
+        </div>
+      )}
     </div>
   )
 }
-
-
 /** Clean file card — shows icon + label, opens in new tab on click */
 function SubmittedFile({ label, url, icon }) {
   const iconColors = {

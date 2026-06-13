@@ -1,4 +1,5 @@
 import { isRegistrationComplete } from '@/utils/teamRegistrationDisplay.js'
+import { isPhaseSubmissionOpen } from '@/utils/phaseStatus.js'
 
 /** Derives participant journey steps for UI (client-side only; gates enforced on API). */
 
@@ -64,7 +65,9 @@ export function buildParticipantSteps({
         const isEligible = isFirst || shortlistedPhases.includes(cp.id)
         const phaseSubmission = submission?.phases?.[cp.id]
         const isPhaseComplete = Boolean(phaseSubmission?.status === 'submitted' || phaseSubmission?.finalizedAt)
-        const isPhaseActive = cp.status === 'ACTIVE'
+        // Active = open for submissions (manual ACTIVE or date-driven UPCOMING).
+        // Shared helper keeps this consistent with backend + SubmissionPage.
+        const isPhaseActive = isPhaseSubmissionOpen(cp)
         const isPhaseCompleted = cp.status === 'COMPLETED' || cp.status === 'ARCHIVED'
 
         steps.push({

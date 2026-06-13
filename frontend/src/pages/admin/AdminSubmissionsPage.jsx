@@ -3,6 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { FileText, Github, Video, Presentation, ExternalLink, CheckCircle2, Clock, AlertTriangle } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { AdminDrawer } from '@/components/admin/AdminDrawer.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
@@ -44,8 +45,8 @@ export function AdminSubmissionsPage() {
   const globalFilter = useAdminFiltersStore((s) => s.submissionsGlobalFilter)
   const setGlobalFilter = useAdminFiltersStore((s) => s.setSubmissionsGlobalFilter)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [subRows, teamRows] = await Promise.all([
         api.adminSubmissions(),
@@ -54,14 +55,19 @@ export function AdminSubmissionsPage() {
       setSubs(Array.isArray(subRows) ? subRows : [])
       setTeams(Array.isArray(teamRows) ? teamRows : [])
     } catch {
-      setSubs([])
-      setTeams([])
+      if (!silent) {
+        setSubs([])
+        setTeams([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [api])
 
   useEffect(() => { void load() }, [load])
+
+  // Real-time: refresh in place when submissions or teams change.
+  useRealtimeRefresh(['submissions', 'teams'], () => load(true))
 
   // Merge team names into submissions
   const enrichedSubs = useMemo(() => {

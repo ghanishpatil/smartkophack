@@ -3,6 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { Star, ArrowRight, Layers } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { Card } from '@/components/ui/Card.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
@@ -24,8 +25,8 @@ export function AdminShortlistingPage() {
   const [globalFilter, setGlobalFilter] = useState('')
   const [msg, setMsg] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [teamRows, phaseData] = await Promise.all([
         api.adminTeams(),
@@ -40,14 +41,20 @@ export function AdminShortlistingPage() {
         setSelectedPhaseId(candidate.id)
       }
     } catch {
-      setTeams([])
-      setPhases([])
+      if (!silent) {
+        setTeams([])
+        setPhases([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [api, selectedPhaseId])
 
   useEffect(() => { void load() }, [load])
+
+  // Real-time: re-fetch enriched data when teams or events (phases) change.
+  // Silent so the table updates in place without flashing the skeleton.
+  useRealtimeRefresh(['teams', 'events'], () => load(true))
 
   const selectedIds = useMemo(() => Object.keys(rowSelection).filter((id) => rowSelection[id]), [rowSelection])
   const selectedPhase = phases.find((p) => p.id === selectedPhaseId)
@@ -58,7 +65,8 @@ export function AdminShortlistingPage() {
     setMsg('')
     try {
       const res = await api.shortlistForPhase(selectedPhaseId, selectedIds)
-      setMsg(`✓ ${res.shortlisted} team(s) shortlisted for ${selectedPhase?.name || 'phase'}`)
+      const skippedNote = res.skipped?.length ? ` (${res.skipped.length} skipped — team not found)` : ''
+      setMsg(`✓ ${res.shortlisted} team(s) shortlisted for ${selectedPhase?.name || 'phase'}${skippedNote}`)
       setRowSelection({})
       await load()
     } catch (e) {

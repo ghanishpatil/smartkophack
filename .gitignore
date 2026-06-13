@@ -13,6 +13,7 @@ node_modules/
 # Firebase credentials
 *firebase-adminsdk*.json
 smart-kop-firebase-adminsdk-fbsvc-f84be15fe2.json
+service-account.json
 
 # Build outputs
 dist/

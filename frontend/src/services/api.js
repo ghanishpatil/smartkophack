@@ -151,6 +151,8 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}`, { method: 'PATCH', body }),
     deleteAdminTeamRegistration: (teamId) =>
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}/registration`, { method: 'DELETE' }),
+    deleteAdminTeam: (teamId) =>
+      authReq(`/api/admin/teams/${encodeURIComponent(teamId)}`, { method: 'DELETE' }),
     // BUG FIX #6: Cleanup orphaned member registrations
     cleanupOrphanedRegistrations: (teamId) =>
       authReq(`/api/registrations/team/${encodeURIComponent(teamId)}/cleanup`, { method: 'DELETE' }),

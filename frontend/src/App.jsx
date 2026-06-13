@@ -95,6 +95,9 @@ const AdminReportsPage = lazy(() =>
 const AdminAccessPage = lazy(() =>
   import('@/pages/admin/AdminAccessPage.jsx').then((m) => ({ default: m.AdminAccessPage })),
 )
+const AdminUsersPage = lazy(() =>
+  import('@/pages/admin/AdminUsersPage.jsx').then((m) => ({ default: m.AdminUsersPage })),
+)
 const AdminAuditPage = lazy(() =>
   import('@/pages/admin/AdminAuditPage.jsx').then((m) => ({ default: m.AdminAuditPage })),
 )
@@ -316,6 +319,7 @@ export default function App() {
             <Route path="/admin/registrations" element={<AdminTeamRegistrationsPage />} />
             <Route path="/admin/registrations-old" element={<AdminRegistrationsPage />} />
             <Route path="/admin/teams" element={<AdminTeamsPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/payments" element={<AdminPaymentsPage />} />
             <Route path="/admin/problems" element={<AdminProblemsPage />} />
             <Route path="/admin/submissions" element={<AdminSubmissionsPage />} />

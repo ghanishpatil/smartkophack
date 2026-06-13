@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Button } from '@/components/ui/Button.jsx'
@@ -19,8 +20,8 @@ export function AdminPaymentsPage() {
   const globalFilter = useAdminFiltersStore((s) => s.paymentsGlobalFilter)
   const setGlobalFilter = useAdminFiltersStore((s) => s.setPaymentsGlobalFilter)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const rows = await api.adminTeams()
       setTeams(
@@ -35,15 +36,19 @@ export function AdminPaymentsPage() {
           : [],
       )
     } catch {
-      setTeams([])
+      if (!silent) setTeams([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [api])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Real-time: payments are written to the team doc, so watch teams and refresh
+  // silently (in place) whenever a payment/registration status changes.
+  useRealtimeRefresh('teams', () => load(true))
 
   function exportCsv() {
     downloadCsv(

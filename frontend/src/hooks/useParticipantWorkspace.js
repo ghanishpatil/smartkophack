@@ -89,15 +89,7 @@ export function useParticipantWorkspace() {
 
   const registrationBlockedReason = useMemo(() => {
     if (!eventCfg) return ''
-    
-    // DEBUG: Log the actual values
-    console.log('[useParticipantWorkspace] eventCfg:', {
-      registrationOpen: eventCfg.registrationOpen,
-      lifecyclePhase: eventCfg.lifecyclePhase,
-      hasPhases: eventCfg.competitionPhases?.length > 0,
-      activePhase: eventCfg.activePhase
-    })
-    
+
     // Multi-phase system: registrationOpen flag is auto-managed by phase transitions
     // No need to check legacy lifecyclePhase field
     if (eventCfg.registrationOpen === false) return 'Registration is closed.'

@@ -378,8 +378,8 @@ function EvaluationInsights({ evaluations, usersMap = new Map(), teamsMap = new 
     bins[bin] = (bins[bin] || 0) + 1
   }
   const histogramData = Object.entries(bins)
-    .map(([bin, count]) => ({ range: `${bin}–${Math.min(100, Number(bin) + 9)}%`, count }))
-    .sort((a, b) => Number(a.range) - Number(b.range))
+    .map(([bin, count]) => ({ bin: Number(bin), range: `${bin}–${Math.min(100, Number(bin) + 9)}%`, count }))
+    .sort((a, b) => a.bin - b.bin)
 
   const avgNorm = allNormalized.length > 0
     ? Math.round(allNormalized.reduce((a, b) => a + b, 0) / allNormalized.length * 10) / 10

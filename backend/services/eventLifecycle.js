@@ -35,17 +35,16 @@ function registrationTimestampsOk(eventDoc, now) {
   if (opens != null && opens > now) return false
   
   // Check for closing timestamp
-  // Priority: Phase 1 deadline (multi-phase mode) > legacy registrationClosesAt
-  const phases = Array.isArray(eventDoc.competitionPhases) ? eventDoc.competitionPhases : []
-  const phase1 = phases.find(p => p.order === 1)
+  // Priority: explicit registrationClosesAt > Phase 1 deadline (fallback only)
+  let closes = tsMs(eventDoc.registrationClosesAt)
   
-  let closes = null
-  if (phase1?.deadline) {
-    // Multi-phase mode: use Phase 1 deadline
-    closes = new Date(phase1.deadline).getTime()
-  } else {
-    // Legacy mode: use registrationClosesAt
-    closes = tsMs(eventDoc.registrationClosesAt)
+  if (closes == null) {
+    // Fallback: use Phase 1 deadline only if no explicit close date is set
+    const phases = Array.isArray(eventDoc.competitionPhases) ? eventDoc.competitionPhases : []
+    const phase1 = phases.find(p => p.order === 1)
+    if (phase1?.deadline) {
+      closes = new Date(phase1.deadline).getTime()
+    }
   }
   
   if (closes != null && closes < now) return false

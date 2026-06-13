@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Target, Bell, Settings, Menu, X, ChevronLeft, ChevronRight,
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
-  MessageCircle, BookOpen, Building2,
+  MessageCircle, BookOpen, Building2, UserCog,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/context/AuthContext.jsx'
@@ -43,6 +43,7 @@ const nav = {
     { group: 'Management' },
     { to: '/admin/registrations', label: 'Registrations', icon: UserPlus },
     { to: '/admin/teams', label: 'Teams', icon: Users },
+    { to: '/admin/users', label: 'Users', icon: UserCog },
     { to: '/admin/payments', label: 'Payments', icon: CreditCard },
     { to: '/admin/problems', label: 'Problem Statements', icon: Layers },
     { to: '/admin/phases', label: 'Competition Phases', icon: Layers },

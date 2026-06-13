@@ -43,7 +43,13 @@ export function normalizeCriteriaList(raw) {
   return out
 }
 
-export function resolveEvaluationCriteria(merged) {
+export function resolveEvaluationCriteria(merged, phase = null) {
+  // Per-phase criteria take priority (if the phase defines its own rubric)
+  if (phase && Array.isArray(phase.evaluationCriteria) && phase.evaluationCriteria.length > 0) {
+    const phaseNormalized = normalizeCriteriaList(phase.evaluationCriteria)
+    if (phaseNormalized.length > 0) return phaseNormalized
+  }
+  // Fall back to event-level criteria
   const raw = merged?.evaluationCriteria
   const normalized = normalizeCriteriaList(Array.isArray(raw) ? raw : [])
   if (normalized.length > 0) return normalized

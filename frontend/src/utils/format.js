@@ -4,6 +4,8 @@ export function formatDate(ts) {
   if (typeof ts.toDate === 'function') d = ts.toDate()
   else if (ts instanceof Date) d = ts
   else if (typeof ts.seconds === 'number') d = new Date(ts.seconds * 1000)
+  else if (typeof ts._seconds === 'number') d = new Date(ts._seconds * 1000)
+  else if (typeof ts === 'number') d = new Date(ts)
   else if (typeof ts === 'string') d = new Date(ts)
   else return ''
   
