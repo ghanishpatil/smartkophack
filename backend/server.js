@@ -112,11 +112,17 @@ app.use(
         cb(null, false)
         return
       }
-      const allowed = corsOrigins.includes(origin)
+      // Normalize: strip trailing slashes and compare lowercase to handle
+      // edge cases with env var formatting from hosting platforms.
+      const normalizedOrigin = origin.replace(/\/+$/, '').toLowerCase()
+      const allowed = corsOrigins.some(
+        (o) => o.replace(/\/+$/, '').toLowerCase() === normalizedOrigin,
+      )
       if (!allowed) {
-        console.warn(`[CORS] Blocked origin: "${origin}" | Allowed: ${JSON.stringify(corsOrigins)}`)
+        console.warn(`[CORS] Blocked origin: "${origin}" (normalized: "${normalizedOrigin}") | Allowed: ${JSON.stringify(corsOrigins)}`)
       }
-      cb(null, allowed)
+      // Reflect the exact origin string when allowed (required with credentials: true)
+      cb(null, allowed ? origin : false)
     },
     credentials: true,
   }),
