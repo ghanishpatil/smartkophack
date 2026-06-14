@@ -75,9 +75,12 @@ if (isProd) {
 }
 
 const corsOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((s) => s.trim())
+  .split(/[,\r\n]+/)
+  .map((s) => s.trim().replace(/[\r\n]+/g, ''))
   .filter(Boolean)
+
+// Log parsed CORS origins at startup for debugging
+console.log(`[skh-backend] CORS origins (${corsOrigins.length}):`, corsOrigins)
 
 if (isProd && corsOrigins.length === 0) {
   console.error(
@@ -109,7 +112,11 @@ app.use(
         cb(null, false)
         return
       }
-      cb(null, corsOrigins.includes(origin))
+      const allowed = corsOrigins.includes(origin)
+      if (!allowed) {
+        console.warn(`[CORS] Blocked origin: "${origin}" | Allowed: ${JSON.stringify(corsOrigins)}`)
+      }
+      cb(null, allowed)
     },
     credentials: true,
   }),
