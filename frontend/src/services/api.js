@@ -5,6 +5,7 @@ const base = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 // components fetch the same data simultaneously.
 const _cache = new Map()
 const CACHE_TTL = 30_000 // 30 seconds
+const CACHE_MAX_SIZE = 50 // max entries to prevent memory leaks in long-lived tabs
 
 function getCached(key) {
   const entry = _cache.get(key)
@@ -14,6 +15,11 @@ function getCached(key) {
 }
 
 function setCache(key, data) {
+  // Evict oldest entry if over capacity
+  if (_cache.size >= CACHE_MAX_SIZE) {
+    const oldest = _cache.keys().next().value
+    _cache.delete(oldest)
+  }
   _cache.set(key, { data, at: Date.now() })
 }
 

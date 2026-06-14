@@ -1,6 +1,7 @@
 import express from 'express'
 import { getDb, getBucket } from '../services/firebaseAdmin.js'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
+import { cachedFetch, cacheInvalidate, CACHE_NS, CACHE_TTL } from '../services/responseCache.js'
 import multer from 'multer'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
@@ -35,22 +36,23 @@ const upload = multer({
 
 /**
  * @route   GET /api/sponsors
- * @desc    Get all sponsors (public)
+ * @desc    Get all sponsors (public, cached)
  * @access  Public
  */
 router.get('/', async (req, res, next) => {
   try {
-    const db = getDb()
-    const snapshot = await db.collection('sponsors')
-      .orderBy('order', 'asc')
-      .get()
-
-    const sponsors = []
-    snapshot.forEach(doc => {
-      sponsors.push({ id: doc.id, ...doc.data() })
+    const data = await cachedFetch(CACHE_NS.SPONSORS, '_all', CACHE_TTL.SPONSORS, async () => {
+      const db = getDb()
+      const snapshot = await db.collection('sponsors')
+        .orderBy('order', 'asc')
+        .get()
+      const sponsors = []
+      snapshot.forEach(doc => {
+        sponsors.push({ id: doc.id, ...doc.data() })
+      })
+      return sponsors
     })
-
-    res.json(sponsors)
+    res.json(data)
   } catch (error) {
     next(error)
   }
@@ -155,6 +157,7 @@ router.post(
       const db = getDb()
       const docRef = await db.collection('sponsors').add(sponsorData)
 
+      cacheInvalidate(CACHE_NS.SPONSORS)
       res.status(201).json({
         id: docRef.id,
         ...sponsorData,
@@ -262,6 +265,7 @@ router.put(
       await sponsorRef.update(updateData)
 
       const updated = await sponsorRef.get()
+      cacheInvalidate(CACHE_NS.SPONSORS)
       res.json({ id: updated.id, ...updated.data() })
     } catch (error) {
       next(error)
@@ -310,6 +314,7 @@ router.delete(
       // Delete sponsor document
       await sponsorRef.delete()
 
+      cacheInvalidate(CACHE_NS.SPONSORS)
       res.json({ message: 'Sponsor deleted successfully' })
     } catch (error) {
       next(error)

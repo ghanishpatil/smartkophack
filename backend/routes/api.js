@@ -15,6 +15,12 @@ import {
 import { evaluationPhaseAllowsJudge, isValidLifecyclePhase } from '../services/eventLifecycle.js'
 import { getRazorpayPublicKeyId, isRazorpayConfigured } from '../services/razorpay.js'
 import {
+  cachedFetch,
+  cacheInvalidate,
+  CACHE_NS,
+  CACHE_TTL,
+} from '../services/responseCache.js'
+import {
   normalizeJudgeScores,
   resolveEvaluationCriteria,
   defaultScoresFromCriteria,
@@ -80,10 +86,10 @@ r.get('/health', (_req, res) => {
 })
 
 /**
- * Public diagnostic endpoint — shows email + env config status WITHOUT exposing secrets.
- * Hit GET /api/health/email from production to instantly see what's misconfigured.
+ * Diagnostic endpoint — shows email + env config status WITHOUT exposing secrets.
+ * Gated behind admin auth to prevent leaking deployment details.
  */
-r.get('/health/email', (_req, res) => {
+r.get('/health/email', verifyFirebaseToken, loadUserRole, requireRole('admin'), (_req, res) => {
   const brevoKey = process.env.BREVO_API_KEY || ''
   const fromAddr = process.env.EMAIL_FROM_ADDRESS || ''
   const frontendUrl = process.env.FRONTEND_URL || ''
@@ -145,7 +151,10 @@ r.get('/health/email', (_req, res) => {
 
 r.get('/events', async (_req, res, next) => {
   try {
-    res.json(await listPublicEvents(80))
+    const data = await cachedFetch(CACHE_NS.PUBLIC_EVENTS, 'list', CACHE_TTL.PUBLIC_EVENTS, () =>
+      listPublicEvents(80),
+    )
+    res.json(data)
   } catch (e) {
     next(e)
   }
@@ -177,10 +186,14 @@ r.get('/timeline', async (req, res, next) => {
     const db = getDb()
     const activeEvent = await getActiveEvent()
     if (!activeEvent) return res.json({ phases: [] })
-    const eventSnap = await db.doc(`events/${activeEvent.id}`).get()
-    const data = eventSnap.exists ? eventSnap.data() : {}
-    const timelinePhases = Array.isArray(data.timelinePhases) ? data.timelinePhases : []
-    res.json({ phases: timelinePhases, eventId: activeEvent.id })
+
+    const data = await cachedFetch(CACHE_NS.TIMELINE, activeEvent.id, CACHE_TTL.TIMELINE, async () => {
+      const eventSnap = await db.doc(`events/${activeEvent.id}`).get()
+      const evData = eventSnap.exists ? eventSnap.data() : {}
+      const timelinePhases = Array.isArray(evData.timelinePhases) ? evData.timelinePhases : []
+      return { phases: timelinePhases, eventId: activeEvent.id }
+    })
+    res.json(data)
   } catch (e) {
     next(e)
   }
@@ -193,30 +206,32 @@ r.get('/problem-statements', async (req, res, next) => {
     const activeEvent = await getActiveEvent()
     const eventId = activeEvent?.id
     if (!eventId) return res.json([])
-    let snap
-    if (eventId) {
-      try {
-        snap = await db.collection('problemStatements').where('eventId', '==', eventId).orderBy('order', 'asc').get()
-      } catch {
-        snap = await db.collection('problemStatements').where('eventId', '==', eventId).get()
+
+    const data = await cachedFetch(CACHE_NS.PROBLEM_STATEMENTS, eventId, CACHE_TTL.PROBLEM_STATEMENTS, async () => {
+      let snap
+      if (eventId) {
+        try {
+          snap = await db.collection('problemStatements').where('eventId', '==', eventId).orderBy('order', 'asc').get()
+        } catch {
+          snap = await db.collection('problemStatements').where('eventId', '==', eventId).get()
+        }
+      } else {
+        try {
+          snap = await db.collection('problemStatements').orderBy('order', 'asc').get()
+        } catch {
+          snap = await db.collection('problemStatements').get()
+        }
       }
-    } else {
-      try {
-        snap = await db.collection('problemStatements').orderBy('order', 'asc').get()
-      } catch {
-        snap = await db.collection('problemStatements').get()
-      }
-    }
-    res.json(
-      snap.docs.map((d) => {
+      return snap.docs.map((d) => {
         const data = d.data()
         return {
           id: d.id,
           ...data,
           selectionCount: typeof data.selectionCount === 'number' ? data.selectionCount : 0,
         }
-      }),
-    )
+      })
+    })
+    res.json(data)
   } catch (e) {
     next(e)
   }
@@ -231,76 +246,75 @@ r.get('/results', async (req, res, next) => {
     if (!merged.resultsPublished) return res.json({ published: false, teams: [] })
 
     const eventId = merged.eventId
-    let teamsSnap
-    if (eventId) {
-      teamsSnap = await db.collection('teams').where('eventId', '==', eventId).limit(500).get()
-    } else {
-      teamsSnap = await db.collection('teams').limit(500).get()
-    }
-    const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-    // Get all submitted evaluations — HIGH-08: scoped to eventId to prevent
-    // cross-event score bleed. Previously fetched all evaluations globally.
-    let evalSnap
-    if (eventId) {
-      evalSnap = await db.collection('evaluations')
-        .where('eventId', '==', eventId)
-        .where('evaluationStatus', '==', 'submitted')
-        .limit(2000)
-        .get()
-    } else {
-      evalSnap = await db.collection('evaluations')
-        .where('evaluationStatus', '==', 'submitted')
-        .limit(2000)
-        .get()
-    }
-    const evaluations = evalSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    // Get problem statements for labels
-    let psSnap
-    if (eventId) {
-      psSnap = await db.collection('problemStatements').where('eventId', '==', eventId).limit(200).get()
-    } else {
-      psSnap = await db.collection('problemStatements').limit(200).get()
-    }
-    const psMap = {}
-    psSnap.docs.forEach((d) => { psMap[d.id] = d.data().title || d.id })
-
-    // Compute average scores per team
-    const teamScores = []
-    for (const team of teams) {
-      if (!team.problemStatementId) continue
-      const teamEvals = evaluations.filter((e) => e.teamId === team.id)
-      if (teamEvals.length === 0) continue
-
-      let totalScore = 0
-      let scoreCount = 0
-      for (const ev of teamEvals) {
-        if (ev.scores && typeof ev.scores === 'object') {
-          const vals = Object.values(ev.scores).filter((v) => typeof v === 'number')
-          const sum = vals.reduce((a, b) => a + b, 0)
-          totalScore += sum
-          scoreCount += 1
-        }
+    const data = await cachedFetch(CACHE_NS.RESULTS, eventId || '_global', CACHE_TTL.RESULTS, async () => {
+      let teamsSnap
+      if (eventId) {
+        teamsSnap = await db.collection('teams').where('eventId', '==', eventId).limit(500).get()
+      } else {
+        teamsSnap = await db.collection('teams').limit(500).get()
       }
-      const avgScore = scoreCount > 0 ? Math.round((totalScore / scoreCount) * 100) / 100 : 0
-      teamScores.push({
-        teamId: team.id,
-        teamName: team.name || 'Unnamed',
-        problemStatement: psMap[team.problemStatementId] || team.problemStatementId,
-        problemStatementId: team.problemStatementId,
-        avgScore,
-        evalCount: teamEvals.length,
-        shortlisted: Boolean(team.shortlisted),
-      })
-    }
+      const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-    // Sort by average score descending
-    teamScores.sort((a, b) => b.avgScore - a.avgScore)
+      let evalSnap
+      if (eventId) {
+        evalSnap = await db.collection('evaluations')
+          .where('eventId', '==', eventId)
+          .where('evaluationStatus', '==', 'submitted')
+          .limit(2000)
+          .get()
+      } else {
+        evalSnap = await db.collection('evaluations')
+          .where('evaluationStatus', '==', 'submitted')
+          .limit(2000)
+          .get()
+      }
+      const evaluations = evalSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-    // Assign ranks
-    teamScores.forEach((t, i) => { t.rank = i + 1 })
+      let psSnap
+      if (eventId) {
+        psSnap = await db.collection('problemStatements').where('eventId', '==', eventId).limit(200).get()
+      } else {
+        psSnap = await db.collection('problemStatements').limit(200).get()
+      }
+      const psMap = {}
+      psSnap.docs.forEach((d) => { psMap[d.id] = d.data().title || d.id })
 
-    res.json({ published: true, teams: teamScores })
+      const teamScores = []
+      for (const team of teams) {
+        if (!team.problemStatementId) continue
+        const teamEvals = evaluations.filter((e) => e.teamId === team.id)
+        if (teamEvals.length === 0) continue
+
+        let totalScore = 0
+        let scoreCount = 0
+        for (const ev of teamEvals) {
+          if (ev.scores && typeof ev.scores === 'object') {
+            const vals = Object.values(ev.scores).filter((v) => typeof v === 'number')
+            const sum = vals.reduce((a, b) => a + b, 0)
+            totalScore += sum
+            scoreCount += 1
+          }
+        }
+        const avgScore = scoreCount > 0 ? Math.round((totalScore / scoreCount) * 100) / 100 : 0
+        teamScores.push({
+          teamId: team.id,
+          teamName: team.name || 'Unnamed',
+          problemStatement: psMap[team.problemStatementId] || team.problemStatementId,
+          problemStatementId: team.problemStatementId,
+          avgScore,
+          evalCount: teamEvals.length,
+          shortlisted: Boolean(team.shortlisted),
+        })
+      }
+
+      teamScores.sort((a, b) => b.avgScore - a.avgScore)
+      teamScores.forEach((t, i) => { t.rank = i + 1 })
+
+      return { published: true, teams: teamScores }
+    })
+
+    res.json(data)
   } catch (e) {
     next(e)
   }
@@ -754,10 +768,11 @@ export function adminRouter() {
       const rawAll = req.query.all === '1'
       const eventId = rawAll ? '' : typeof req.query.eventId === 'string' ? req.query.eventId.trim() : req.eventId
 
-      let teamsQ = db().collection('teams').limit(800)
-      if (eventId) teamsQ = teamsQ.where('eventId', '==', eventId)
-      const teamsSnap = await teamsQ.get()
-      const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const statsData = await cachedFetch(CACHE_NS.ADMIN_STATS, eventId || '_all', CACHE_TTL.ADMIN_STATS, async () => {
+        let teamsQ = db().collection('teams').limit(800)
+        if (eventId) teamsQ = teamsQ.where('eventId', '==', eventId)
+        const teamsSnap = await teamsQ.get()
+        const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
       const startToday = new Date()
       startToday.setHours(0, 0, 0, 0)
@@ -871,7 +886,7 @@ export function adminRouter() {
           ? Math.round((evaluationsSubmittedOnEligibleTeams / eligibleEvalCount) * 100)
           : null
 
-      res.json({
+      return {
         eventId: eventId || null,
         teamsTotal: teams.length,
         teamsRegistered: registered,
@@ -905,7 +920,10 @@ export function adminRouter() {
           submissionsFinalized,
           submissionsEligibleTeams,
         },
-      })
+      }
+      }) // end cachedFetch
+
+      res.json(statsData)
     } catch (e) {
       next(e)
     }
@@ -1055,47 +1073,81 @@ export function adminRouter() {
       const memberIds = Array.isArray(team.memberIds) ? team.memberIds : []
       const oldPid = team.problemStatementId || ''
 
-      // 1. Decrement the selected problem statement's count.
+      // 1. Decrement the selected problem statement's count atomically.
       if (oldPid) {
         try {
-          const psRef = db().doc(`problemStatements/${oldPid}`)
-          const psSnap = await psRef.get()
-          if (psSnap.exists) {
-            const c = psSnap.data().selectionCount || 0
-            await psRef.update({
-              selectionCount: Math.max(0, c - 1),
-              updatedAt: FieldValue.serverTimestamp(),
-            })
-          }
-        } catch { /* ignore */ }
+          await db().doc(`problemStatements/${oldPid}`).update({
+            selectionCount: FieldValue.increment(-1),
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+        } catch { /* ignore — PS may already be deleted */ }
       }
 
-      // 2. Detach every member user from the team.
-      for (const uid of memberIds) {
-        try {
-          await db().doc(`users/${uid}`).set(
-            { teamId: '', updatedAt: FieldValue.serverTimestamp() },
-            { merge: true },
-          )
-        } catch { /* ignore */ }
+      // 2. Detach every member user from the team (batched).
+      {
+        const batch = db().batch()
+        for (const uid of memberIds) {
+          batch.set(db().doc(`users/${uid}`), { teamId: '', updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+        }
+        try { await batch.commit() } catch { /* ignore */ }
       }
 
       // 3. Delete the submission doc (id === teamId).
       try { await db().doc(`submissions/${teamId}`).delete() } catch { /* ignore */ }
 
-      // 4. Delete evaluations for this team.
+      // 4. Delete evaluations for this team (batched).
       try {
         const evalSnap = await db().collection('evaluations').where('teamId', '==', teamId).limit(500).get()
-        for (const d of evalSnap.docs) await d.ref.delete()
+        if (!evalSnap.empty) {
+          const batch = db().batch()
+          evalSnap.docs.forEach((d) => batch.delete(d.ref))
+          await batch.commit()
+        }
       } catch { /* ignore */ }
 
-      // 5. Delete member registrations for this team.
+      // 5. Delete member registrations for this team (batched).
       try {
         const regSnap = await db().collection('memberRegistrations').where('teamId', '==', teamId).limit(500).get()
-        for (const d of regSnap.docs) await d.ref.delete()
+        if (!regSnap.empty) {
+          const batch = db().batch()
+          regSnap.docs.forEach((d) => batch.delete(d.ref))
+          await batch.commit()
+        }
       } catch { /* ignore */ }
 
-      // 6. Delete the team doc itself.
+      // 6. Delete team chat metadata + messages subcollection.
+      try {
+        const chatMsgsSnap = await db().collection(`chats/${teamId}/messages`).limit(500).get()
+        if (!chatMsgsSnap.empty) {
+          const batch = db().batch()
+          chatMsgsSnap.docs.forEach((d) => batch.delete(d.ref))
+          await batch.commit()
+        }
+        await db().doc(`chats/${teamId}`).delete()
+      } catch { /* ignore */ }
+
+      // 7. Delete mentor chat metadata + messages subcollection.
+      try {
+        const mentorMsgsSnap = await db().collection(`mentorChats/${teamId}/messages`).limit(500).get()
+        if (!mentorMsgsSnap.empty) {
+          const batch = db().batch()
+          mentorMsgsSnap.docs.forEach((d) => batch.delete(d.ref))
+          await batch.commit()
+        }
+        await db().doc(`mentorChats/${teamId}`).delete()
+      } catch { /* ignore */ }
+
+      // 8. Delete mentor notes for this team (batched).
+      try {
+        const notesSnap = await db().collection('mentorNotes').where('teamId', '==', teamId).limit(500).get()
+        if (!notesSnap.empty) {
+          const batch = db().batch()
+          notesSnap.docs.forEach((d) => batch.delete(d.ref))
+          await batch.commit()
+        }
+      } catch { /* ignore */ }
+
+      // 9. Delete the team doc itself.
       await teamRef.delete()
 
       await appendAuditLog({
@@ -1238,6 +1290,8 @@ export function adminRouter() {
       if (maxTeams !== undefined) payload.maxTeams = maxTeams
 
       await ref.set(payload)
+      // Invalidate problem statements cache so public page gets fresh data
+      cacheInvalidate(CACHE_NS.PROBLEM_STATEMENTS)
       await appendAuditLog({
         actorUid: req.user.uid,
         action: 'problem_statement.create',
@@ -1443,6 +1497,9 @@ export function adminRouter() {
         metadata: { total: items.length, success: results.success, failed: results.failed, skipped: results.skipped },
       })
 
+      // Invalidate problem statements cache after bulk import
+      cacheInvalidate(CACHE_NS.PROBLEM_STATEMENTS)
+
       res.json({ ok: true, ...results, eventId })
     } catch (e) {
       next(e)
@@ -1480,6 +1537,8 @@ export function adminRouter() {
       if (typeof body.description === 'string') patch.description = body.description.trim().slice(0, 20000)
       if (typeof body.order === 'number') patch.order = body.order
       await ref.set(patch, { merge: true })
+      // Invalidate problem statements cache
+      cacheInvalidate(CACHE_NS.PROBLEM_STATEMENTS)
       await appendAuditLog({
         actorUid: req.user.uid,
         action: 'problem_statement.patch',
@@ -1540,6 +1599,9 @@ export function adminRouter() {
       }
       if (ops > 0) chunks.push(batch)
       for (const b of chunks) await b.commit()
+
+      // Invalidate problem statements cache
+      cacheInvalidate(CACHE_NS.PROBLEM_STATEMENTS)
 
       await appendAuditLog({
         actorUid: req.user.uid,
@@ -2403,6 +2465,8 @@ export function adminRouter() {
 
       // HIGH-03: Invalidate event cache — timelinePhases changed
       invalidateEventCache()
+      // Invalidate timeline cache so public page gets fresh data
+      cacheInvalidate(CACHE_NS.TIMELINE)
       res.json({ ok: true, count: cleaned.length })
     } catch (e) {
       next(e)

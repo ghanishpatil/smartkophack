@@ -28,6 +28,7 @@ import {
 } from '../services/teamRegistration.js'
 import { notifyTeamMemberJoined, notifyRegistrationComplete, notifySubmissionFinalized } from '../services/notificationService.js'
 import { logActivity, actorFromReq, ACTIVITY_TYPE } from '../services/activityLog.js'
+import { getActivePhase, canTeamSubmit } from '../services/competitionPhases.js'
 
 // LOW-02: Use crypto.randomInt instead of Math.random() for cryptographically
 // secure invite codes. Math.random() is predictable; randomInt is not.
@@ -66,6 +67,7 @@ r.post('/lookup-invite', async (req, res, next) => {
     const db = getDb()
     const code = String(req.body?.inviteCode || '')
       .trim()
+      .slice(0, 20)
       .toUpperCase()
     if (code.length < 4) return res.status(400).json({ error: 'Invalid code' })
     const eventId = req.eventId
@@ -105,6 +107,7 @@ r.post('/create-team', async (req, res, next) => {
 
     const name = String(req.body?.name || 'Untitled team').trim().slice(0, 80)
     let inviteCode = randomInviteCode()
+    let inviteCodeResolved = false
     for (let attempt = 0; attempt < 8; attempt++) {
       const clash = await db
         .collection('teams')
@@ -112,8 +115,11 @@ r.post('/create-team', async (req, res, next) => {
         .where('eventId', '==', eventId)
         .limit(1)
         .get()
-      if (clash.empty) break
+      if (clash.empty) { inviteCodeResolved = true; break }
       inviteCode = randomInviteCode()
+    }
+    if (!inviteCodeResolved) {
+      return res.status(503).json({ error: 'Unable to generate a unique invite code. Please try again.' })
     }
 
     const tid = db.collection('teams').doc().id
@@ -152,6 +158,7 @@ r.post('/join-team', async (req, res, next) => {
 
     const code = String(req.body?.inviteCode || '')
       .trim()
+      .slice(0, 20)
       .toUpperCase()
     const eventId = (await getActiveEvent())?.id || req.eventId
     if (!eventId) {
@@ -563,7 +570,6 @@ r.post('/submission-metadata', async (req, res, next) => {
     }
 
     // Phase gating (only when phases configured) — uses new state machine
-    const { getActivePhase, canTeamSubmit } = await import('../services/competitionPhases.js')
     const activePhase = getActivePhase(merged)
 
     if (activePhase) {
@@ -655,7 +661,6 @@ r.post('/finalize-submission', async (req, res, next) => {
     // Previously this endpoint only called submissionEditingAllowed() which
     // has no phase awareness — a team could finalize even when the active
     // phase deadline had passed or they weren't shortlisted.
-    const { getActivePhase, canTeamSubmit } = await import('../services/competitionPhases.js')
     const activePhaseForFinalize = getActivePhase(merged)
 
     if (activePhaseForFinalize) {
@@ -736,7 +741,6 @@ r.get('/submission-versions', async (req, res, next) => {
     // ALL phases — if Phase 1 was submitted and Phase 2 is now active, the
     // mirror shows Phase 1 data, causing the form to pre-populate with stale URLs.
     const merged = await getActiveEventConfig()
-    const { getActivePhase } = await import('../services/competitionPhases.js')
     const currentActivePhase = getActivePhase(merged)
     const currentPhaseId = currentActivePhase?.id || sub.currentPhaseId || null
     const phaseData = currentPhaseId && sub.phases?.[currentPhaseId]
@@ -945,13 +949,12 @@ r.post('/leave-team', async (req, res, next) => {
       const chatRef = db.doc(`chats/${teamId}`)
       const chatSnap = await chatRef.get()
       if (chatSnap.exists) batch.delete(chatRef)
-      // Decrement problem statement selection count
+      // Decrement problem statement selection count atomically
       if (team.problemStatementId) {
         const psRef = db.doc(`problemStatements/${team.problemStatementId}`)
         const psSnap = await psRef.get()
         if (psSnap.exists) {
-          const c = psSnap.data().selectionCount || 0
-          batch.update(psRef, { selectionCount: Math.max(0, c - 1), updatedAt: FieldValue.serverTimestamp() })
+          batch.update(psRef, { selectionCount: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() })
         }
       }
       await batch.commit()

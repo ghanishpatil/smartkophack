@@ -1,6 +1,7 @@
 import express from 'express'
 import { getDb, getBucket } from '../services/firebaseAdmin.js'
 import { verifyFirebaseToken, loadUserRole, requireRole } from '../middleware/auth.js'
+import { cachedFetch, cacheInvalidate, CACHE_NS, CACHE_TTL } from '../services/responseCache.js'
 import multer from 'multer'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
@@ -35,22 +36,23 @@ const upload = multer({
 
 /**
  * @route   GET /api/patrons
- * @desc    Get all patrons (public)
+ * @desc    Get all patrons (public, cached)
  * @access  Public
  */
 router.get('/', async (req, res, next) => {
   try {
-    const db = getDb()
-    const snapshot = await db.collection('patrons')
-      .orderBy('order', 'asc')
-      .get()
-
-    const patrons = []
-    snapshot.forEach(doc => {
-      patrons.push({ id: doc.id, ...doc.data() })
+    const data = await cachedFetch(CACHE_NS.PATRONS, '_all', CACHE_TTL.PATRONS, async () => {
+      const db = getDb()
+      const snapshot = await db.collection('patrons')
+        .orderBy('order', 'asc')
+        .get()
+      const patrons = []
+      snapshot.forEach(doc => {
+        patrons.push({ id: doc.id, ...doc.data() })
+      })
+      return patrons
     })
-
-    res.json(patrons)
+    res.json(data)
   } catch (error) {
     next(error)
   }
@@ -122,6 +124,7 @@ router.post(
 
       const docRef = await getDb().collection('patrons').add(patronData)
 
+      cacheInvalidate(CACHE_NS.PATRONS)
       res.status(201).json({
         id: docRef.id,
         ...patronData,
@@ -217,6 +220,7 @@ router.put(
       await patronRef.update(updateData)
 
       const updated = await patronRef.get()
+      cacheInvalidate(CACHE_NS.PATRONS)
       res.json({ id: updated.id, ...updated.data() })
     } catch (error) {
       next(error)
@@ -264,6 +268,7 @@ router.delete(
       // Delete patron document
       await patronRef.delete()
 
+      cacheInvalidate(CACHE_NS.PATRONS)
       res.json({ message: 'Patron deleted successfully' })
     } catch (error) {
       next(error)

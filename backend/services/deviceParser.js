@@ -45,10 +45,10 @@ export function parseUserAgent(ua = '') {
 
   // Device type
   let deviceType = 'Desktop'
-  if (s.includes('mobile') || s.includes('iphone') || s.includes('android') && !s.includes('tablet')) {
-    deviceType = 'Mobile'
-  } else if (s.includes('tablet') || s.includes('ipad')) {
+  if (s.includes('tablet') || s.includes('ipad')) {
     deviceType = 'Tablet'
+  } else if (s.includes('mobile') || s.includes('iphone') || (s.includes('android') && !s.includes('tablet'))) {
+    deviceType = 'Mobile'
   } else if (isBot) {
     deviceType = 'Bot'
   }

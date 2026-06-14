@@ -3,12 +3,28 @@
  * Rate limit: 45 requests/minute on the free tier.
  * Results are cached in-memory for 1 hour to avoid hammering the API.
  *
+ * SECURITY NOTE: ip-api.com free tier only supports HTTP (not HTTPS).
+ * The user's IP address is sent over an unencrypted connection. This is
+ * acceptable for non-PII enrichment in security logs, but should NOT be
+ * used for transmitting sensitive user data. If HTTPS is required,
+ * upgrade to ip-api.com Pro ($12/mo) or switch to ipinfo.io/ipdata.co.
+ *
  * Returns: { country, countryCode, region, city, isp, org, query }
  * Returns null on failure — never throws.
  */
 
 const cache = new Map() // ip → { data, expiresAt }
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const CACHE_MAX_SIZE = 5000 // max entries before forced eviction
+
+// Periodic cleanup — runs every 10 minutes to evict expired entries
+// Prevents unbounded memory growth from unique IPs hitting honeypots.
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, entry] of cache) {
+    if (entry.expiresAt <= now) cache.delete(ip)
+  }
+}, 10 * 60 * 1000).unref() // unref() so the timer doesn't keep the process alive
 
 // Private/reserved IP ranges — no point looking these up
 const PRIVATE_IP_PATTERNS = [
@@ -56,7 +72,15 @@ export async function lookupGeoIp(ip) {
       ip: data.query || ip,
     }
 
-    // Cache the result
+    // Cache the result (with size guard to prevent unbounded growth)
+    if (cache.size >= CACHE_MAX_SIZE) {
+      // Evict oldest 20% of entries
+      const entries = [...cache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+      const evictCount = Math.ceil(CACHE_MAX_SIZE * 0.2)
+      for (let i = 0; i < evictCount && i < entries.length; i++) {
+        cache.delete(entries[i][0])
+      }
+    }
     cache.set(ip, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
     return result
   } catch {

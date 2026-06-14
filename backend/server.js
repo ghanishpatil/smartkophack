@@ -117,9 +117,12 @@ app.use(
 app.use(morgan(isProd ? 'combined' : 'tiny'))
 
 /** Razorpay webhooks require the raw body to verify `X-Razorpay-Signature`. */
+// NOTE: 30 req/min limit. If batch payments spike (e.g. 50+ teams paying
+// within a minute), increase this or use a sliding-window limiter.
+// Razorpay retries failed webhooks, so dropped calls will eventually succeed.
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 30, // max 30 webhook calls per minute
+  max: 60, // increased from 30 to handle batch payment spikes
   standardHeaders: true,
   legacyHeaders: false,
 })
