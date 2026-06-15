@@ -252,6 +252,23 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/participant/update-team-profile', { method: 'POST', body: profile }),
     updateMemberDesignation: (memberUid, designation) =>
       authReq('/api/participant/update-member-designation', { method: 'POST', body: { memberUid, designation } }),
+    // Feature 3: Skill tags & profile
+    getMyProfile: () => authReq('/api/participant/my-profile'),
+    updateMySkills: (body) =>
+      authReq('/api/participant/update-my-skills', { method: 'POST', body }),
+    // Feature 1: Team matchmaking
+    matchmakingCandidates: (skill = '') =>
+      authReq(`/api/participant/matchmaking/candidates${skill ? `?skill=${encodeURIComponent(skill)}` : ''}`),
+    matchmakingOpenTeams: () =>
+      authReq('/api/participant/matchmaking/open-teams'),
+    matchmakingRequestJoin: (teamId, message) =>
+      authReq('/api/participant/matchmaking/request', { method: 'POST', body: { teamId, message } }),
+    matchmakingMyRequests: () =>
+      authReq('/api/participant/matchmaking/my-requests'),
+    teamJoinRequests: () =>
+      authReq('/api/participant/team-join-requests'),
+    respondJoinRequest: (requestId, action) =>
+      authReq(`/api/participant/team-join-requests/${encodeURIComponent(requestId)}/respond`, { method: 'POST', body: { action } }),
     // Chat
     chatInfo: () => authReq('/api/chat/info'),
     chatMessages: (limit = 50, before) =>
@@ -273,5 +290,7 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/chatbot', { method: 'POST', body: { message, history } }),
     adminTestEmail: () =>
       authReq('/api/admin/test-email', { method: 'POST' }),
+    adminEmailHealth: () =>
+      authReq('/api/health/email'),
   }
 }

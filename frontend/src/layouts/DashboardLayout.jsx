@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { useEvent } from '@/context/EventContext.jsx'
 import { ROLES, roleHome } from '@/utils/roles.js'
 import { Button } from '@/components/ui/Button.jsx'
 import { APP } from '@/utils/constants.js'
@@ -27,7 +28,9 @@ const nav = {
   ],
   participant: [
     { to: '/dashboard', label: 'Home', icon: Home, end: true },
+    { to: '/dashboard/progress', label: 'My Progress', icon: BarChart3 },
     { to: '/dashboard/team', label: 'My Team', icon: Users },
+    { to: '/dashboard/matchmaking', label: 'Find Teammates', icon: Search },
     { to: '/dashboard/registration', label: 'Registration', icon: ClipboardCheck },
     { to: '/dashboard/problems', label: 'Problem Statements', icon: Target },
     { to: '/dashboard/submission', label: 'Submission', icon: FileUp },
@@ -101,9 +104,15 @@ const roleBadgeColors = {
 
 export function DashboardLayout({ variant = 'default' }) {
   const { profile, logout, user } = useAuth()
+  const { eventCfg } = useEvent()
   const navigate = useNavigate()
   const location = useLocation()
-  const items = nav[variant] || nav.default
+  const baseItems = nav[variant] || nav.default
+  // Feature 1: Hide "Find Teammates" unless admin enabled matchmaking for the event.
+  const matchmakingEnabled = Boolean(eventCfg?.matchmakingEnabled)
+  const items = (variant === 'participant' && !matchmakingEnabled)
+    ? baseItems.filter((it) => it.to !== '/dashboard/matchmaking')
+    : baseItems
   const role = profile?.role || ROLES.PARTICIPANT
   const isParticipantShell = variant === 'participant'
   const isAdminShell = variant === 'admin'

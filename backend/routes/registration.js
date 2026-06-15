@@ -132,21 +132,25 @@ router.post(
       }
 
       const teamData = teamDoc.data()
-      
+
+      // Team schema stores leaderId (string UID) and memberIds (array of UIDs).
+      const memberIds = Array.isArray(teamData.memberIds) ? teamData.memberIds : []
+      const isMemberOf = (id) => teamData.leaderId === id || memberIds.includes(id)
+
       // Verify the authenticated user is a member of this team
-      const isAuthUserMember = teamData.members?.some(m => m.uid === req.user.uid)
+      const isAuthUserMember = isMemberOf(req.user.uid)
       if (!isAuthUserMember) {
         return res.status(403).json({ error: 'You are not a member of this team' })
       }
 
       // Verify the authenticated user is the team leader
-      const isLeader = teamData.members?.some(m => m.uid === req.user.uid && m.isLeader === true)
+      const isLeader = teamData.leaderId === req.user.uid
       if (!isLeader) {
         return res.status(403).json({ error: 'Only the team leader can register members' })
       }
 
       // Verify the userId being registered is actually a member of the team
-      const isTargetUserMember = teamData.members?.some(m => m.uid === userId)
+      const isTargetUserMember = isMemberOf(userId)
       if (!isTargetUserMember) {
         return res.status(400).json({ error: 'The user being registered is not a member of this team' })
       }
@@ -275,8 +279,9 @@ router.get(
 
       const teamData = teamDoc.data()
 
-      // Check authorization: must be admin or team member
-      const isMember = teamData.members?.some(m => m.uid === req.user.uid)
+      // Check authorization: must be admin or team member (schema: leaderId + memberIds)
+      const memberIds = Array.isArray(teamData.memberIds) ? teamData.memberIds : []
+      const isMember = teamData.leaderId === req.user.uid || memberIds.includes(req.user.uid)
       if (req.user.role !== 'admin' && !isMember) {
         return res.status(403).json({ error: 'Access denied' })
       }
@@ -294,7 +299,7 @@ router.get(
       res.json({
         teamId,
         teamName: teamData.name || 'Unnamed Team',
-        totalMembers: teamData.members?.length || 0,
+        totalMembers: memberIds.length,
         registeredMembers: registrations.length,
         registrations,
       })
@@ -339,7 +344,7 @@ router.get(
         teams.push({
           id: teamId,
           name: teamData.name || 'Unnamed Team',
-          totalMembers: teamData.members?.length || 0,
+          totalMembers: Array.isArray(teamData.memberIds) ? teamData.memberIds.length : 0,
           registeredMembers: registrations.length,
           eventRegistered: teamData.eventRegistered || false,
           paymentStatus: teamData.paymentStatus || 'unpaid',

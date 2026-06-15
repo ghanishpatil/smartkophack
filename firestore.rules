@@ -90,8 +90,15 @@ service cloud.firestore {
       allow write: if false; // Server-only via Admin SDK (activityLog.js)
     }
 
-    // ─── Payment Idempotency (CRIT-05) ───────────────────────────────
-    // Stores one document per Razorpay paymentId to deduplicate webhook retries.
+    // ─── Join Requests (matchmaking) — server-only via Admin SDK ─────
+    // Created/updated by the backend when participants request to join teams
+    // and leaders approve/decline. Never read or written directly by clients.
+    match /joinRequests/{id} {
+      allow read: if isAdmin();
+      allow write: if false; // Server-only via Admin SDK (participant.js)
+    }
+
+    // ─── Payment Idempotency (CRIT-05) ───────────────────────────────    // Stores one document per Razorpay paymentId to deduplicate webhook retries.
     // Written atomically by the server inside the payment transaction.
     match /webhookEvents/{paymentId} {
       allow read: if isAdmin();

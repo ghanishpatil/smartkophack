@@ -3,14 +3,16 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { User, Mail, Building2, Tag, Shield, LogOut, CheckCircle2 } from 'lucide-react'
+import { User, Mail, Building2, Tag, Shield, LogOut, CheckCircle2, Sparkles, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { useApi } from '@/hooks/useApi.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
-import { Input } from '@/components/ui/Input.jsx'
+import { Input, Textarea } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
+import { SkillTagEditor } from '@/components/participant/SkillTagEditor.jsx'
 
 const schema = z.object({
   displayName: z.string().trim().min(1, 'Name is required').max(80),
@@ -21,8 +23,19 @@ const schema = z.object({
 export function ParticipantSettingsPage() {
   usePageSeo({ title: 'Settings', description: 'Your account and profile.' })
   const { user, profile, updateUserProfile, logout } = useAuth()
+  const api = useApi()
   const navigate = useNavigate()
   const [saved, setSaved] = useState(false)
+
+  // ── Feature 3: Skill tags & profile ──
+  const [skills, setSkills] = useState([])
+  const [bio, setBio] = useState('')
+  const [lookingForTeam, setLookingForTeam] = useState(false)
+  const [skillSuggestions, setSkillSuggestions] = useState([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [skillsDirty, setSkillsDirty] = useState(false)
+  const [skillsSaving, setSkillsSaving] = useState(false)
+  const [skillsSaved, setSkillsSaved] = useState(false)
 
   const {
     register,
@@ -46,6 +59,23 @@ export function ParticipantSettingsPage() {
     })
   }, [profile, reset])
 
+  // Load skill profile once on mount
+  useEffect(() => {
+    let cancelled = false
+    api.getMyProfile()
+      .then((data) => {
+        if (cancelled || !data) return
+        setSkills(Array.isArray(data.skills) ? data.skills : [])
+        setBio(data.bio || '')
+        setLookingForTeam(Boolean(data.lookingForTeam))
+        setSkillSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+        setSkillsLoaded(true)
+      })
+      .catch(() => setSkillsLoaded(true))
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function onSubmit(values) {
     await updateUserProfile({
       displayName: values.displayName?.trim() || '',
@@ -55,6 +85,18 @@ export function ParticipantSettingsPage() {
     reset(values)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
+  }
+
+  async function saveSkills() {
+    setSkillsSaving(true)
+    try {
+      await api.updateMySkills({ skills, bio: bio.trim(), lookingForTeam })
+      setSkillsDirty(false)
+      setSkillsSaved(true)
+      setTimeout(() => setSkillsSaved(false), 3000)
+    } finally {
+      setSkillsSaving(false)
+    }
   }
 
   return (
@@ -132,6 +174,89 @@ export function ParticipantSettingsPage() {
             )}
           </div>
         </form>
+      </Card>
+
+      {/* Skills & Profile (Feature 3) */}
+      <Card>
+        <h2 className="flex items-center gap-2 font-display text-base font-semibold text-ink-900">
+          <Sparkles className="h-4 w-4 text-brand-600" />
+          Skills & Expertise
+        </h2>
+        <p className="mt-1 text-xs text-ink-500">
+          Tag your tech stack so mentors and teammates know your strengths. This also powers team matchmaking.
+        </p>
+
+        {!skillsLoaded ? (
+          <div className="mt-5 h-12 animate-pulse rounded-xl bg-[rgb(var(--surface-muted))]" />
+        ) : (
+          <div className="mt-5 space-y-5">
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink-700">
+                <Tag className="h-3.5 w-3.5 text-ink-400" /> Your Skills
+              </label>
+              <SkillTagEditor
+                value={skills}
+                onChange={(next) => { setSkills(next); setSkillsDirty(true) }}
+                suggestions={skillSuggestions}
+                max={12}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink-700">
+                <User className="h-3.5 w-3.5 text-ink-400" /> Short Bio
+              </label>
+              <Textarea
+                value={bio}
+                onChange={(e) => { setBio(e.target.value); setSkillsDirty(true) }}
+                rows={3}
+                maxLength={300}
+                placeholder="A line or two about what you love to build…"
+              />
+              <p className="mt-1 text-right text-xs text-ink-400">{bio.length}/300</p>
+            </div>
+
+            {/* Looking for team toggle */}
+            <button
+              type="button"
+              onClick={() => { setLookingForTeam((v) => !v); setSkillsDirty(true) }}
+              className="flex w-full items-center justify-between rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 px-4 py-3 transition-all hover:border-brand-500/30"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${lookingForTeam ? 'bg-emerald-500/15 text-emerald-600' : 'bg-[rgb(var(--surface-muted))] text-ink-400'}`}>
+                  <Users className="h-4 w-4" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-ink-900">Looking for a team</p>
+                  <p className="text-xs text-ink-500">Show me in matchmaking so others can find me</p>
+                </div>
+              </div>
+              <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${lookingForTeam ? 'bg-emerald-500' : 'bg-ink-300'}`}>
+                <motion.span
+                  layout
+                  className="inline-block h-5 w-5 rounded-full bg-white shadow"
+                  animate={{ x: lookingForTeam ? 22 : 2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                />
+              </span>
+            </button>
+
+            <div className="flex items-center gap-3 pt-1">
+              <Button onClick={saveSkills} disabled={!skillsDirty || skillsSaving} loading={skillsSaving}>
+                Save Profile
+              </Button>
+              {skillsSaved && (
+                <motion.span
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-1.5 text-sm text-emerald-600"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Saved
+                </motion.span>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Security */}

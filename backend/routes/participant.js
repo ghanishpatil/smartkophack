@@ -16,7 +16,7 @@ import {
 import { isRazorpayConfigured, createOrder, getRazorpayPublicKeyId } from '../services/razorpay.js'
 import { expectedEntryMinorAndCurrency, verifyAndMarkTeamPaid } from '../services/teamPaymentRazorpay.js'
 import { normalizeSubmissionPatch } from '../utils/submissionPatch.js'
-import { assertValidDocId } from '../utils/sanitize.js'
+import { assertValidDocId, isValidDocId } from '../utils/sanitize.js'
 import { participationBlockedMessage } from '../services/teamRegistrationGate.js'
 import {
   completeRegistrationPatch,
@@ -811,6 +811,8 @@ r.get('/team-roster', async (req, res, next) => {
           ? String(req.user.email && mid === uid ? req.user.email : d.email || '')
           : '',
         isLeader: team.leaderId === mid,
+        // Feature 3: expose skills to teammates (non-sensitive, opt-in profile data)
+        skills: Array.isArray(d.skills) ? d.skills : [],
       }
     })
 
@@ -1070,6 +1072,461 @@ r.post('/update-member-designation', async (req, res, next) => {
     await teamRef.set({ memberDesignations: designations, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
     res.json({ ok: true })
   } catch (e) {
+    next(e)
+  }
+})
+
+/** ═══ Skill Tags & Profile (Feature 3) ═══ */
+
+/** Allowed skill suggestions — used by the frontend for autocomplete chips. */
+const SKILL_SUGGESTIONS = [
+  'React', 'Vue', 'Angular', 'Next.js', 'Node.js', 'Express', 'Python', 'Django',
+  'Flask', 'FastAPI', 'Java', 'Spring Boot', 'C++', 'C#', '.NET', 'Go', 'Rust',
+  'TypeScript', 'JavaScript', 'PHP', 'Laravel', 'Ruby', 'Rails', 'Flutter',
+  'React Native', 'Swift', 'Kotlin', 'Android', 'iOS', 'Machine Learning',
+  'Deep Learning', 'Data Science', 'NLP', 'Computer Vision', 'TensorFlow',
+  'PyTorch', 'UI/UX Design', 'Figma', 'Product Design', 'Graphic Design',
+  'DevOps', 'Docker', 'Kubernetes', 'AWS', 'GCP', 'Azure', 'Firebase',
+  'PostgreSQL', 'MongoDB', 'MySQL', 'Redis', 'GraphQL', 'Blockchain',
+  'Solidity', 'Web3', 'IoT', 'Embedded Systems', 'Arduino', 'Raspberry Pi',
+  'Cybersecurity', 'Cloud', 'Backend', 'Frontend', 'Full Stack', 'Mobile',
+  'Game Dev', 'Unity', 'AR/VR', 'Project Management', 'Public Speaking',
+]
+
+/** Normalize and validate a skills array from user input. */
+function normalizeSkills(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const out = []
+  for (const s of raw) {
+    if (typeof s !== 'string') continue
+    const skill = s.trim().slice(0, 30)
+    if (!skill) continue
+    const key = skill.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(skill)
+    if (out.length >= 12) break
+  }
+  return out
+}
+
+/** GET /participant/my-profile — returns the current user's skill profile. */
+r.get('/my-profile', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const snap = await db.doc(`users/${uid}`).get()
+    const d = snap.exists ? snap.data() : {}
+    res.json({
+      skills: Array.isArray(d.skills) ? d.skills : [],
+      bio: typeof d.bio === 'string' ? d.bio : '',
+      lookingForTeam: typeof d.lookingForTeam === 'boolean' ? d.lookingForTeam : false,
+      institute: typeof d.institute === 'string' ? d.institute : '',
+      trackChoice: typeof d.trackChoice === 'string' ? d.trackChoice : '',
+      suggestions: SKILL_SUGGESTIONS,
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /participant/update-my-skills — set the current user's skills, bio, and
+ * looking-for-team flag. Written via Admin SDK so it bypasses the strict
+ * users/{uid} field allowlist in Firestore rules (consistent architecture).
+ */
+r.post('/update-my-skills', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const body = req.body || {}
+    const patch = { updatedAt: FieldValue.serverTimestamp() }
+
+    if (Array.isArray(body.skills)) {
+      patch.skills = normalizeSkills(body.skills)
+    }
+    if (typeof body.bio === 'string') {
+      patch.bio = body.bio.trim().slice(0, 300)
+    }
+    if (typeof body.lookingForTeam === 'boolean') {
+      patch.lookingForTeam = body.lookingForTeam
+    }
+
+    const fields = Object.keys(patch).filter((k) => k !== 'updatedAt')
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No valid fields provided (skills, bio, lookingForTeam).' })
+    }
+
+    await db.doc(`users/${uid}`).set(patch, { merge: true })
+    res.json({ ok: true, ...Object.fromEntries(fields.map((f) => [f, patch[f]])) })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** ═══ Team Matchmaking (Feature 1) ═══ */
+
+/** Returns true if matchmaking is enabled for the active event. */
+async function matchmakingGate() {
+  const merged = await getActiveEventConfig()
+  return Boolean(merged.matchmakingEnabled)
+}
+
+/**
+ * GET /participant/matchmaking/candidates — list solo participants looking for a team.
+ * Privacy: never exposes email. Only public profile fields (name, skills, bio, institute).
+ * Optional ?skill= filter (case-insensitive substring match across skills).
+ */
+r.get('/matchmaking/candidates', async (req, res, next) => {
+  try {
+    if (!(await matchmakingGate())) {
+      return res.status(403).json({ error: 'Team matchmaking is not enabled for this event.', disabled: true })
+    }
+    const db = getDb()
+    const eventId = req.eventId
+    const skillFilter = typeof req.query.skill === 'string' ? req.query.skill.trim().toLowerCase() : ''
+    const limit = Math.min(Number(req.query.limit) || 60, 100)
+
+    // Find participants who are looking for a team and not already on one.
+    // Query is scoped to participants only; teamless check is done in-memory
+    // because Firestore can't combine '==' on lookingForTeam with '==' empty teamId
+    // efficiently without a composite index for every variant.
+    let snap
+    try {
+      snap = await db.collection('users')
+        .where('role', '==', 'participant')
+        .where('lookingForTeam', '==', true)
+        .limit(300)
+        .get()
+    } catch {
+      // Fallback if composite index is missing
+      snap = await db.collection('users').where('lookingForTeam', '==', true).limit(300).get()
+    }
+
+    let candidates = snap.docs
+      .map((d) => ({ uid: d.id, ...d.data() }))
+      .filter((u) => {
+        if (u.uid === req.user.uid) return false // don't list self
+        if (u.role && u.role !== 'participant') return false
+        if (u.teamId) return false // already in a team
+        // Scope to active event when the user has an activeEventId set
+        if (eventId && u.activeEventId && u.activeEventId !== eventId) return false
+        return true
+      })
+      .map((u) => ({
+        uid: u.uid,
+        displayName: u.displayName || 'Participant',
+        institute: u.institute || '',
+        trackChoice: u.trackChoice || '',
+        skills: Array.isArray(u.skills) ? u.skills : [],
+        bio: u.bio || '',
+      }))
+
+    if (skillFilter) {
+      candidates = candidates.filter((c) =>
+        c.skills.some((s) => s.toLowerCase().includes(skillFilter)),
+      )
+    }
+
+    candidates = candidates.slice(0, limit)
+    res.json({ candidates, count: candidates.length, eventId: eventId || null })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * GET /participant/matchmaking/open-teams — list teams that still have space and
+ * haven't registered/locked yet, so solo participants can find a team to join.
+ * Returns only the invite code visibility-safe summary (name, skills needed, size).
+ */
+r.get('/matchmaking/open-teams', async (req, res, next) => {
+  try {
+    if (!(await matchmakingGate())) {
+      return res.status(403).json({ error: 'Team matchmaking is not enabled for this event.', disabled: true })
+    }
+    const db = getDb()
+    const eventId = req.eventId
+    const merged = await getActiveEventConfig()
+    const maxSize = merged.maxTeamSize || 4
+    const limit = Math.min(Number(req.query.limit) || 60, 100)
+
+    let q = db.collection('teams').limit(300)
+    if (eventId) q = q.where('eventId', '==', eventId)
+    const snap = await q.get()
+
+    const teams = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((t) => {
+        const size = Array.isArray(t.memberIds) ? t.memberIds.length : 0
+        if (size >= maxSize) return false // full
+        if (t.submissionLocked) return false // already deep into competition
+        if (t.registrationStatus === 'blocked' || t.registrationStatus === 'rejected') return false
+        return true
+      })
+      .map((t) => ({
+        teamId: t.id,
+        name: t.name || 'Unnamed Team',
+        memberCount: Array.isArray(t.memberIds) ? t.memberIds.length : 0,
+        maxSize,
+        spotsLeft: maxSize - (Array.isArray(t.memberIds) ? t.memberIds.length : 0),
+        // Team's declared skills/needs from profile, if set by the leader
+        skills: Array.isArray(t.profile?.skills) ? t.profile.skills : [],
+        bio: t.profile?.bio || '',
+        // inviteCode is intentionally NOT exposed — joining is via leader sharing it
+      }))
+      .slice(0, limit)
+
+    res.json({ teams, count: teams.length, eventId: eventId || null })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /participant/matchmaking/request — solo participant requests to join a team.
+ * Creates a joinRequests document (status: pending). No invite code needed.
+ * The team leader approves/declines from their My Team page.
+ */
+r.post('/matchmaking/request', async (req, res, next) => {
+  try {
+    if (!(await matchmakingGate())) {
+      return res.status(403).json({ error: 'Team matchmaking is not enabled for this event.', disabled: true })
+    }
+    const db = getDb()
+    const uid = req.user.uid
+    const prof = req.profile || {}
+    if (prof.teamId) return res.status(400).json({ error: 'You are already on a team.' })
+
+    const teamId = String(req.body?.teamId || '').trim()
+    if (!isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid team ID.' })
+
+    const eventId = req.eventId
+    const merged = await getActiveEventConfig()
+    const tf = allowTeamFormation(merged)
+    if (!tf.ok) return res.status(403).json({ error: tf.reason })
+
+    const teamSnap = await db.doc(`teams/${teamId}`).get()
+    if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+    const team = teamSnap.data()
+
+    if (eventId && team.eventId && team.eventId !== eventId) {
+      return res.status(400).json({ error: 'That team belongs to a different event edition.' })
+    }
+    if (isTeamMember(team, uid)) return res.status(400).json({ error: 'You are already on this team.' })
+
+    const maxSize = merged.maxTeamSize || 4
+    const memberCount = Array.isArray(team.memberIds) ? team.memberIds.length : 0
+    if (memberCount >= maxSize) return res.status(400).json({ error: 'That team is already full.' })
+    if (team.submissionLocked) return res.status(400).json({ error: 'That team has locked its roster.' })
+
+    // Deduplicate: one pending request per (team, user)
+    const existing = await db.collection('joinRequests')
+      .where('teamId', '==', teamId)
+      .where('userId', '==', uid)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get()
+    if (!existing.empty) {
+      return res.status(400).json({ error: 'You already have a pending request for this team.' })
+    }
+
+    // Fetch requester profile for display on the leader's side
+    const meSnap = await db.doc(`users/${uid}`).get()
+    const me = meSnap.exists ? meSnap.data() : {}
+    const message = String(req.body?.message || '').trim().slice(0, 300)
+
+    const reqRef = await db.collection('joinRequests').add({
+      teamId,
+      teamName: team.name || 'Team',
+      leaderId: team.leaderId || '',
+      userId: uid,
+      userName: me.displayName || req.user.name || 'Participant',
+      userInstitute: me.institute || '',
+      userSkills: Array.isArray(me.skills) ? me.skills : [],
+      message,
+      status: 'pending',
+      eventId: eventId || team.eventId || '',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.TEAM_JOINED, teamId, targetId: reqRef.id, targetType: 'joinRequest', description: `Requested to join "${team.name || teamId}"` }).catch(() => {})
+
+    res.json({ ok: true, requestId: reqRef.id })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * GET /participant/matchmaking/my-requests — requests the current user has SENT.
+ * Lets the participant see pending/approved/declined status of their requests.
+ */
+r.get('/matchmaking/my-requests', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const snap = await db.collection('joinRequests')
+      .where('userId', '==', uid)
+      .limit(50)
+      .get()
+    const requests = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .map((r) => ({
+        id: r.id,
+        teamId: r.teamId,
+        teamName: r.teamName || 'Team',
+        status: r.status || 'pending',
+        createdAt: r.createdAt?.toDate?.()?.toISOString() || null,
+      }))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    res.json({ requests })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * GET /participant/team-join-requests — pending requests for the leader's team.
+ * Only the team leader sees these.
+ */
+r.get('/team-join-requests', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const prof = req.profile || {}
+    const teamId = prof.teamId
+    if (!teamId) return res.json({ requests: [] })
+
+    const teamSnap = await db.doc(`teams/${teamId}`).get()
+    if (!teamSnap.exists) return res.json({ requests: [] })
+    const team = teamSnap.data()
+    if (team.leaderId !== uid) return res.status(403).json({ error: 'Only the team leader can view join requests.' })
+
+    const snap = await db.collection('joinRequests')
+      .where('teamId', '==', teamId)
+      .where('status', '==', 'pending')
+      .limit(50)
+      .get()
+    const requests = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        userName: r.userName || 'Participant',
+        userInstitute: r.userInstitute || '',
+        userSkills: Array.isArray(r.userSkills) ? r.userSkills : [],
+        message: r.message || '',
+        createdAt: r.createdAt?.toDate?.()?.toISOString() || null,
+      }))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    res.json({ requests, teamId })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /participant/team-join-requests/:requestId/respond — leader approves or declines.
+ * Body: { action: 'approve' | 'decline' }
+ * On approve: adds the requester to the team (transaction, size-checked) and
+ * declines all their other pending requests.
+ */
+r.post('/team-join-requests/:requestId/respond', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const prof = req.profile || {}
+    const teamId = prof.teamId
+    const { requestId } = req.params
+    if (!isValidDocId(requestId)) return res.status(400).json({ error: 'Invalid request ID.' })
+    const action = String(req.body?.action || '').toLowerCase()
+    if (action !== 'approve' && action !== 'decline') {
+      return res.status(400).json({ error: "action must be 'approve' or 'decline'." })
+    }
+    if (!teamId) return res.status(400).json({ error: 'You are not on a team.' })
+
+    const reqRef = db.doc(`joinRequests/${requestId}`)
+    const reqSnap = await reqRef.get()
+    if (!reqSnap.exists) return res.status(404).json({ error: 'Join request not found.' })
+    const reqData = reqSnap.data()
+
+    if (reqData.teamId !== teamId) return res.status(403).json({ error: 'That request is not for your team.' })
+    if (reqData.status !== 'pending') return res.status(400).json({ error: 'This request was already handled.' })
+
+    const teamRef = db.doc(`teams/${teamId}`)
+    const teamSnap = await teamRef.get()
+    if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+    const team = teamSnap.data()
+    if (team.leaderId !== uid) return res.status(403).json({ error: 'Only the team leader can respond to requests.' })
+
+    if (action === 'decline') {
+      await reqRef.set({ status: 'declined', updatedAt: FieldValue.serverTimestamp(), respondedBy: uid }, { merge: true })
+      return res.json({ ok: true, status: 'declined' })
+    }
+
+    // Approve — validate gates and add member atomically.
+    const merged = await getActiveEventConfig()
+    const tf = allowTeamFormation(merged)
+    if (!tf.ok) return res.status(403).json({ error: tf.reason })
+
+    const maxSize = merged.maxTeamSize || 4
+    const newMemberUid = reqData.userId
+    const eventId = req.eventId || team.eventId || ''
+
+    // Make sure the requester isn't already on a team
+    const newMemberSnap = await db.doc(`users/${newMemberUid}`).get()
+    if (newMemberSnap.exists && newMemberSnap.data().teamId) {
+      await reqRef.set({ status: 'declined', updatedAt: FieldValue.serverTimestamp(), respondedBy: uid, note: 'User already joined a team' }, { merge: true })
+      return res.status(400).json({ error: 'That participant has already joined another team.' })
+    }
+
+    await db.runTransaction(async (tx) => {
+      const tSnap = await tx.get(teamRef)
+      if (!tSnap.exists) throw Object.assign(new Error('Team not found'), { status: 404 })
+      const t = tSnap.data()
+      const membersTx = Array.isArray(t.memberIds) ? t.memberIds : []
+      if (membersTx.includes(newMemberUid)) {
+        // Already a member — just mark request approved
+        tx.set(reqRef, { status: 'approved', updatedAt: FieldValue.serverTimestamp(), respondedBy: uid }, { merge: true })
+        return
+      }
+      if (membersTx.length >= maxSize) {
+        throw Object.assign(new Error(`Team is full. Maximum ${maxSize} members allowed.`), { status: 400 })
+      }
+      const patch = { memberIds: FieldValue.arrayUnion(newMemberUid), updatedAt: FieldValue.serverTimestamp() }
+      if (!t.eventId && eventId) patch.eventId = eventId
+      tx.update(teamRef, patch)
+      tx.set(db.doc(`users/${newMemberUid}`), { teamId, activeEventId: eventId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      tx.set(reqRef, { status: 'approved', updatedAt: FieldValue.serverTimestamp(), respondedBy: uid }, { merge: true })
+    })
+
+    // Auto-decline this user's other pending requests (they now have a team)
+    try {
+      const others = await db.collection('joinRequests')
+        .where('userId', '==', newMemberUid)
+        .where('status', '==', 'pending')
+        .limit(50)
+        .get()
+      if (!others.empty) {
+        const batch = db.batch()
+        others.docs.forEach((d) => {
+          if (d.id !== requestId) {
+            batch.set(d.ref, { status: 'declined', updatedAt: FieldValue.serverTimestamp(), note: 'Joined another team' }, { merge: true })
+          }
+        })
+        await batch.commit()
+      }
+    } catch { /* non-critical */ }
+
+    notifyTeamMemberJoined({ teamId, newMemberUid }).catch(() => {})
+    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.TEAM_JOINED, teamId, targetId: newMemberUid, targetType: 'team', description: 'Approved join request' }).catch(() => {})
+
+    res.json({ ok: true, status: 'approved' })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
     next(e)
   }
 })

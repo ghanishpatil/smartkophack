@@ -44,6 +44,12 @@ const ParticipantAnnouncementsPage = lazy(() =>
 const ParticipantSettingsPage = lazy(() =>
   import('@/pages/dashboard/participant/ParticipantSettingsPage.jsx').then((m) => ({ default: m.ParticipantSettingsPage })),
 )
+const ParticipantProgressPage = lazy(() =>
+  import('@/pages/dashboard/participant/ParticipantProgressPage.jsx').then((m) => ({ default: m.ParticipantProgressPage })),
+)
+const ParticipantMatchmakingPage = lazy(() =>
+  import('@/pages/dashboard/participant/ParticipantMatchmakingPage.jsx').then((m) => ({ default: m.ParticipantMatchmakingPage })),
+)
 const ParticipantChatPage = lazy(() =>
   import('@/pages/dashboard/participant/ParticipantChatPage.jsx').then((m) => ({ default: m.ParticipantChatPage })),
 )
@@ -300,7 +306,9 @@ export default function App() {
         <Route element={<ProtectedRoute roles={[ROLES.PARTICIPANT]} />}>
           <Route element={<DashboardLayout variant="participant" />}>
             <Route path="/dashboard" element={<ParticipantHomePage />} />
+            <Route path="/dashboard/progress" element={<ParticipantProgressPage />} />
             <Route path="/dashboard/team" element={<ParticipantTeamPage />} />
+            <Route path="/dashboard/matchmaking" element={<ParticipantMatchmakingPage />} />
             <Route path="/dashboard/registration" element={<ParticipantRegistrationPage />} />
             <Route path="/dashboard/problems" element={<ParticipantProblemsPage />} />
             <Route path="/dashboard/submission" element={<SubmissionPage />} />

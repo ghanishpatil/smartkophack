@@ -64,6 +64,7 @@ async function mergedPublicSnapshot(eventId) {
     submissionsOpen: merged.submissionsOpen,
     evaluationsOpen: merged.evaluationsOpen,
     resultsPublished: merged.resultsPublished,
+    matchmakingEnabled: merged.matchmakingEnabled,
     entryFeeEnabled: merged.entryFeeEnabled,
     entryFeeAmount: merged.entryFeeAmount,
     currency: merged.currency,
@@ -332,6 +333,10 @@ r.get('/users/me', verifyFirebaseToken, loadUserRole, (req, res) => {
     photoURL: typeof p.photoURL === 'string' ? p.photoURL : '',
     institute: typeof p.institute === 'string' ? p.institute : '',
     trackChoice: typeof p.trackChoice === 'string' ? p.trackChoice : '',
+    // Feature 3: Skill tags & profile
+    skills: Array.isArray(p.skills) ? p.skills : [],
+    bio: typeof p.bio === 'string' ? p.bio : '',
+    lookingForTeam: typeof p.lookingForTeam === 'boolean' ? p.lookingForTeam : false,
   })
 })
 
@@ -700,7 +705,7 @@ export function adminRouter() {
       if (typeof body.slug === 'string') patch.slug = body.slug.slice(0, 80)
       if (typeof body.listedPublic === 'boolean') patch.listedPublic = body.listedPublic
       if (body.lifecyclePhase != null && isValidLifecyclePhase(body.lifecyclePhase)) patch.lifecyclePhase = body.lifecyclePhase
-      const boolKeys = ['registrationOpen', 'submissionsOpen', 'evaluationsOpen', 'resultsPublished', 'entryFeeEnabled']
+      const boolKeys = ['registrationOpen', 'submissionsOpen', 'evaluationsOpen', 'resultsPublished', 'entryFeeEnabled', 'matchmakingEnabled']
       for (const k of boolKeys) {
         if (typeof body[k] === 'boolean') patch[k] = body[k]
       }

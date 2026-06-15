@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw, Loader2, Check } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -7,6 +8,37 @@ import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
+
+/** Reusable toggle row — accessible checkbox with a custom switch look. */
+function ToggleRow({ checked, onChange, title, description, tone = 'default' }) {
+  const toneBorder = {
+    default: 'border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30',
+    brand: 'border-brand-500/30 bg-brand-500/5',
+    amber: 'border-amber-500/30 bg-amber-500/5',
+  }
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all hover:border-brand-500/40 ${toneBorder[tone]}`}
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-ink-900">{title}</p>
+        {description && <p className="mt-0.5 text-xs text-ink-500">{description}</p>}
+      </div>
+      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-emerald-500' : 'bg-ink-300'}`}>
+        <motion.span
+          layout
+          className="inline-block h-5 w-5 rounded-full bg-white shadow"
+          animate={{ x: checked ? 22 : 2 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        />
+      </span>
+    </button>
+  )
+}
 
 export function AdminSettingsPage() {
   usePageSeo({ title: 'Settings', description: 'Event configuration.' })
@@ -17,6 +49,7 @@ export function AdminSettingsPage() {
     submissionsOpen: false,
     evaluationsOpen: false,
     resultsPublished: false,
+    matchmakingEnabled: false,
     entryFeeEnabled: false,
     entryFeeAmount: 0,
     currency: 'INR',
@@ -24,6 +57,13 @@ export function AdminSettingsPage() {
     maxTeamSize: 4,
   })
   const [msg, setMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState(null) // { type: 'success' | 'error', text }
+
+  function showToast(type, text) {
+    setToast({ type, text })
+    setTimeout(() => setToast(null), 3500)
+  }
 
   // Sync form state with eventCfg from context (includes real-time updates)
   useEffect(() => {
@@ -33,6 +73,7 @@ export function AdminSettingsPage() {
       submissionsOpen: Boolean(eventCfg.submissionsOpen),
       evaluationsOpen: Boolean(eventCfg.evaluationsOpen),
       resultsPublished: Boolean(eventCfg.resultsPublished),
+      matchmakingEnabled: Boolean(eventCfg.matchmakingEnabled),
       entryFeeEnabled: Boolean(eventCfg.entryFeeEnabled),
       entryFeeAmount: Number(eventCfg.entryFeeAmount) || 0,
       currency: eventCfg.currency || 'INR',
@@ -42,28 +83,52 @@ export function AdminSettingsPage() {
   }, [eventCfg])
 
   async function save() {
-    setMsg('')
+    if (!eventId) { showToast('error', 'No active event.'); return }
+    setSaving(true)
     try {
-      if (!eventId) { setMsg('No active event.'); return }
       await api.patchAdminEvent(eventId, {
         registrationOpen: eventForm.registrationOpen,
         submissionsOpen: eventForm.submissionsOpen,
         evaluationsOpen: eventForm.evaluationsOpen,
         resultsPublished: eventForm.resultsPublished,
+        matchmakingEnabled: eventForm.matchmakingEnabled,
         entryFeeEnabled: eventForm.entryFeeEnabled,
         entryFeeAmount: Number(eventForm.entryFeeAmount) || 0,
         currency: eventForm.currency || 'INR',
         minTeamSize: Number(eventForm.minTeamSize) || 2,
         maxTeamSize: Number(eventForm.maxTeamSize) || 4,
       })
-      setMsg('Settings saved.')
+      showToast('success', 'Settings saved successfully')
     } catch (e) {
-      setMsg(e.message || 'Save failed.')
+      showToast('error', e.message || 'Save failed.')
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {/* Top-right toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16, x: 16 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className={`fixed right-6 top-6 z-50 flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium shadow-card-hover ${
+              toast.type === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                : 'border-red-500/30 bg-red-500/10 text-red-700'
+            }`}
+          >
+            {toast.type === 'success'
+              ? <CheckCircle className="h-4 w-4 shrink-0" />
+              : <XCircle className="h-4 w-4 shrink-0" />}
+            {toast.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div>
         <h1 className="font-display text-3xl font-bold text-ink-900">Event Settings</h1>
         <p className="mt-2 text-sm text-ink-600">
@@ -74,29 +139,16 @@ export function AdminSettingsPage() {
         )}
       </div>
 
-      {msg && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${
-          msg.includes('saved') || msg.includes('Saved')
-            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-            : 'border-red-500/30 bg-red-500/10 text-red-700'
-        }`}>{msg}</div>
-      )}
-
       {/* Registration */}
       <Card>
         <h2 className="font-display text-base font-semibold text-ink-900">Registration</h2>
-        <div className="mt-4 space-y-4">
-          <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={eventForm.registrationOpen}
-              onChange={(e) => setEventForm((f) => ({ ...f, registrationOpen: e.target.checked }))}
-            />
-            <div>
-              <p className="text-sm font-medium text-ink-900">Registration Open</p>
-              <p className="text-xs text-ink-500">Teams can create accounts and register</p>
-            </div>
-          </label>
+        <div className="mt-4 space-y-3">
+          <ToggleRow
+            checked={eventForm.registrationOpen}
+            onChange={(v) => setEventForm((f) => ({ ...f, registrationOpen: v }))}
+            title="Registration Open"
+            description="Teams can create accounts and register"
+          />
         </div>
       </Card>
 
@@ -107,44 +159,42 @@ export function AdminSettingsPage() {
           These flags control what participants and judges can do. Enable them in order as the event progresses.
         </p>
         <div className="mt-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={eventForm.submissionsOpen}
-              onChange={(e) => setEventForm((f) => ({ ...f, submissionsOpen: e.target.checked }))}
-            />
-            <div>
-              <p className="text-sm font-medium text-ink-900">Submissions Open</p>
-              <p className="text-xs text-ink-500">Teams can upload and edit their submissions</p>
-            </div>
-          </label>
+          <ToggleRow
+            checked={eventForm.submissionsOpen}
+            onChange={(v) => setEventForm((f) => ({ ...f, submissionsOpen: v }))}
+            title="Submissions Open"
+            description="Teams can upload and edit their submissions"
+          />
+          <ToggleRow
+            checked={eventForm.evaluationsOpen}
+            onChange={(v) => setEventForm((f) => ({ ...f, evaluationsOpen: v }))}
+            title="Evaluations Open"
+            description="Judges can score and submit evaluations"
+          />
+          <ToggleRow
+            checked={eventForm.resultsPublished}
+            onChange={(v) => setEventForm((f) => ({ ...f, resultsPublished: v }))}
+            title="Publish Results"
+            description="Makes the leaderboard visible to everyone at /results. Only enable after all evaluations are finalized."
+            tone="amber"
+          />
+        </div>
+      </Card>
 
-          <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={eventForm.evaluationsOpen}
-              onChange={(e) => setEventForm((f) => ({ ...f, evaluationsOpen: e.target.checked }))}
-            />
-            <div>
-              <p className="text-sm font-medium text-ink-900">Evaluations Open</p>
-              <p className="text-xs text-ink-500">Judges can score and submit evaluations</p>
-            </div>
-          </label>
-
-          <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={eventForm.resultsPublished}
-              onChange={(e) => setEventForm((f) => ({ ...f, resultsPublished: e.target.checked }))}
-            />
-            <div>
-              <p className="text-sm font-medium text-ink-900">Publish Results</p>
-              <p className="text-xs text-ink-500">
-                Makes the leaderboard visible to everyone at <code className="rounded bg-ink-100 px-1">/results</code>. 
-                Only enable after all evaluations are finalized.
-              </p>
-            </div>
-          </label>
+      {/* Participant Features */}
+      <Card>
+        <h2 className="font-display text-base font-semibold text-ink-900">Participant Features</h2>
+        <p className="mt-1 text-xs text-ink-500">
+          Optional tools participants can use. Toggle them on when you want them available.
+        </p>
+        <div className="mt-4 space-y-3">
+          <ToggleRow
+            checked={eventForm.matchmakingEnabled}
+            onChange={(v) => setEventForm((f) => ({ ...f, matchmakingEnabled: v }))}
+            title="Team Matchmaking"
+            description="Shows the Find Teammates page so solo participants can discover each other and request to join open teams. When off, the page is hidden from all participants."
+            tone="brand"
+          />
         </div>
       </Card>
 
@@ -157,17 +207,12 @@ export function AdminSettingsPage() {
       <Card>
         <h2 className="font-display text-base font-semibold text-ink-900">Entry Fee</h2>
         <div className="mt-4 space-y-4">
-          <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={eventForm.entryFeeEnabled}
-              onChange={(e) => setEventForm((f) => ({ ...f, entryFeeEnabled: e.target.checked }))}
-            />
-            <div>
-              <p className="text-sm font-medium text-ink-900">Require Payment</p>
-              <p className="text-xs text-ink-500">Teams must pay via Razorpay to complete registration</p>
-            </div>
-          </label>
+          <ToggleRow
+            checked={eventForm.entryFeeEnabled}
+            onChange={(v) => setEventForm((f) => ({ ...f, entryFeeEnabled: v }))}
+            title="Require Payment"
+            description="Teams must pay via Razorpay to complete registration"
+          />
           {eventForm.entryFeeEnabled && (
             <div className="grid grid-cols-2 gap-3">
               <Input
@@ -223,8 +268,8 @@ export function AdminSettingsPage() {
         </div>
       </div>
 
-      <Button className="w-full" onClick={save} disabled={!eventId}>
-        Save Settings
+      <Button className="w-full" onClick={save} disabled={!eventId || saving} loading={saving}>
+        {saving ? 'Saving…' : 'Save Settings'}
       </Button>
 
       {/* Email Diagnostics */}
@@ -234,8 +279,6 @@ export function AdminSettingsPage() {
 }
 
 // ─── Email Diagnostics Panel ──────────────────────────────────────────────────
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 
 function EmailDiagnostics({ api }) {
   const [health, setHealth] = useState(null)
@@ -247,8 +290,7 @@ function EmailDiagnostics({ api }) {
     setHealthLoading(true)
     setHealth(null)
     try {
-      const res = await fetch(`${API_BASE}/api/health/email`)
-      const data = await res.json()
+      const data = await api.adminEmailHealth()
       setHealth(data)
     } catch (e) {
       setHealth({ ok: false, warnings: [`Could not reach backend: ${e.message}`], checks: {} })

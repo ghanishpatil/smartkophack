@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Clock, Crown, Hash, Link2, LogOut, UserMinus, Users, Pencil, Github, Linkedin, Globe, X, Check, Tag, Shield, Sparkles, Copy } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Clock, Crown, Hash, Link2, LogOut, UserMinus, Users, Pencil, Github, Linkedin, Globe, X, Check, Tag, Shield, Sparkles, Copy, UserPlus, Inbox, Building2 } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useParticipantWorkspace } from '@/hooks/useParticipantWorkspace.js'
 import { useAuth } from '@/context/AuthContext.jsx'
@@ -27,10 +27,135 @@ function Avatar({ name, size = 'md' }) {
   )
 }
 
+/**
+ * Join Requests card (Feature 1) — shown to the team LEADER only when matchmaking
+ * is enabled. Lists pending requests with approve/decline actions.
+ */
+function JoinRequestsCard({ api, isLeader, matchmakingEnabled, teamFull, onApproved }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.teamJoinRequests()
+      setRequests(Array.isArray(res?.requests) ? res.requests : [])
+    } catch {
+      setRequests([])
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    if (isLeader && matchmakingEnabled) void load()
+  }, [isLeader, matchmakingEnabled, load])
+
+  if (!isLeader || !matchmakingEnabled) return null
+
+  async function respond(requestId, action) {
+    setBusyId(requestId)
+    try {
+      await api.respondJoinRequest(requestId, action)
+      setRequests((rs) => rs.filter((r) => r.id !== requestId))
+      if (action === 'approve') await onApproved?.()
+    } catch (e) {
+      globalThis.alert?.(e?.message || 'Could not process request.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  return (
+    <motion.div variants={fadeUp}>
+      <Card>
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-ink-900">
+            <Inbox className="h-5 w-5 text-brand-600" /> Join Requests
+            {requests.length > 0 && <Badge tone="brand">{requests.length}</Badge>}
+          </h3>
+          <Button variant="ghost" size="xs" onClick={load}>Refresh</Button>
+        </div>
+
+        {loading ? (
+          <div className="mt-4 space-y-3">
+            {[1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+          </div>
+        ) : requests.length === 0 ? (
+          <p className="mt-4 flex items-center gap-2 rounded-xl bg-[rgb(var(--surface-muted))]/40 px-4 py-3 text-sm text-ink-500">
+            <UserPlus className="h-4 w-4" /> No pending requests. Participants who find your team can request to join here.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <AnimatePresence>
+              {requests.map((r) => (
+                <motion.div
+                  key={r.id}
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <Avatar name={r.userName} size="sm" />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900">{r.userName}</p>
+                        {r.userInstitute && (
+                          <p className="flex items-center gap-1 text-xs text-ink-500">
+                            <Building2 className="h-3 w-3" /> {r.userInstitute}
+                          </p>
+                        )}
+                        {r.userSkills?.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {r.userSkills.slice(0, 6).map((s) => (
+                              <span key={s} className="rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {r.message && <p className="mt-2 text-sm text-ink-600">"{r.message}"</p>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      loading={busyId === r.id}
+                      disabled={teamFull || Boolean(busyId)}
+                      onClick={() => respond(r.id, 'approve')}
+                    >
+                      <Check className="mr-1.5 h-4 w-4" /> {teamFull ? 'Team Full' : 'Approve'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 text-red-600 hover:bg-red-500/10"
+                      disabled={Boolean(busyId)}
+                      onClick={() => respond(r.id, 'decline')}
+                    >
+                      <X className="mr-1.5 h-4 w-4" /> Decline
+                    </Button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </Card>
+    </motion.div>
+  )
+}
+
 export function ParticipantTeamPage() {
   usePageSeo({ title: 'My Team', description: 'Team roster and invites.' })
   const { user, refreshProfile } = useAuth()
   const { api, team, loading, refreshTeam, reload, eventCfg } = useParticipantWorkspace()
+  const matchmakingEnabled = Boolean(eventCfg?.matchmakingEnabled)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [teamName, setTeamName] = useState('')
@@ -234,8 +359,22 @@ export function ParticipantTeamPage() {
                       {team.memberDesignations?.[m.uid] && (
                         <Badge tone="brand" className="mt-1 text-[10px] normal-case">{team.memberDesignations[m.uid]}</Badge>
                       )}
+                      {Array.isArray(m.skills) && m.skills.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {m.skills.slice(0, 4).map((s) => (
+                            <span key={s} className="rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">
+                              {s}
+                            </span>
+                          ))}
+                          {m.skills.length > 4 && (
+                            <span className="rounded-md bg-[rgb(var(--surface-muted))] px-1.5 py-0.5 text-[10px] text-ink-500">
+                              +{m.skills.length - 4}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 self-start">
                       {m.isLeader && (
                         <Badge tone="gradient" className="gap-1"><Crown className="h-3 w-3" /> Leader</Badge>
                       )}
@@ -251,6 +390,15 @@ export function ParticipantTeamPage() {
               </div>
             )}
           </motion.div>
+
+          {/* ━━ Join Requests (leader only, when matchmaking enabled) ━━ */}
+          <JoinRequestsCard
+            api={api}
+            isLeader={isLeader}
+            matchmakingEnabled={matchmakingEnabled}
+            teamFull={membersCount >= MAX_TEAM_MEMBERS || membersCount >= (eventCfg?.maxTeamSize || 4)}
+            onApproved={async () => { await refreshProfile(); await refreshTeam(); await loadRoster() }}
+          />
 
           {/* ━━ Team Profile ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
           <motion.div variants={fadeUp}>

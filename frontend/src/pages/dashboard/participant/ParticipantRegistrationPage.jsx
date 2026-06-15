@@ -108,6 +108,9 @@ export function ParticipantRegistrationPage() {
     !registered &&
     Boolean(team?.registrationRequestedAt || (String(team?.paymentStatus || '') === 'pending' && !team?.eventRegistered))
 
+  // Team docs store leaderId (a UID), not an isLeader flag — derive it.
+  const isLeader = Boolean(user?.uid && (team?.leaderId === user.uid || roster?.leaderId === user.uid))
+
   // Calculate member registration progress
   const totalMembers = roster?.members?.length || 0
   const submittedMembers = memberRegistrations.length
@@ -508,7 +511,7 @@ export function ParticipantRegistrationPage() {
             </motion.div>
 
             {/* Member Forms - Only show if leader and not submitted */}
-            {!allMembersSubmitted && team?.isLeader && (
+            {!allMembersSubmitted && isLeader && (
               <motion.div variants={cardVariants}>
                 {!roster ? (
                   <Card className="p-6">
@@ -652,10 +655,10 @@ export function ParticipantRegistrationPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-ink-900">
-                        {team?.isLeader ? 'Complete Team Registration' : 'Waiting for Team Leader'}
+                        {isLeader ? 'Complete Team Registration' : 'Waiting for Team Leader'}
                       </h3>
                       <p className="mt-1 text-sm text-ink-600">
-                        {team?.isLeader ? (
+                        {isLeader ? (
                           <>
                             As team leader, fill out registration details for all {totalMembers} team members above before proceeding.
                           </>
