@@ -1,10 +1,46 @@
+import { useRef, useCallback } from 'react'
 import { cn } from '@/utils/cn.js'
+import './CardGlow.css'
 
-export function Card({ className, accent, hover, glow, children, ...props }) {
+/** Tracks pointer position to drive the edge-glow CSS variables. */
+function useCardGlow(enabled) {
+  const ref = useRef(null)
+  const onPointerMove = useCallback((e) => {
+    if (!enabled) return
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const dx = x - cx
+    const dy = y - cy
+    // Edge proximity 0 (center) → 100 (edge)
+    let kx = Infinity
+    let ky = Infinity
+    if (dx !== 0) kx = cx / Math.abs(dx)
+    if (dy !== 0) ky = cy / Math.abs(dy)
+    const edge = Math.min(Math.max(1 / Math.min(kx, ky), 0), 1)
+    // Angle from center
+    let deg = Math.atan2(dy, dx) * (180 / Math.PI) + 90
+    if (deg < 0) deg += 360
+    el.style.setProperty('--edge-proximity', (edge * 100).toFixed(2))
+    el.style.setProperty('--cursor-angle', `${deg.toFixed(2)}deg`)
+  }, [enabled])
+  return { ref, onPointerMove }
+}
+
+export function Card({ className, accent, hover, glow, noGlow, children, ...props }) {
+  const enableGlow = !noGlow
+  const { ref, onPointerMove } = useCardGlow(enableGlow)
   return (
     <div
+      ref={ref}
+      onPointerMove={onPointerMove}
       className={cn(
         'rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6 shadow-card transition-all duration-300',
+        enableGlow && 'card-glow',
         hover && 'hover:-translate-y-0.5 hover:shadow-card-hover hover:border-brand-500/20',
         glow && 'animate-glow-pulse',
         accent === 'brand' && 'border-l-[3px] border-l-brand-500',
@@ -20,11 +56,16 @@ export function Card({ className, accent, hover, glow, children, ...props }) {
   )
 }
 
-export function GlassCard({ className, hover, children, ...props }) {
+export function GlassCard({ className, hover, noGlow, children, ...props }) {
+  const enableGlow = !noGlow
+  const { ref, onPointerMove } = useCardGlow(enableGlow)
   return (
     <div
+      ref={ref}
+      onPointerMove={onPointerMove}
       className={cn(
         'glass-card',
+        enableGlow && 'card-glow',
         hover && 'hover:-translate-y-0.5 hover:shadow-card-hover',
         className,
       )}
@@ -35,7 +76,7 @@ export function GlassCard({ className, hover, children, ...props }) {
   )
 }
 
-export function StatCard({ title, value, hint, icon: Icon, tone = 'brand', className }) {
+export function StatCard({ title, value, hint, icon: Icon, tone = 'brand', className, noGlow }) {
   const toneStyles = {
     brand: 'border-brand-500/20 bg-brand-500/5',
     warn: 'border-amber-500/25 bg-amber-500/5',
@@ -52,10 +93,16 @@ export function StatCard({ title, value, hint, icon: Icon, tone = 'brand', class
     neutral: 'text-ink-500',
   }
 
+  const enableGlow = !noGlow
+  const { ref, onPointerMove } = useCardGlow(enableGlow)
+
   return (
     <div
+      ref={ref}
+      onPointerMove={onPointerMove}
       className={cn(
         'rounded-2xl border p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover',
+        enableGlow && 'card-glow',
         toneStyles[tone],
         className,
       )}
