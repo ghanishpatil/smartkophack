@@ -62,7 +62,7 @@ export function TracksSection() {
           transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
           className="relative"
         >
-          <Marquee speed={40} pauseOnHover>
+          <Marquee speed={40} pauseOnHover innerClassName="py-8">
             {TRACKS.map((track, idx) => {
               const cfg = domainConfig[idx]
               return <DomainCard key={track.id} track={track} config={cfg} />
