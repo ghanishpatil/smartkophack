@@ -149,34 +149,39 @@ app.post(
 app.use(express.json({ limit: '2mb' }))
 
 // ─── PERFORMANCE: Cache headers for public endpoints ────────────────────────
-// These endpoints change rarely — let browsers and CDNs cache them.
-// This eliminates network roundtrips on repeated page visits.
+// IMPORTANT: Use `private` (browser-only) caching, NOT `public`.
+// These responses carry per-origin CORS headers (Access-Control-Allow-Origin)
+// and Access-Control-Allow-Credentials: true. A SHARED/edge cache (e.g. Railway's
+// railway-hikari proxy or a CDN) must never store credentialed, origin-varying
+// responses — it can replay a cached copy with the wrong/missing CORS header to
+// a different origin, causing intermittent "No Access-Control-Allow-Origin" errors
+// in the browser. `private` keeps fast browser caching without that risk.
 app.use('/api/event-config', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+  res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
   next()
 })
 app.use('/api/problem-statements', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+  res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
   next()
 })
 app.use('/api/timeline', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+  res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
   next()
 })
 app.use('/api/events', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+  res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
   next()
 })
 app.use('/api/patrons', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+  res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
   next()
 })
 app.use('/api/sponsors', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+  res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
   next()
 })
 app.use('/api/results', (_req, res, next) => {
-  res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+  res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60')
   next()
 })
 const limiter = rateLimit({
