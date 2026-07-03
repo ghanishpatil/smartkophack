@@ -46,9 +46,9 @@ const deans = [
   },
   {
     id: 3,
-    name: 'Dr. Samadhan B. Dahikar',
+    name: 'Dr. Makarand Kulkarni',
     designation: 'Dean, School of Sciences',
-    image: '/dean-sciences.jpeg',
+    image: '',
   },
   {
     id: 4,
@@ -91,6 +91,17 @@ function LeaderCard({ person, badge, accent = 'brand' }) {
     navy: 'bg-navy-600',
   }[accent]
 
+  // Placeholder initials (strip a leading "Dr." title) for people without a photo.
+  const initials = (person.name || '')
+    .replace(/^(dr|prof|mr|ms|mrs)\.?\s*/i, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+  const fallbackSrc = `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"%3E%3Crect fill="%23e2e8f0" width="300" height="300"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="system-ui" font-size="110" font-weight="700" fill="%230f172a"%3E${initials}%3C/text%3E%3C/svg%3E`
+
   return (
     <motion.div variants={cardVariants} className="group relative h-full">
       {/* Solid offset backing block — the brutalist "hard shadow" */}
@@ -103,7 +114,7 @@ function LeaderCard({ person, badge, accent = 'brand' }) {
         {/* Image block */}
         <div className="relative aspect-square w-full overflow-hidden border-b-[3px] border-ink-900 bg-ink-100">
           <img
-            src={person.image}
+            src={person.image || fallbackSrc}
             alt={person.name}
             className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
