@@ -47,7 +47,7 @@ export function Hero() {
         <img
           src="/smartkpg15.png"
           alt=""
-          className="h-full w-full object-cover object-top md:object-center"
+          className="h-full w-full object-cover object-center"
           draggable={false}
         />
         {/* Minimal gradient only on left side for text contrast, logos remain fully visible */}
