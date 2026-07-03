@@ -51,12 +51,12 @@ export function UniversitySection() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             className="group relative flex"
           >
-            {/* Glass video card */}
-            <div className="relative flex w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/50 bg-gradient-to-br from-white/40 to-white/20 p-4 shadow-[0_20px_60px_-25px_rgba(0,0,0,0.35)] backdrop-blur-2xl ring-1 ring-white/30">
+            {/* Glass + brutalist video card */}
+            <div className="relative flex w-full flex-col overflow-hidden rounded-2xl border-[3px] border-ink-900 bg-gradient-to-br from-white/40 to-white/20 p-4 shadow-[8px_8px_0_0_rgb(15_23_42)] backdrop-blur-2xl transition-transform duration-200 hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0_0_rgb(15_23_42)]">
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
 
               {/* Video frame */}
-              <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-[inset_0_2px_20px_rgba(0,0,0,0.8)] ring-1 ring-black/10">
+              <div className="relative aspect-video w-full overflow-hidden rounded-xl border-2 border-ink-900 bg-black shadow-[inset_0_2px_20px_rgba(0,0,0,0.8)]">
                 <iframe
                   className="h-full w-full"
                   src="https://www.youtube-nocookie.com/embed/thBG6VIutp8"
@@ -69,7 +69,7 @@ export function UniversitySection() {
               </div>
 
               {/* Label */}
-              <div className="mt-4 flex items-center justify-center gap-2.5 rounded-xl border border-black/5 bg-white/70 px-4 py-2.5 backdrop-blur-sm">
+              <div className="mt-4 flex items-center justify-center gap-2.5 rounded-xl border-2 border-ink-900 bg-white/70 px-4 py-2.5 backdrop-blur-sm">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -87,7 +87,7 @@ export function UniversitySection() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
             className="group relative flex"
           >
-            <div className="relative flex w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/50 bg-gradient-to-br from-white/45 to-white/20 p-8 shadow-[0_20px_60px_-25px_rgba(0,0,0,0.35)] backdrop-blur-2xl ring-1 ring-white/30 sm:p-9">
+            <div className="relative flex w-full flex-col overflow-hidden rounded-2xl border-[3px] border-ink-900 bg-gradient-to-br from-white/45 to-white/20 p-8 shadow-[8px_8px_0_0_rgb(15_23_42)] backdrop-blur-2xl transition-transform duration-200 hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0_0_rgb(15_23_42)] sm:p-9">
               {/* Glossy highlight + inner glow */}
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
               <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-brand-400/20 blur-3xl" />
@@ -99,7 +99,7 @@ export function UniversitySection() {
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     transition={{ duration: 0.3 }}
-                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-md"
+                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-ink-900 bg-white p-2 shadow-[3px_3px_0_0_rgb(15_23_42)]"
                   >
                     <img
                       src="/sanjivani-university.png"

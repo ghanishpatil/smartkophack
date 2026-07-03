@@ -3,7 +3,7 @@
  * otherwise falls back to the Brevo REST API.
  *
  * Deliverability note: sending from a domain with proper SPF/DKIM/DMARC is what
- * keeps mail out of spam. The university Google Workspace account
+ * keeps mail out of spam. The Hostinger-hosted mailbox
  * (skh@sanjivaniuniversity.com) already has that, so SMTP is preferred when set.
  */
 

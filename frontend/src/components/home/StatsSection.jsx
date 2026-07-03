@@ -41,12 +41,14 @@ export function StatsSection() {
               variants={cardVariants}
               initial="hidden"
               animate={visible ? 'visible' : 'hidden'}
-              className="group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6 text-center shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
+              className="group relative overflow-hidden rounded-2xl border-[3px] border-ink-900 bg-white/55 p-6 text-center shadow-[6px_6px_0_0_rgb(15_23_42)] backdrop-blur-xl transition-transform duration-200 hover:translate-x-1 hover:translate-y-1 hover:shadow-[3px_3px_0_0_rgb(15_23_42)]"
             >
-              <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-brand-500/5 blur-2xl transition-all group-hover:bg-brand-500/10" />
+              {/* Glossy top highlight for the glass feel */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
+              <div className="pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full bg-brand-500/10 blur-2xl transition-all group-hover:bg-brand-500/20" />
               <div className="relative">
                 <motion.div
-                  className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600"
+                  className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border-2 border-ink-900 bg-brand-500/15 text-brand-600"
                   whileHover={{ rotate: [0, -10, 10, 0], transition: { duration: 0.5 } }}
                 >
                   <Icon className="h-5 w-5" />
