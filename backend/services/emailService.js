@@ -1,6 +1,62 @@
 /**
- * Email Service — sends via the Brevo (Sendinblue) REST API.
+ * Email Service — sends via SMTP (nodemailer) when SMTP_* env vars are set,
+ * otherwise falls back to the Brevo REST API.
+ *
+ * Deliverability note: sending from a domain with proper SPF/DKIM/DMARC is what
+ * keeps mail out of spam. The university Google Workspace account
+ * (skh@sanjivaniuniversity.com) already has that, so SMTP is preferred when set.
  */
+
+let _smtpTransport = null
+let _smtpTried = false
+let _smtpHealthy = null // null=unknown, true=working, false=failed
+
+// Stats for admin dashboard — reset daily
+let _emailStats = {
+  lastReset: Date.now(),
+  smtp: { sent: 0, failed: 0 },
+  brevo: { sent: 0, failed: 0 },
+}
+
+function resetStatsIfNeeded() {
+  const dayMs = 24 * 60 * 60 * 1000
+  if (Date.now() - _emailStats.lastReset > dayMs) {
+    _emailStats = {
+      lastReset: Date.now(),
+      smtp: { sent: 0, failed: 0 },
+      brevo: { sent: 0, failed: 0 },
+    }
+  }
+}
+
+/** Lazily create (and cache) the nodemailer SMTP transport if env vars are present. */
+async function getSmtpTransport() {
+  if (_smtpTried) return _smtpTransport
+  _smtpTried = true
+  const host = process.env.SMTP_HOST
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!host || !user || !pass) return null
+  try {
+    const nodemailer = (await import('nodemailer')).default
+    const port = Number(process.env.SMTP_PORT) || 465
+    _smtpTransport = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
+      auth: { user, pass },
+    })
+    // Verify connection
+    await _smtpTransport.verify()
+    _smtpHealthy = true
+    console.log(`[Email] SMTP transport configured and verified (${host}:${port} as ${user})`)
+  } catch (e) {
+    console.error('[Email] Failed to init/verify SMTP transport:', e.message)
+    _smtpTransport = null
+    _smtpHealthy = false
+  }
+  return _smtpTransport
+}
 
 /**
  * Returns the configured frontend URL, falling back to a safe placeholder.
@@ -30,9 +86,11 @@ function escapeHtml(str) {
 }
 
 /**
- * Send email via the Brevo REST API.
+ * Send email — prefers SMTP (nodemailer) when configured, else Brevo REST API.
  */
 async function sendEmail({ to, toName, subject, htmlContent, textContent, params = {} }) {
+  resetStatsIfNeeded()
+  
   // Validate required fields
   if (!to || !subject || !htmlContent) {
     console.error('[Email] Missing required field:', { to: !!to, subject: !!subject, htmlContent: !!htmlContent })
@@ -44,10 +102,33 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
   }
 
   const fromName = process.env.EMAIL_FROM_NAME || 'Smart Kopargaon Hackathon'
-  const fromAddr = process.env.EMAIL_FROM_ADDRESS || 'noreply@skh.com'
+  const fromAddr = process.env.EMAIL_FROM_ADDRESS || process.env.SMTP_USER || 'noreply@skh.com'
 
+  // ─── Preferred: SMTP (best deliverability from an authenticated domain) ───
+  const smtp = await getSmtpTransport()
+  if (smtp) {
+    try {
+      const info = await smtp.sendMail({
+        from: `"${fromName}" <${fromAddr}>`,
+        to: toName ? `"${toName}" <${to}>` : to,
+        subject,
+        html: htmlContent,
+        text: textContent || undefined,
+      })
+      _emailStats.smtp.sent++
+      console.log('[Email] Sent via SMTP:', { to, subject, messageId: info.messageId })
+      return { success: true, messageId: info.messageId, transport: 'smtp' }
+    } catch (error) {
+      _emailStats.smtp.failed++
+      _smtpHealthy = false
+      console.error('[Email] SMTP send failed, falling back to Brevo:', error.message)
+      // fall through to Brevo
+    }
+  }
+
+  // ─── Fallback: Brevo REST API ───
   if (!process.env.BREVO_API_KEY) {
-    console.warn('[Email] No Brevo API key configured. Email not sent.')
+    console.warn('[Email] No SMTP and no Brevo API key configured. Email not sent.')
     return { success: false, reason: 'not_configured' }
   }
 
@@ -74,14 +155,17 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
     const data = await res.json().catch(() => ({}))
 
     if (!res.ok) {
+      _emailStats.brevo.failed++
       const errMsg = data?.message || data?.code || `HTTP ${res.status}`
       console.error('[Email] Brevo API error:', errMsg, JSON.stringify(data))
       return { success: false, error: errMsg }
     }
 
+    _emailStats.brevo.sent++
     console.log('[Email] Sent via Brevo:', { to, subject, messageId: data.messageId })
     return { success: true, messageId: data.messageId, transport: 'brevo' }
   } catch (error) {
+    _emailStats.brevo.failed++
     console.error('[Email] Failed to send:', error.message)
     return { success: false, error: error.message }
   }
@@ -851,4 +935,43 @@ export default {
   sendCredentialsEmail,
   sendOtpEmail,
   sendPasswordResetLinkEmail,
+}
+
+
+// ─── Health Check Export (for admin dashboard) ───────────────────────────────
+
+/**
+ * Returns email system health status + last 24h stats for admin dashboard.
+ * Called by GET /api/admin/email-health
+ */
+export async function getEmailHealth() {
+  resetStatsIfNeeded()
+  
+  // If SMTP hasn't been tried yet, trigger init to check health
+  if (!_smtpTried) {
+    await getSmtpTransport()
+  }
+
+  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  const brevoConfigured = !!process.env.BREVO_API_KEY
+
+  return {
+    smtp: {
+      configured: smtpConfigured,
+      healthy: _smtpHealthy, // null=unknown, true=working, false=failed
+      host: smtpConfigured ? process.env.SMTP_HOST : null,
+      user: smtpConfigured ? process.env.SMTP_USER : null,
+    },
+    brevo: {
+      configured: brevoConfigured,
+      fromAddress: process.env.EMAIL_FROM_ADDRESS || null,
+    },
+    stats: {
+      period: '24h',
+      smtp: { ..._emailStats.smtp },
+      brevo: { ..._emailStats.brevo },
+      total: _emailStats.smtp.sent + _emailStats.brevo.sent,
+    },
+    activeTransport: smtpConfigured && _smtpHealthy ? 'smtp' : brevoConfigured ? 'brevo' : 'none',
+  }
 }

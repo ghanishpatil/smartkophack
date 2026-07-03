@@ -150,6 +150,21 @@ r.get('/health/email', verifyFirebaseToken, loadUserRole, requireRole('admin'), 
   })
 })
 
+/**
+ * Email system health + stats endpoint for admin dashboard.
+ * Shows SMTP/Brevo status + last 24h send stats.
+ */
+r.get('/admin/email-health', verifyFirebaseToken, loadUserRole, requireRole('admin'), async (_req, res) => {
+  try {
+    const { getEmailHealth } = await import('../services/emailService.js')
+    const health = await getEmailHealth()
+    res.json(health)
+  } catch (error) {
+    console.error('[API] /admin/email-health failed:', error)
+    res.status(500).json({ error: 'Failed to check email health' })
+  }
+})
+
 r.get('/events', async (_req, res, next) => {
   try {
     const data = await cachedFetch(CACHE_NS.PUBLIC_EVENTS, 'list', CACHE_TTL.PUBLIC_EVENTS, () =>

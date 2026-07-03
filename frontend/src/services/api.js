@@ -293,7 +293,7 @@ export function createApi(getToken, getEventId = () => '') {
     adminTestEmail: () =>
       authReq('/api/admin/test-email', { method: 'POST' }),
     adminEmailHealth: () =>
-      authReq('/api/health/email'),
+      authReq('/api/admin/email-health'),
     // Leader onboarding (admin)
     bulkInviteParticipants: (emails) =>
       authReq('/api/admin/participants/bulk-invite', { method: 'POST', body: { emails } }),

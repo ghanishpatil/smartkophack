@@ -423,8 +423,6 @@ export function AdminSettingsPage() {
 function EmailDiagnostics({ api }) {
   const [health, setHealth] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-  const [testLoading, setTestLoading] = useState(false)
 
   async function checkHealth() {
     setHealthLoading(true)
@@ -433,28 +431,9 @@ function EmailDiagnostics({ api }) {
       const data = await api.adminEmailHealth()
       setHealth(data)
     } catch (e) {
-      setHealth({ ok: false, warnings: [`Could not reach backend: ${e.message}`], checks: {} })
+      setHealth({ error: `Could not reach backend: ${e.message}` })
     } finally {
       setHealthLoading(false)
-    }
-  }
-
-  async function sendTestEmail() {
-    setTestLoading(true)
-    setTestResult(null)
-    try {
-      const result = await api.adminTestEmail()
-      setTestResult({ ok: true, message: result.message || 'Test email sent! Check your inbox.' })
-    } catch (e) {
-      const msg = e.message || 'Failed to send test email'
-      const hint = msg.includes('not_configured') || msg.includes('BREVO')
-        ? 'Set BREVO_API_KEY in your production environment variables.'
-        : msg.includes('sender')
-          ? 'Sender email not verified in Brevo. Go to Brevo → Senders & Domains.'
-          : null
-      setTestResult({ ok: false, message: msg, hint })
-    } finally {
-      setTestLoading(false)
     }
   }
 
@@ -470,8 +449,8 @@ function EmailDiagnostics({ api }) {
         <div className="flex items-center gap-2">
           <Mail className="h-5 w-5 text-brand-600" />
           <div>
-            <h2 className="font-display text-base font-semibold text-ink-900">Email System</h2>
-            <p className="text-xs text-ink-500">Diagnose and test email delivery</p>
+            <h2 className="font-display text-base font-semibold text-ink-900">Email System Health</h2>
+            <p className="text-xs text-ink-500">SMTP status + delivery stats (last 24h)</p>
           </div>
         </div>
         <Button
@@ -482,123 +461,143 @@ function EmailDiagnostics({ api }) {
           disabled={healthLoading}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
-          Check Config
+          Refresh
         </Button>
       </div>
 
-      {health && (
-        <div className="mt-4 space-y-3">
-          {/* Overall status */}
-          <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
-            health.ok
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-              : 'border-amber-500/30 bg-amber-500/10 text-amber-700'
-          }`}>
-            <StatusIcon ok={health.ok} warn={!health.ok} />
-            {health.ok ? 'Email configuration looks good' : `${health.warnings?.length || 0} issue(s) found`}
+      {health?.error && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700">
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {health.error}
+        </div>
+      )}
+
+      {health && !health.error && (
+        <div className="mt-4 space-y-4">
+          {/* Active Transport Badge */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-ink-600">Active Transport:</span>
+            <Badge
+              tone={
+                health.activeTransport === 'smtp'
+                  ? 'success'
+                  : health.activeTransport === 'brevo'
+                    ? 'amber'
+                    : 'neutral'
+              }
+            >
+              {health.activeTransport === 'smtp'
+                ? '✓ SMTP (Gmail)'
+                : health.activeTransport === 'brevo'
+                  ? '⚠ Brevo Fallback'
+                  : '✗ None'}
+            </Badge>
           </div>
 
-          {/* Warnings */}
-          {health.warnings?.length > 0 && (
-            <div className="space-y-2">
-              {health.warnings.map((w, i) => (
-                <div key={i} className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-800">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-                  {w}
+          {/* SMTP Status */}
+          <div className={`rounded-xl border p-4 ${
+            health.smtp.healthy
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : health.smtp.configured && health.smtp.healthy === false
+                ? 'border-red-500/30 bg-red-500/5'
+                : 'border-ink-200 bg-ink-50'
+          }`}>
+            <div className="flex items-start gap-3">
+              <StatusIcon
+                ok={health.smtp.healthy === true}
+                warn={health.smtp.configured && health.smtp.healthy === null}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-ink-900">Gmail SMTP</p>
+                  {health.smtp.healthy === true && (
+                    <Badge tone="success" className="text-xs">Working</Badge>
+                  )}
+                  {health.smtp.healthy === false && (
+                    <Badge tone="danger" className="text-xs">Failed</Badge>
+                  )}
+                  {!health.smtp.configured && (
+                    <Badge tone="neutral" className="text-xs">Not Configured</Badge>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Checks detail */}
-          {health.checks && (
-            <div className="rounded-xl border border-[rgb(var(--border))] divide-y divide-[rgb(var(--border))]">
-              {[
-                {
-                  label: 'Brevo API Key',
-                  ok: health.checks.brevo?.configured,
-                  detail: health.checks.brevo?.configured
-                    ? `Key: ${health.checks.brevo.keyPrefix}`
-                    : 'NOT SET — set BREVO_API_KEY in production env',
-                },
-                {
-                  label: 'Sender Address',
-                  ok: health.checks.brevo?.configured,
-                  warn: !!health.checks.brevo?.fromAddressWarning,
-                  detail: health.checks.brevo?.fromAddress || 'NOT SET',
-                  sub: health.checks.brevo?.fromAddressWarning,
-                },
-                {
-                  label: 'Frontend URL',
-                  ok: health.checks.frontendUrl?.value !== 'NOT SET' && !health.checks.frontendUrl?.isLocalhost,
-                  warn: health.checks.frontendUrl?.isLocalhost,
-                  detail: health.checks.frontendUrl?.value || 'NOT SET',
-                  sub: health.checks.frontendUrl?.warning,
-                },
-                {
-                  label: 'Razorpay Webhook Secret',
-                  ok: health.checks.razorpay?.webhookSecretSet && !health.checks.razorpay?.webhookSecretIsUrl,
-                  warn: health.checks.razorpay?.webhookSecretIsUrl,
-                  detail: health.checks.razorpay?.webhookSecretSet
-                    ? health.checks.razorpay?.webhookSecretIsUrl ? 'Set but looks like a URL (wrong!)' : 'Set ✓'
-                    : 'NOT SET',
-                  sub: health.checks.razorpay?.warning,
-                },
-                {
-                  label: 'Environment',
-                  ok: health.checks.nodeEnv === 'production',
-                  warn: health.checks.nodeEnv !== 'production',
-                  detail: `NODE_ENV=${health.checks.nodeEnv || 'not set'}`,
-                  sub: health.checks.nodeEnv !== 'production' ? 'Set NODE_ENV=production in your hosting dashboard' : null,
-                },
-              ].map(({ label, ok, warn, detail, sub }) => (
-                <div key={label} className="flex items-start gap-3 px-4 py-3">
-                  <StatusIcon ok={ok} warn={warn && !ok} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-ink-800">{label}</p>
-                    <p className="text-xs text-ink-500 font-mono">{detail}</p>
-                    {sub && <p className="mt-0.5 text-xs text-amber-700">{sub}</p>}
+                {health.smtp.configured && (
+                  <div className="mt-1 space-y-0.5 text-xs text-ink-600 font-mono">
+                    <p>Host: {health.smtp.host}</p>
+                    <p>User: {health.smtp.user}</p>
                   </div>
+                )}
+                {health.smtp.healthy === false && (
+                  <p className="mt-2 text-xs text-red-700">
+                    ⚠ Authentication failed. Check that 2-Step Verification is enabled on{' '}
+                    <span className="font-mono">{health.smtp.user}</span> and generate a fresh App Password in
+                    Google Account → Security → App passwords. Update <code>SMTP_PASS</code> in .env.
+                  </p>
+                )}
+                {!health.smtp.configured && (
+                  <p className="mt-1 text-xs text-ink-500">
+                    Set <code>SMTP_HOST</code>, <code>SMTP_USER</code>, and <code>SMTP_PASS</code> in production env.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Brevo Fallback Status */}
+          <div className={`rounded-xl border p-4 ${
+            health.brevo.configured
+              ? 'border-amber-500/30 bg-amber-500/5'
+              : 'border-ink-200 bg-ink-50'
+          }`}>
+            <div className="flex items-start gap-3">
+              <StatusIcon ok={health.brevo.configured} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-ink-900">Brevo Fallback</p>
+                  {health.brevo.configured && (
+                    <Badge tone="amber" className="text-xs">Standby</Badge>
+                  )}
                 </div>
-              ))}
+                {health.brevo.configured && (
+                  <p className="mt-1 text-xs text-ink-600 font-mono">From: {health.brevo.fromAddress}</p>
+                )}
+                {!health.brevo.configured && (
+                  <p className="mt-1 text-xs text-ink-500">Not configured (BREVO_API_KEY missing)</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Last 24h Stats */}
+          {health.stats && (
+            <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
+                <p className="text-xs font-semibold text-brand-700">Last 24 Hours</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-emerald-600">{health.stats.smtp.sent}</p>
+                  <p className="text-xs text-ink-500">via SMTP</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-amber-600">{health.stats.brevo.sent}</p>
+                  <p className="text-xs text-ink-500">via Brevo</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-ink-700">{health.stats.total}</p>
+                  <p className="text-xs text-ink-500">Total Sent</p>
+                </div>
+              </div>
+              {(health.stats.smtp.failed > 0 || health.stats.brevo.failed > 0) && (
+                <div className="mt-3 pt-3 border-t border-brand-500/20 flex justify-center gap-4 text-xs text-red-600">
+                  {health.stats.smtp.failed > 0 && <span>SMTP failed: {health.stats.smtp.failed}</span>}
+                  {health.stats.brevo.failed > 0 && <span>Brevo failed: {health.stats.brevo.failed}</span>}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-
-      {/* Test email button */}
-      <div className="mt-4 border-t border-[rgb(var(--border))] pt-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-ink-800">Send Test Email</p>
-            <p className="text-xs text-ink-500">Sends a test email to your admin account to verify delivery</p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="gap-1.5 shrink-0"
-            onClick={sendTestEmail}
-            disabled={testLoading}
-          >
-            <Mail className={`h-3.5 w-3.5 ${testLoading ? 'animate-pulse' : ''}`} />
-            {testLoading ? 'Sending…' : 'Send Test'}
-          </Button>
-        </div>
-
-        {testResult && (
-          <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
-            testResult.ok
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-              : 'border-red-500/30 bg-red-500/10 text-red-700'
-          }`}>
-            <StatusIcon ok={testResult.ok} />
-            <div>
-              <p>{testResult.message}</p>
-              {testResult.hint && <p className="mt-1 font-medium">{testResult.hint}</p>}
-            </div>
-          </div>
-        )}
-      </div>
     </Card>
   )
 }
