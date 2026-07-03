@@ -139,18 +139,20 @@ export function Footer() {
                   {APP.contactEmail}
                 </a>
               </li>
-              <li className="flex gap-2.5 text-sm text-ink-400">
-                <Phone className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                <div>
-                  <a
-                    className="font-medium text-ink-300 transition-colors hover:text-brand-400"
-                    href={`tel:+91${COORDINATORS.coordinator.phone}`}
-                  >
-                    {COORDINATORS.coordinator.name}
-                  </a>
-                  <span className="block text-xs text-ink-500">{COORDINATORS.coordinator.role} · {COORDINATORS.coordinator.phone}</span>
-                </div>
-              </li>
+              {COORDINATORS.coordinators.map((c) => (
+                <li key={c.phone} className="flex gap-2.5 text-sm text-ink-400">
+                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
+                  <div>
+                    <a
+                      className="font-medium text-ink-300 transition-colors hover:text-brand-400"
+                      href={`tel:+91${c.phone}`}
+                    >
+                      {c.name}
+                    </a>
+                    <span className="block text-xs text-ink-500">{c.role} · {c.phone}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
 
             {/* Student leaders */}

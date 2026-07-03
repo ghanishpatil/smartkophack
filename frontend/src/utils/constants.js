@@ -8,13 +8,15 @@ export const APP = {
   venue: 'Sanjivani University Innovation Campus',
 }
 
-// Student coordinator & team leaders — shown in the footer and Contact page.
+// Student coordinators & team leaders — shown in the footer and Contact page.
 export const COORDINATORS = {
-  coordinator: { name: 'Ashish Pardeshi', phone: '7498311334', role: 'Student Coordinator' },
+  coordinators: [
+    { name: 'Ashish Pardeshi', phone: '7498311334', role: 'Student Coordinator' },
+    { name: 'Avani Kulkarni', phone: '9356138851', role: 'Student Coordinator' },
+  ],
   leaders: [
     { name: 'Atharva Deshmukh', phone: '7517647277' },
     { name: 'Aditya Mhaismale', phone: '9284093469' },
-    { name: 'Avani Kulkarni', phone: '9356138851' },
   ],
 }
 

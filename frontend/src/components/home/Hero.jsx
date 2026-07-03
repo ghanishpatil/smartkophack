@@ -41,13 +41,13 @@ export function Hero() {
   const ctaText = user ? 'Access your dashboard' : 'Register your team'
   
   return (
-    <section className="relative w-full overflow-hidden border-b border-gray-200" style={{ aspectRatio: '16/9' }}>
+    <section className="relative w-full overflow-hidden border-b border-gray-200 min-h-[88vh] md:min-h-0 md:aspect-[16/9]">
       {/* ── Background image — 1920×1080 banner, fills 16:9 frame edge to edge ── */}
       <div className="absolute inset-0">
         <img
           src="/smartkpg15.png"
           alt=""
-          className="h-full w-full object-cover object-center"
+          className="h-full w-full object-cover object-top md:object-center"
           draggable={false}
         />
         {/* Minimal gradient only on left side for text contrast, logos remain fully visible */}
@@ -70,7 +70,7 @@ export function Hero() {
         - content is positioned slightly ABOVE center (pb > pt) for premium SaaS feel
         - on mobile: compact, headline visible immediately
       */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-start px-6 pb-16 pt-[10%] sm:px-10 lg:px-16">
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 pb-20 pt-24 sm:px-10 md:justify-start md:pb-16 md:pt-[10%] lg:px-16">
 
         {/* Two-column layout: text left, logo right */}
         <div className="flex w-full max-w-7xl items-center gap-8 lg:gap-16">

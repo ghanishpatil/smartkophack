@@ -9,7 +9,6 @@ import { APP, COORDINATORS } from '@/utils/constants.js'
 const contactInfo = [
   { icon: MapPin, label: 'Address', value: APP.venue, accent: 'bg-rose-500/15 text-rose-400' },
   { icon: Mail, label: 'Email', value: APP.contactEmail, href: `mailto:${APP.contactEmail}`, accent: 'bg-brand-500/15 text-brand-400' },
-  { icon: Phone, label: 'Student Coordinator', value: `${COORDINATORS.coordinator.name} · ${COORDINATORS.coordinator.phone}`, href: `tel:+91${COORDINATORS.coordinator.phone}`, accent: 'bg-emerald-500/15 text-emerald-400' },
   { icon: Clock, label: 'Office Hours', value: 'Mon–Sat, 9:00 AM – 6:00 PM IST', accent: 'bg-amber-500/15 text-amber-400' },
 ]
 
@@ -126,6 +125,31 @@ export function ContactPage() {
                       )}
                     </div>
                   </motion.div>
+                ))}
+              </div>
+
+              {/* Student coordinators */}
+              <h3 className="mt-8 font-display text-lg font-semibold text-ink-900">Student Coordinators</h3>
+              <p className="mt-1 text-sm text-ink-500">Primary points of contact for the hackathon.</p>
+              <div className="mt-4 space-y-3">
+                {COORDINATORS.coordinators.map((c, i) => (
+                  <motion.a
+                    key={c.phone}
+                    href={`tel:+91${c.phone}`}
+                    initial={{ opacity: 0, x: -12 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.08 }}
+                    className="flex items-center gap-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-ink-900">{c.name}</p>
+                      <p className="mt-0.5 text-sm text-ink-600">{c.role} · {c.phone}</p>
+                    </div>
+                  </motion.a>
                 ))}
               </div>
 
