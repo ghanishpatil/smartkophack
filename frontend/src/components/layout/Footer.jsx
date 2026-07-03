@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Mail, MapPin, Phone, Github, Twitter, Linkedin, ExternalLink } from 'lucide-react'
-import { APP } from '@/utils/constants.js'
+import { Mail, MapPin, Phone, Github, Twitter, Linkedin, Instagram, ExternalLink } from 'lucide-react'
+import { APP, COORDINATORS } from '@/utils/constants.js'
 
 const footerLinks = {
   platform: [
@@ -20,6 +20,7 @@ const footerLinks = {
 }
 
 const socials = [
+  { icon: Instagram, href: 'https://www.instagram.com/skhackathon.su?igsh=ZjByZnRlc2t1ZTg3', label: 'Instagram' },
   { icon: Twitter, href: '#', label: 'Twitter' },
   { icon: Linkedin, href: '#', label: 'LinkedIn' },
   { icon: Github, href: '#', label: 'GitHub' },
@@ -56,16 +57,21 @@ export function Footer() {
 
             {/* Social links */}
             <div className="mt-6 flex gap-3">
-              {socials.map(({ icon: Icon, href, label }) => (
-                <a
-                  key={label}
-                  href={href}
-                  aria-label={label}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-800 text-ink-400 transition-all duration-200 hover:border-brand-500/40 hover:text-brand-400 hover:shadow-glow-brand/20"
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
+              {socials.map(({ icon: Icon, href, label }) => {
+                const external = href && href !== '#'
+                return (
+                  <a
+                    key={label}
+                    href={href}
+                    aria-label={label}
+                    target={external ? '_blank' : undefined}
+                    rel={external ? 'noopener noreferrer' : undefined}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-800 text-ink-400 transition-all duration-200 hover:border-brand-500/40 hover:text-brand-400 hover:shadow-glow-brand/20"
+                  >
+                    <Icon className="h-4 w-4" />
+                  </a>
+                )
+              })}
             </div>
           </div>
 
@@ -135,8 +141,31 @@ export function Footer() {
               </li>
               <li className="flex gap-2.5 text-sm text-ink-400">
                 <Phone className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                <span>{APP.contactPhone}</span>
+                <div>
+                  <a
+                    className="font-medium text-ink-300 transition-colors hover:text-brand-400"
+                    href={`tel:+91${COORDINATORS.coordinator.phone}`}
+                  >
+                    {COORDINATORS.coordinator.name}
+                  </a>
+                  <span className="block text-xs text-ink-500">{COORDINATORS.coordinator.role} · {COORDINATORS.coordinator.phone}</span>
+                </div>
               </li>
+            </ul>
+
+            {/* Student leaders */}
+            <p className="mt-6 font-display text-sm font-semibold uppercase tracking-wider text-ink-300">
+              Student Leaders
+            </p>
+            <ul className="mt-3 space-y-2">
+              {COORDINATORS.leaders.map((l) => (
+                <li key={l.phone} className="flex items-center gap-2.5 text-sm text-ink-400">
+                  <Phone className="h-3.5 w-3.5 shrink-0 text-brand-500" />
+                  <a className="transition-colors hover:text-brand-400" href={`tel:+91${l.phone}`}>
+                    <span className="text-ink-300">{l.name}</span> · {l.phone}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
@@ -149,9 +178,9 @@ export function Footer() {
             © {new Date().getFullYear()} {APP.university}. An initiative for national-level innovation.
           </p>
           <div className="flex gap-4 text-xs text-ink-500">
-            <a href="#" className="transition-colors hover:text-ink-300">Privacy Policy</a>
-            <a href="#" className="transition-colors hover:text-ink-300">Terms of Use</a>
-            <a href="#" className="transition-colors hover:text-ink-300">Disclaimer</a>
+            <Link to="/privacy" className="transition-colors hover:text-ink-300">Privacy Policy</Link>
+            <Link to="/terms" className="transition-colors hover:text-ink-300">Terms of Use</Link>
+            <Link to="/disclaimer" className="transition-colors hover:text-ink-300">Disclaimer</Link>
           </div>
         </div>
       </div>

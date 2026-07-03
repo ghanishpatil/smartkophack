@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
+import { REGISTRATION_URL } from '@/utils/constants.js'
 import { roleHome, ROLES } from '@/utils/roles.js'
 
 /* ── Subtle animated network nodes ─────────────────────────── */
@@ -107,12 +108,26 @@ export function Hero() {
               transition={{ duration: 0.5, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="mt-6 flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4 lg:justify-start"
             >
-              <Link to={dashboardLink} className="w-full sm:w-auto">
-                <Button size="lg" className="w-full gap-2 shadow-glow-brand sm:w-auto">
-                  {ctaText}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              {user ? (
+                <Link to={dashboardLink} className="w-full sm:w-auto">
+                  <Button size="lg" className="w-full gap-2 shadow-glow-brand sm:w-auto">
+                    {ctaText}
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              ) : (
+                <a
+                  href={REGISTRATION_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto"
+                >
+                  <Button size="lg" className="w-full gap-2 shadow-glow-brand sm:w-auto">
+                    {ctaText}
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </a>
+              )}
               <Link to="/problems" className="w-full sm:w-auto">
                 <Button
                   size="lg"

@@ -8,6 +8,8 @@ import { LandingPage } from '@/pages/LandingPage.jsx'
 import { AboutPage } from '@/pages/AboutPage.jsx'
 import { ProblemsPage } from '@/pages/ProblemsPage.jsx'
 import { ContactPage } from '@/pages/ContactPage.jsx'
+import { HowToRegisterPage } from '@/pages/HowToRegisterPage.jsx'
+import { PrivacyPolicyPage, TermsOfUsePage, DisclaimerPage } from '@/pages/LegalPages.jsx'
 import { AuthPage } from '@/pages/AuthPage.jsx'
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage.jsx'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage.jsx'
@@ -211,6 +213,38 @@ export default function App() {
             element={
               <AnimatedOutlet>
                 <ContactPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/how-to-register"
+            element={
+              <AnimatedOutlet>
+                <HowToRegisterPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/privacy"
+            element={
+              <AnimatedOutlet>
+                <PrivacyPolicyPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/terms"
+            element={
+              <AnimatedOutlet>
+                <TermsOfUsePage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/disclaimer"
+            element={
+              <AnimatedOutlet>
+                <DisclaimerPage />
               </AnimatedOutlet>
             }
           />

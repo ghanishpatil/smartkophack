@@ -35,7 +35,7 @@ const deans = [
   {
     id: 1,
     name: 'Dr. Kavitha Rani Paramasivan',
-    designation: 'Dean',
+    designation: 'Dean, School of Engineering and Technology',
     image: '/dean-set.jpeg',
   },
   {

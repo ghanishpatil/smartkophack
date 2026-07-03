@@ -1,20 +1,22 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, ExternalLink, Info, Mail } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { publicApi } from '@/services/api.js'
 import { Input } from '@/components/ui/Input.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { roleHome } from '@/utils/roles.js'
-import { APP } from '@/utils/constants.js'
+import { APP, REGISTRATION_URL } from '@/utils/constants.js'
 
 const slideVariants = {
   enter: (dir) => ({ x: dir > 0 ? 80 : -80, opacity: 0 }),
   center: { x: 0, opacity: 1 },
   exit: (dir) => ({ x: dir > 0 ? -80 : 80, opacity: 0 }),
 }
+
+
 
 export function AuthPage() {
   usePageSeo({ title: 'Sign in', description: 'Sign in to the hackathon platform.' })
@@ -37,7 +39,7 @@ export function AuthPage() {
   }, [loading, user, profile, firebaseReady, from, navigate])
 
   const switchMode = useCallback((newMode) => {
-    const order = { login: 0, forgot: 1 }
+    const order = { login: 0, forgot: 1, register: 2 }
     setDirection(order[newMode] > order[mode] ? 1 : -1)
     setMode(newMode)
     setErr('')
@@ -104,11 +106,29 @@ export function AuthPage() {
             </motion.p>
           </div>
 
+          {/* Floating mascot — fills the middle so the panel stays balanced */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.45, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="relative flex flex-1 items-center justify-center py-6"
+          >
+            <div className="pointer-events-none absolute h-44 w-44 rounded-full bg-brand-400/25 blur-3xl" aria-hidden />
+            <motion.img
+              src="/skh3d.png"
+              alt=""
+              draggable={false}
+              className="relative h-40 w-40 object-contain drop-shadow-2xl xl:h-48 xl:w-48"
+              animate={{ y: [0, -12, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </motion.div>
+
           <motion.div
             initial="hidden"
             animate="visible"
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1, delayChildren: 0.6 } } }}
-            className="relative mt-auto space-y-3 pt-10"
+            className="relative space-y-3 pt-2"
           >
             {['Team management & invites', 'Structured submissions', 'Real-time jury evaluation', 'Email notifications'].map((f) => (
               <motion.div
@@ -148,6 +168,8 @@ export function AuthPage() {
                   firebaseReady={firebaseReady}
                   onBack={() => switchMode('login')}
                 />
+              ) : mode === 'register' ? (
+                <RegistrationInfo onBack={() => switchMode('login')} />
               ) : (
                 <>
                   {/* Header */}
@@ -158,6 +180,30 @@ export function AuthPage() {
                     <p className="mt-1.5 text-sm text-ink-500">
                       Sign in to access your dashboard.
                     </p>
+                  </div>
+
+                  {/* Access rule notice */}
+                  <div className="mb-6 rounded-xl border border-brand-500/20 bg-brand-500/5 p-4">
+                    <div className="flex gap-3">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                      <div className="space-y-1.5 text-sm text-ink-700">
+                        <p className="font-semibold text-ink-900">Dashboard access requires team registration</p>
+                        <p className="leading-relaxed">
+                          You can sign in only after your team is registered on the{' '}
+                          <span className="font-medium text-ink-900">Sanjivani University UMS portal</span>. The
+                          team leader receives dashboard login credentials by email within{' '}
+                          <span className="font-semibold text-ink-900">24 to 48 hours</span> of registration.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => switchMode('register')}
+                          className="inline-flex items-center gap-1 font-medium text-brand-600 transition-colors hover:text-brand-500"
+                        >
+                          How to register your team
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {!firebaseReady && (
@@ -329,6 +375,94 @@ function ForgotPasswordForm({ email, setEmail, onSubmit, busy, err, success, fir
           Send reset link
         </Button>
       </form>
+    </div>
+  )
+}
+
+/** How-to-register instructions + link to the UMS portal */
+function RegistrationInfo({ onBack }) {
+  const steps = [
+    {
+      title: 'Open the UMS registration portal',
+      detail: 'Use the button below to open the Sanjivani University event registration page, then choose "New Registration" (or "Check Registration" to review an existing one).',
+    },
+    {
+      title: 'Enter the leader\u2019s details',
+      detail: 'Fill in Name, Mobile No., and a valid Email, then pick how you participate: Participant, Volunteer, or Viewer.',
+    },
+    {
+      title: 'Set up your group',
+      detail: 'Under Group Selection, choose "Create New Group" (or "Join Existing Group"). Enter the Group Name and the No. of Members.',
+    },
+    {
+      title: 'Choose your institute',
+      detail: 'Select your Institute from the list (Sanjivani colleges) or pick an External Institute / Organization and add the Department and Year (FY / SY / TY / Final).',
+    },
+    {
+      title: 'Add your group members',
+      detail: 'For every member row, enter their Name, Mobile No., and Email. Make sure all details are correct before submitting.',
+    },
+    {
+      title: 'Submit & wait for credentials',
+      detail: 'After submission, the team leader receives dashboard login credentials by email within 24 to 48 hours. Use those to sign in here.',
+    },
+  ]
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 text-sm font-medium text-brand-600 transition-colors hover:text-brand-500"
+      >
+        ← Back to sign in
+      </button>
+
+      <h1 className="font-display text-2xl font-bold text-ink-900">
+        How to register your team
+      </h1>
+      <p className="mt-1.5 text-sm text-ink-500">
+        Registration happens on the Sanjivani University UMS portal. Dashboard access is enabled only after your
+        team is registered there.
+      </p>
+
+      {/* Primary CTA — external UMS portal */}
+      <a
+        href={REGISTRATION_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-5 block"
+      >
+        <Button className="w-full gap-2">
+          Register on the UMS portal
+          <ExternalLink className="h-4 w-4" />
+        </Button>
+      </a>
+
+      {/* Steps */}
+      <ol className="mt-6 space-y-4">
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-xs font-bold text-brand-700">
+              {i + 1}
+            </span>
+            <div className="text-sm">
+              <p className="font-semibold text-ink-900">{s.title}</p>
+              <p className="mt-0.5 leading-relaxed text-ink-600">{s.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {/* Credential note */}
+      <div className="mt-6 flex gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-ink-700">
+        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <p className="leading-relaxed">
+          Login credentials are sent to the team leader's email within{' '}
+          <span className="font-semibold text-ink-900">24 to 48 hours</span> after team registration. Check your
+          inbox (and spam folder) once registered.
+        </p>
+      </div>
     </div>
   )
 }

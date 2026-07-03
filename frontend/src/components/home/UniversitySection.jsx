@@ -69,12 +69,14 @@ export function UniversitySection() {
               </div>
 
               {/* Label */}
-              <div className="mt-4 flex items-center justify-center gap-2.5 rounded-xl border-2 border-ink-900 bg-white/70 px-4 py-2.5 backdrop-blur-sm">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              <div className="mt-4 flex items-center justify-center px-4 py-3">
+                <span className="font-display text-lg font-extrabold uppercase tracking-wide text-ink-900 sm:text-xl">
+                  Watch Our{' '}
+                  <span className="relative inline-block -rotate-2 rounded-[4px] border-2 border-ink-900 bg-lime-300 px-2 leading-tight text-ink-900 shadow-[2px_2px_0_0_rgb(15_23_42)]">
+                    Campus
+                  </span>{' '}
+                  Story
                 </span>
-                <span className="text-sm font-semibold tracking-wide text-gray-700">Watch Our Campus Story</span>
               </div>
             </div>
           </motion.div>

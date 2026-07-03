@@ -3,10 +3,24 @@ export const APP = {
   shortName: 'SKH',
   university: 'Sanjivani University',
   region: 'Kopargaon Taluka',
-  contactEmail: 'hackathon@sanjivani.edu.in',
-  contactPhone: '+91 (2423) 000-000',
+  contactEmail: 'skh@sanjivani.edu.in',
+  contactPhone: '+91 74983 11334',
   venue: 'Sanjivani University Innovation Campus',
 }
+
+// Student coordinator & team leaders — shown in the footer and Contact page.
+export const COORDINATORS = {
+  coordinator: { name: 'Ashish Pardeshi', phone: '7498311334', role: 'Student Coordinator' },
+  leaders: [
+    { name: 'Atharva Deshmukh', phone: '7517647277' },
+    { name: 'Aditya Mhaismale', phone: '9284093469' },
+    { name: 'Avani Kulkarni', phone: '9356138851' },
+  ],
+}
+
+// External UMS event-registration portal (Sanjivani University).
+// Single source of truth used by the hero CTA, auth page, and How to Register page.
+export const REGISTRATION_URL = 'https://ums.sanjivani.edu.in//EventRegistration/D0712D97-8DF'
 
 export const TRACKS = [
   {

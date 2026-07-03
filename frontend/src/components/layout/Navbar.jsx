@@ -15,7 +15,7 @@ const links = [
   { to: '/announcements', label: 'Announcements' },
   { to: '/results', label: 'Results' },
   { to: '/sponsors', label: 'Partners & Sponsors' },
-  { to: '/contact', label: 'Contact Us' },
+  { to: '/how-to-register', label: 'How to Register' },
 ]
 
 const resourceLinks = [
@@ -85,25 +85,27 @@ export function Navbar() {
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4 md:px-6 lg:h-[4.5rem] lg:px-8">
         {/* Logo - Optimized for mobile */}
         <Link to="/" className="group flex shrink-0 items-center gap-1.5 sm:gap-2 md:gap-3">
-          {/* Sanjivani University Logo */}
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-12 md:w-12 md:rounded-xl">
+          {/* Sanjivani University Logo — brutalist tile */}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-ink-900 bg-white shadow-[2px_2px_0_0_rgb(15_23_42)] transition-all duration-200 group-hover:translate-x-[1px] group-hover:translate-y-[1px] group-hover:shadow-[1px_1px_0_0_rgb(15_23_42)] sm:h-10 sm:w-10 md:h-12 md:w-12">
             <img 
               src="/sanjivani-logo.png" 
               alt="Sanjivani University" 
-              className="h-[90%] w-[90%] rounded-lg object-contain md:rounded-xl"
+              className="h-[85%] w-[85%] object-contain"
               onError={(e) => {
                 e.target.style.display = 'none'
-                e.target.parentElement.innerHTML = '<span class="text-xs font-bold text-brand-600">SU</span>'
+                e.target.parentElement.innerHTML = '<span class="font-display text-xs font-extrabold text-ink-900">SU</span>'
               }}
             />
           </div>
           
-          {/* SKH Logo */}
-          <img 
-            src="/logo.png" 
-            alt={APP.shortName} 
-            className="h-9 w-9 shrink-0 rounded-lg object-contain shadow-sm shadow-brand-500/20 ring-1 ring-brand-500/10 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 md:h-11 md:w-11 md:rounded-xl" 
-          />
+          {/* SKH Logo — brutalist tile */}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-ink-900 bg-white shadow-[2px_2px_0_0_rgb(15_23_42)] transition-all duration-200 group-hover:translate-x-[1px] group-hover:translate-y-[1px] group-hover:shadow-[1px_1px_0_0_rgb(15_23_42)] sm:h-10 sm:w-10 md:h-11 md:w-11">
+            <img 
+              src="/logo.png" 
+              alt={APP.shortName} 
+              className="h-[85%] w-[85%] object-contain" 
+            />
+          </div>
           
           {/* Text - Always visible */}
           <span className="flex flex-col leading-tight">

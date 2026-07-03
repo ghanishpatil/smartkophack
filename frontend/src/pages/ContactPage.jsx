@@ -4,12 +4,12 @@ import { Mail, MapPin, Phone, Send, Clock, CheckCircle2, MessageSquare, Headphon
 import { Input, Textarea } from '@/components/ui/Input.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
-import { APP } from '@/utils/constants.js'
+import { APP, COORDINATORS } from '@/utils/constants.js'
 
 const contactInfo = [
   { icon: MapPin, label: 'Address', value: APP.venue, accent: 'bg-rose-500/15 text-rose-400' },
   { icon: Mail, label: 'Email', value: APP.contactEmail, href: `mailto:${APP.contactEmail}`, accent: 'bg-brand-500/15 text-brand-400' },
-  { icon: Phone, label: 'Phone', value: APP.contactPhone, accent: 'bg-emerald-500/15 text-emerald-400' },
+  { icon: Phone, label: 'Student Coordinator', value: `${COORDINATORS.coordinator.name} · ${COORDINATORS.coordinator.phone}`, href: `tel:+91${COORDINATORS.coordinator.phone}`, accent: 'bg-emerald-500/15 text-emerald-400' },
   { icon: Clock, label: 'Office Hours', value: 'Mon–Sat, 9:00 AM – 6:00 PM IST', accent: 'bg-amber-500/15 text-amber-400' },
 ]
 
@@ -126,6 +126,31 @@ export function ContactPage() {
                       )}
                     </div>
                   </motion.div>
+                ))}
+              </div>
+
+              {/* Student leaders */}
+              <h3 className="mt-8 font-display text-lg font-semibold text-ink-900">Student Leaders</h3>
+              <p className="mt-1 text-sm text-ink-500">Reach out to our team leaders for quick help.</p>
+              <div className="mt-4 space-y-3">
+                {COORDINATORS.leaders.map((l, i) => (
+                  <motion.a
+                    key={l.phone}
+                    href={`tel:+91${l.phone}`}
+                    initial={{ opacity: 0, x: -12 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.08 }}
+                    className="flex items-center gap-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-500">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-ink-900">{l.name}</p>
+                      <p className="mt-0.5 text-sm text-ink-600">{l.phone}</p>
+                    </div>
+                  </motion.a>
                 ))}
               </div>
             </div>
