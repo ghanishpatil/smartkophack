@@ -530,8 +530,8 @@ function EmailDiagnostics({ api }) {
                   <p className="mt-2 text-xs text-red-700">
                     ⚠ Authentication failed. Verify the mailbox password for{' '}
                     <span className="font-mono">{health.smtp.user}</span> in the Hostinger email panel (hPanel →
-                    Emails). Update <code>SMTP_PASS</code> (no spaces/dashes), <code>SMTP_HOST</code>=smtp.hostinger.com,
-                    and <code>SMTP_PORT</code>=465 in your production env.
+                    Emails). Set <code>SMTP_PASS</code> exactly as shown (keep any dashes),{' '}
+                    <code>SMTP_HOST</code>=smtp.hostinger.com, and <code>SMTP_PORT</code>=465 in your production env.
                   </p>
                 )}
                 {!health.smtp.configured && (
