@@ -8,8 +8,9 @@
  */
 
 let _smtpTransport = null
-let _smtpTried = false
 let _smtpHealthy = null // null=unknown, true=working, false=failed
+let _smtpLastTry = 0
+const SMTP_RETRY_COOLDOWN_MS = 60 * 1000 // don't hammer the server after a failure
 
 // Stats for admin dashboard — reset daily
 let _emailStats = {
@@ -30,30 +31,46 @@ function resetStatsIfNeeded() {
 }
 
 /** Lazily create (and cache) the nodemailer SMTP transport if env vars are present. */
-async function getSmtpTransport() {
-  if (_smtpTried) return _smtpTransport
-  _smtpTried = true
-  const host = process.env.SMTP_HOST
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  if (!host || !user || !pass) return null
+async function getSmtpTransport({ force = false } = {}) {
+  // Already have a verified transport — reuse it.
+  if (_smtpTransport) return _smtpTransport
+
+  // Trim env values — copy/paste into hosting dashboards often adds stray
+  // whitespace or newlines that silently break authentication.
+  const host = (process.env.SMTP_HOST || '').trim()
+  const user = (process.env.SMTP_USER || '').trim()
+  const pass = (process.env.SMTP_PASS || '').trim()
+  if (!host || !user || !pass) {
+    _smtpHealthy = null
+    return null
+  }
+
+  // After a failure, wait for the cooldown before retrying (unless forced,
+  // e.g. the admin clicked Refresh). This lets SMTP recover once the env is
+  // fixed without needing a full process restart.
+  if (!force && _smtpHealthy === false && Date.now() - _smtpLastTry < SMTP_RETRY_COOLDOWN_MS) {
+    return null
+  }
+
+  _smtpLastTry = Date.now()
   try {
     const nodemailer = (await import('nodemailer')).default
-    const port = Number(process.env.SMTP_PORT) || 465
-    _smtpTransport = nodemailer.createTransport({
+    const port = Number((process.env.SMTP_PORT || '').trim()) || 465
+    const transport = nodemailer.createTransport({
       host,
       port,
       secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
       auth: { user, pass },
     })
-    // Verify connection
-    await _smtpTransport.verify()
+    // Verify connection/credentials before caching.
+    await transport.verify()
+    _smtpTransport = transport
     _smtpHealthy = true
     console.log(`[Email] SMTP transport configured and verified (${host}:${port} as ${user})`)
   } catch (e) {
-    console.error('[Email] Failed to init/verify SMTP transport:', e.message)
     _smtpTransport = null
     _smtpHealthy = false
+    console.error(`[Email] SMTP init/verify failed (${host}:${process.env.SMTP_PORT || 465} as ${user}):`, e.message)
   }
   return _smtpTransport
 }
@@ -946,11 +963,10 @@ export default {
  */
 export async function getEmailHealth() {
   resetStatsIfNeeded()
-  
-  // If SMTP hasn't been tried yet, trigger init to check health
-  if (!_smtpTried) {
-    await getSmtpTransport()
-  }
+
+  // Force a live re-check so the admin "Refresh" button reflects the current
+  // environment (e.g. right after fixing SMTP_PASS in the hosting dashboard).
+  await getSmtpTransport({ force: true })
 
   const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
   const brevoConfigured = !!process.env.BREVO_API_KEY
