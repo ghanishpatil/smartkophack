@@ -487,7 +487,7 @@ function EmailDiagnostics({ api }) {
               }
             >
               {health.activeTransport === 'smtp'
-                ? '✓ SMTP (Gmail)'
+                ? '✓ SMTP (Hostinger)'
                 : health.activeTransport === 'brevo'
                   ? '⚠ Brevo Fallback'
                   : '✗ None'}
@@ -509,7 +509,7 @@ function EmailDiagnostics({ api }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-ink-900">Gmail SMTP</p>
+                  <p className="text-sm font-semibold text-ink-900">Hostinger SMTP</p>
                   {health.smtp.healthy === true && (
                     <Badge tone="success" className="text-xs">Working</Badge>
                   )}
@@ -528,9 +528,10 @@ function EmailDiagnostics({ api }) {
                 )}
                 {health.smtp.healthy === false && (
                   <p className="mt-2 text-xs text-red-700">
-                    ⚠ Authentication failed. Check that 2-Step Verification is enabled on{' '}
-                    <span className="font-mono">{health.smtp.user}</span> and generate a fresh App Password in
-                    Google Account → Security → App passwords. Update <code>SMTP_PASS</code> in .env.
+                    ⚠ Authentication failed. Verify the mailbox password for{' '}
+                    <span className="font-mono">{health.smtp.user}</span> in the Hostinger email panel (hPanel →
+                    Emails). Update <code>SMTP_PASS</code> (no spaces/dashes), <code>SMTP_HOST</code>=smtp.hostinger.com,
+                    and <code>SMTP_PORT</code>=465 in your production env.
                   </p>
                 )}
                 {!health.smtp.configured && (
