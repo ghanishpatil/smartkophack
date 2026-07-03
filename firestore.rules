@@ -90,6 +90,12 @@ service cloud.firestore {
       allow write: if false; // Server-only via Admin SDK (activityLog.js)
     }
 
+    // ─── Password-change OTPs — server-only via Admin SDK ────────────
+    match /passwordOtps/{uid} {
+      allow read: if false;
+      allow write: if false; // Server-only via Admin SDK (passwordOtp.js)
+    }
+
     // ─── Join Requests (matchmaking) — server-only via Admin SDK ─────
     // Created/updated by the backend when participants request to join teams
     // and leaders approve/decline. Never read or written directly by clients.

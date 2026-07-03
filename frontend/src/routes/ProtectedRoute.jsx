@@ -33,6 +33,11 @@ export function ProtectedRoute({ roles }) {
     return <Navigate to="/auth" replace state={{ from: location.pathname }} />
   }
 
+  // First-login gate: force password change before accessing anything else.
+  if (profile?.mustChangePassword === true && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />
+  }
+
   const r = profile?.role || 'participant'
   if (roles?.length && !canAccess(r, roles)) {
     return <Navigate to={roleHome(r)} replace />

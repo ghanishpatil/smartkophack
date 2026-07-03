@@ -1,13 +1,150 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw, Loader2, Check } from 'lucide-react'
+import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw, Loader2, Check, UserPlus, Send, Upload, Download } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
+import { parseCSV, downloadCSV } from '@/utils/csvParser.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
-import { Input } from '@/components/ui/Input.jsx'
+import { Input, Textarea } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
+
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
+
+/** Extract emails from a CSV — prefers an `email` column, else scans all cells. */
+function extractEmailsFromCsv(text) {
+  const found = new Set()
+  const { headers, rows } = parseCSV(text)
+  const emailCol = headers.find((h) => h === 'email' || h === 'emails' || h === 'leader email')
+  if (rows.length && emailCol) {
+    for (const row of rows) {
+      const v = String(row[emailCol] || '').trim().toLowerCase()
+      if (v && v.includes('@')) found.add(v)
+    }
+  }
+  const matches = text.match(EMAIL_RE) || []
+  for (const m of matches) found.add(m.trim().toLowerCase())
+  return [...found]
+}
+
+/** Admin: bulk-invite team leaders by email — creates accounts + emails credentials. */
+function InviteLeaders({ api }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const fileRef = useRef(null)
+
+  const emails = text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)
+
+  async function invite() {
+    setError('')
+    setResult(null)
+    if (emails.length === 0) { setError('Enter at least one email.'); return }
+    setBusy(true)
+    try {
+      const res = await api.bulkInviteParticipants(emails)
+      setResult(res)
+    } catch (e) {
+      setError(e?.message || 'Invite failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function onCsvSelected(e) {
+    setError('')
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const emailsFromCsv = extractEmailsFromCsv(String(reader.result || ''))
+        if (emailsFromCsv.length === 0) {
+          setError('No emails found in that CSV. Use a column named "email".')
+          return
+        }
+        const existing = new Set(text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean))
+        for (const em of emailsFromCsv) existing.add(em)
+        setText([...existing].join('\n'))
+      } catch {
+        setError('Could not read that CSV file.')
+      }
+    }
+    reader.readAsText(file)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function downloadTemplate() {
+    const csv = ['email', 'leader1@college.edu', 'leader2@college.edu', 'leader3@college.edu'].join('\n')
+    downloadCSV('leader-emails-template.csv', csv)
+  }
+
+  return (
+    <Card>
+      <h2 className="flex items-center gap-2 font-display text-base font-semibold text-ink-900">
+        <UserPlus className="h-4 w-4 text-brand-600" /> Invite Team Leaders
+      </h2>
+      <p className="mt-1 text-xs text-ink-500">
+        Paste or import leader emails. Each gets an account with a temporary password emailed to them.
+        They set a new password (OTP-verified) on first login.
+      </p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onCsvSelected} className="hidden" />
+        <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload className="mr-1.5 h-3.5 w-3.5" /> Import CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={downloadTemplate}>
+          <Download className="mr-1.5 h-3.5 w-3.5" /> Download template
+        </Button>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <Textarea
+          rows={5}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={'leader1@college.edu\nleader2@college.edu\nleader3@college.edu'}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-ink-500">{emails.length} email{emails.length === 1 ? '' : 's'} detected</span>
+          <Button onClick={invite} disabled={busy || emails.length === 0} loading={busy}>
+            <Send className="mr-1.5 h-4 w-4" /> Create & Email Credentials
+          </Button>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
+
+        {result && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+            <div className="flex flex-wrap gap-3 font-medium">
+              <span className="text-emerald-700">Created: {result.summary.created}</span>
+              <span className="text-amber-700">Skipped: {result.summary.skipped}</span>
+              <span className="text-red-700">Failed: {result.summary.failed}</span>
+              <span className="text-ink-500">Total: {result.summary.total}</span>
+            </div>
+            {Array.isArray(result.results) && result.results.some((r) => r.status !== 'created') && (
+              <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-ink-600">
+                {result.results
+                  .filter((r) => r.status !== 'created')
+                  .map((r, i) => (
+                    <li key={i}>
+                      <span className="font-mono">{r.email || '—'}</span>: {r.status}
+                      {r.reason ? ` (${r.reason})` : ''}{r.error ? ` — ${r.error}` : ''}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
 
 /** Reusable toggle row — accessible checkbox with a custom switch look. */
 function ToggleRow({ checked, onChange, title, description, tone = 'default' }) {
@@ -197,6 +334,9 @@ export function AdminSettingsPage() {
           />
         </div>
       </Card>
+
+      {/* Invite Team Leaders */}
+      <InviteLeaders api={api} />
 
       {/* Results Preview — shown when admin is about to publish */}
       {eventForm.resultsPublished || eventForm.evaluationsOpen ? (

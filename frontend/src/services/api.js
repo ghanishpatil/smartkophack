@@ -60,6 +60,8 @@ async function request(path, { method = 'GET', token, body, headers = {}, eventI
 /** Unauthenticated reads — cached for 30s to prevent redundant calls. */
 export const publicApi = {
   listEvents: () => cachedRequest('/api/events'),
+  forgotPassword: (email) =>
+    request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
   getEventConfig: (eventId) =>
     cachedRequest(
       `/api/event-config${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`,
@@ -292,5 +294,15 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/test-email', { method: 'POST' }),
     adminEmailHealth: () =>
       authReq('/api/health/email'),
+    // Leader onboarding (admin)
+    bulkInviteParticipants: (emails) =>
+      authReq('/api/admin/participants/bulk-invite', { method: 'POST', body: { emails } }),
+    sendResetLink: (email) =>
+      authReq('/api/admin/participants/send-reset-link', { method: 'POST', body: { email } }),
+    // First-login password change (participant)
+    requestPasswordOtp: () =>
+      authReq('/api/participant/password/request-otp', { method: 'POST' }),
+    changePasswordWithOtp: (otp, newPassword) =>
+      authReq('/api/participant/password/change', { method: 'POST', body: { otp, newPassword } }),
   }
 }

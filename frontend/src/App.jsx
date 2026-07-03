@@ -9,6 +9,7 @@ import { AboutPage } from '@/pages/AboutPage.jsx'
 import { ProblemsPage } from '@/pages/ProblemsPage.jsx'
 import { ContactPage } from '@/pages/ContactPage.jsx'
 import { AuthPage } from '@/pages/AuthPage.jsx'
+import { ChangePasswordPage } from '@/pages/ChangePasswordPage.jsx'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage.jsx'
 import { TeamPage } from '@/pages/TeamPage.jsx'
 import { JoinTeamPage } from '@/pages/JoinTeamPage.jsx'
@@ -301,6 +302,10 @@ export default function App() {
               </AnimatedOutlet>
             }
           />
+        </Route>
+
+        <Route element={<ProtectedRoute />}>
+          <Route path="/change-password" element={<ChangePasswordPage />} />
         </Route>
 
         <Route element={<ProtectedRoute roles={[ROLES.PARTICIPANT]} />}>

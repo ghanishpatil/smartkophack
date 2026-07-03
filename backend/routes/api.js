@@ -161,6 +161,36 @@ r.get('/events', async (_req, res, next) => {
   }
 })
 
+/**
+ * Public: Forgot password — generates a Firebase reset link via Admin SDK and
+ * sends it through our email service (SMTP/Brevo) instead of Firebase's default
+ * sender, which lands in spam. Always returns a generic success to avoid
+ * revealing whether an email is registered (prevents account enumeration).
+ */
+const _forgotPwSeen = new Map() // ip -> last request ms (light in-memory throttle)
+r.post('/auth/forgot-password', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const generic = { ok: true, message: 'If an account exists for that email, a reset link has been sent.' }
+  try {
+    if (!email || !email.includes('@')) return res.json(generic)
+
+    // Light per-IP throttle (10s) to curb abuse
+    const ip = (req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || '').trim()
+    const now = Date.now()
+    const last = _forgotPwSeen.get(ip) || 0
+    if (now - last < 10_000) return res.json(generic)
+    _forgotPwSeen.set(ip, now)
+    if (_forgotPwSeen.size > 5000) _forgotPwSeen.clear()
+
+    const { sendResetLinkViaBrevo } = await import('../services/leaderAccounts.js')
+    // Fire-and-forget so we don't leak existence via timing; ignore result
+    sendResetLinkViaBrevo(email).catch(() => {})
+    return res.json(generic)
+  } catch {
+    return res.json(generic)
+  }
+})
+
 r.get('/events/:eventId/public', async (req, res, next) => {
   try {
     const ev = await getEventDocById(req.params.eventId)
@@ -337,6 +367,8 @@ r.get('/users/me', verifyFirebaseToken, loadUserRole, (req, res) => {
     skills: Array.isArray(p.skills) ? p.skills : [],
     bio: typeof p.bio === 'string' ? p.bio : '',
     lookingForTeam: typeof p.lookingForTeam === 'boolean' ? p.lookingForTeam : false,
+    // First-login: forces password change (leader onboarding)
+    mustChangePassword: p.mustChangePassword === true,
   })
 })
 
@@ -2579,6 +2611,52 @@ export function adminRouter() {
         metadata: { sent: result.sent },
       })
       res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: Bulk-invite team leaders. Creates Firebase Auth accounts with a
+   * temporary password + mustChangePassword flag, and emails credentials via Brevo.
+   * Body: { emails: string[] }  (or newline/comma-separated string in `emailsText`)
+   */
+  router.post('/participants/bulk-invite', async (req, res, next) => {
+    try {
+      let emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      if (emails.length === 0 && typeof req.body?.emailsText === 'string') {
+        emails = req.body.emailsText.split(/[\s,;]+/).filter(Boolean)
+      }
+      if (emails.length === 0) {
+        return res.status(400).json({ error: 'Provide emails (array) or emailsText (string).' })
+      }
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails)
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'participants.bulk_invite',
+        targetType: 'users',
+        targetId: '',
+        metadata: result.summary,
+      })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: Send a password-reset link to a user via Brevo (Fix 1 — better
+   * deliverability than Firebase's default sender). Body: { email }
+   */
+  router.post('/participants/send-reset-link', async (req, res, next) => {
+    try {
+      const email = String(req.body?.email || '').trim()
+      if (!email) return res.status(400).json({ error: 'email required' })
+      const { sendResetLinkViaBrevo } = await import('../services/leaderAccounts.js')
+      const result = await sendResetLinkViaBrevo(email)
+      if (!result.ok) return res.status(400).json({ error: result.error })
+      res.json({ ok: true })
     } catch (e) {
       next(e)
     }

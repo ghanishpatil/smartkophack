@@ -1,6 +1,5 @@
 /**
- * Email Service using Brevo (formerly Sendinblue)
- * Uses direct REST API instead of SDK for reliability.
+ * Email Service — sends via the Brevo (Sendinblue) REST API.
  */
 
 /**
@@ -31,32 +30,30 @@ function escapeHtml(str) {
 }
 
 /**
- * Send email using Brevo REST API (direct fetch, no SDK needed)
+ * Send email via the Brevo REST API.
  */
 async function sendEmail({ to, toName, subject, htmlContent, textContent, params = {} }) {
-  if (!process.env.BREVO_API_KEY) {
-    console.warn('[Email] Brevo API key not configured. Email not sent.')
-    return { success: false, reason: 'not_configured' }
-  }
-
   // Validate required fields
   if (!to || !subject || !htmlContent) {
     console.error('[Email] Missing required field:', { to: !!to, subject: !!subject, htmlContent: !!htmlContent })
     return { success: false, error: 'Missing required email fields (to, subject, or htmlContent)' }
   }
-
-  // Validate email format
   if (!to.includes('@')) {
     console.error('[Email] Invalid recipient email:', to)
     return { success: false, error: 'Invalid recipient email' }
   }
 
+  const fromName = process.env.EMAIL_FROM_NAME || 'Smart Kopargaon Hackathon'
+  const fromAddr = process.env.EMAIL_FROM_ADDRESS || 'noreply@skh.com'
+
+  if (!process.env.BREVO_API_KEY) {
+    console.warn('[Email] No Brevo API key configured. Email not sent.')
+    return { success: false, reason: 'not_configured' }
+  }
+
   try {
     const payload = {
-      sender: {
-        name: process.env.EMAIL_FROM_NAME || 'Smart Kopargaon Hackathon',
-        email: process.env.EMAIL_FROM_ADDRESS || 'noreply@skh.com',
-      },
+      sender: { name: fromName, email: fromAddr },
       to: [{ email: to, name: toName || to }],
       subject,
       htmlContent,
@@ -82,8 +79,8 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
       return { success: false, error: errMsg }
     }
 
-    console.log('[Email] Sent successfully:', { to, subject, messageId: data.messageId })
-    return { success: true, messageId: data.messageId }
+    console.log('[Email] Sent via Brevo:', { to, subject, messageId: data.messageId })
+    return { success: true, messageId: data.messageId, transport: 'brevo' }
   } catch (error) {
     console.error('[Email] Failed to send:', error.message)
     return { success: false, error: error.message }
@@ -667,6 +664,179 @@ export async function sendEvaluationCompleteEmail({ to, name, teamName }) {
   return sendEmail({ to, toName: name, subject, htmlContent })
 }
 
+// 9. Account Credentials Email — sent when admin bulk-creates a leader account.
+// Contains their email, a temporary password, and the platform link.
+// Uses the branded credentials.html template with an inline fallback.
+export async function sendCredentialsEmail({ to, name, tempPassword, eventName }) {
+  const safeName = escapeHtml(name || 'Team Leader')
+  const safeEmail = escapeHtml(to)
+  const safePassword = escapeHtml(String(tempPassword))
+  const safeEventName = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const loginUrl = `${getFrontendUrl()}/auth`
+  const subject = `Your ${safeEventName} login credentials`
+
+  // Try the branded template file first
+  try {
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const { fileURLToPath } = await import('url')
+    const __dirname = path.dirname(fileURLToPath(import.meta.url))
+    const templatePath = path.join(__dirname, 'emailTemplates', 'credentials.html')
+    const tpl = await fs.readFile(templatePath, 'utf-8')
+    const htmlContent = tpl
+      .replace(/{{EVENT_NAME}}/g, safeEventName)
+      .replace(/{{NAME}}/g, safeName)
+      .replace(/{{EMAIL}}/g, safeEmail)
+      .replace(/{{PASSWORD}}/g, safePassword)
+      .replace(/{{LOGIN_URL}}/g, loginUrl)
+      .replace(/{{YEAR}}/g, String(new Date().getFullYear()))
+    return sendEmail({ to, toName: name, subject, htmlContent })
+  } catch (e) {
+    console.warn('[Email] credentials template missing, using inline fallback:', e.message)
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 32px 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .creds { background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .creds .row { padding: 8px 0; }
+        .creds .label { color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .creds .val { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #111; background: #f3f4f6; padding: 8px 12px; border-radius: 6px; display: inline-block; margin-top: 4px; }
+        .button { display: inline-block; background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+        .warn { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 15px; margin: 20px 0; font-size: 13px; border-radius: 4px; }
+        .footer { text-align: center; margin-top: 30px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Your ${safeEventName} Access</h1>
+        </div>
+        <div class="content">
+          <p>Hi <strong>${safeName}</strong>,</p>
+          <p>An account has been created for you as a team leader on the ${safeEventName} platform. Use the credentials below to sign in:</p>
+
+          <div class="creds">
+            <div class="row">
+              <div class="label">Email</div>
+              <div class="val">${safeEmail}</div>
+            </div>
+            <div class="row">
+              <div class="label">Temporary Password</div>
+              <div class="val">${safePassword}</div>
+            </div>
+          </div>
+
+          <div class="warn">
+            🔒 For your security, you'll be asked to <strong>set a new password</strong> (verified by a one-time code sent to this email) the first time you log in.
+          </div>
+
+          <div style="text-align:center">
+            <a href="${loginUrl}" class="button">Log in to the Platform →</a>
+          </div>
+
+          <p style="color:#666;font-size:13px">If you didn't expect this email, please contact the organizers.</p>
+          <p><strong>Team SKH</strong></p>
+        </div>
+        <div class="footer">
+          <p>${safeEventName} | ${new Date().getFullYear()}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  return sendEmail({ to, toName: name, subject, htmlContent })
+}
+
+// 10. OTP Email — sent when a user requests to change their password (first login).
+export async function sendOtpEmail({ to, name, otp, eventName }) {
+  const safeName = escapeHtml(name || 'there')
+  const safeOtp = escapeHtml(String(otp))
+  const safeEventName = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const subject = `Your verification code: ${safeOtp}`
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 28px 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header h1 { margin: 0; font-size: 22px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; text-align: center; }
+        .otp { font-size: 40px; font-weight: bold; letter-spacing: 10px; color: #667eea; background: white; border: 2px dashed #667eea; border-radius: 10px; padding: 20px; margin: 24px auto; display: inline-block; }
+        .footer { text-align: center; margin-top: 30px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Verify Your Password Change</h1>
+        </div>
+        <div class="content">
+          <p style="text-align:left">Hi <strong>${safeName}</strong>,</p>
+          <p style="text-align:left">Enter this one-time code to set your new password:</p>
+          <div class="otp">${safeOtp}</div>
+          <p style="color:#666;font-size:13px">This code expires in <strong>10 minutes</strong> and can be used once.</p>
+          <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+        </div>
+        <div class="footer">
+          <p>${safeEventName} | ${new Date().getFullYear()}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  return sendEmail({ to, toName: name, subject, htmlContent })
+}
+
+// 11. Password Reset Link Email (Fix 1) — generated by Admin SDK, delivered via Brevo
+// so it lands in the inbox instead of Firebase's spam-prone default sender.
+export async function sendPasswordResetLinkEmail({ to, name, resetLink, eventName }) {
+  const safeName = escapeHtml(name || 'there')
+  const safeEventName = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const safeLink = String(resetLink || '')
+  const subject = `Reset your ${safeEventName} password`
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 28px 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .button { display: inline-block; background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+        .footer { text-align: center; margin-top: 30px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header"><h1>Reset Your Password</h1></div>
+        <div class="content">
+          <p>Hi <strong>${safeName}</strong>,</p>
+          <p>We received a request to reset your ${safeEventName} password. Click the button below to choose a new one:</p>
+          <div style="text-align:center">
+            <a href="${safeLink}" class="button">Reset Password →</a>
+          </div>
+          <p style="color:#666;font-size:13px">This link expires shortly. If you didn't request it, you can ignore this email.</p>
+          <p><strong>Team SKH</strong></p>
+        </div>
+        <div class="footer"><p>${safeEventName} | ${new Date().getFullYear()}</p></div>
+      </div>
+    </body>
+    </html>
+  `
+  return sendEmail({ to, toName: name, subject, htmlContent })
+}
+
 export default {
   sendEmail,
   sendAccountCreatedEmail,
@@ -678,4 +848,7 @@ export default {
   sendTeamMemberJoinedEmail,
   sendAnnouncementEmail,
   sendEvaluationCompleteEmail,
+  sendCredentialsEmail,
+  sendOtpEmail,
+  sendPasswordResetLinkEmail,
 }

@@ -52,6 +52,7 @@ async function syncProfileFromServer(user) {
       activeEventId: typeof data.activeEventId === 'string' ? data.activeEventId : '',
       institute: typeof data.institute === 'string' ? data.institute : '',
       trackChoice: typeof data.trackChoice === 'string' ? data.trackChoice : '',
+      mustChangePassword: data.mustChangePassword === true,
     }
   } catch {
     return null
@@ -169,7 +170,11 @@ export function AuthProvider({ children }) {
                   signOut(auth).catch(() => {})
                   return prev
                 }
-                if (prev?.role !== fresh.role || prev?.teamId !== fresh.teamId) {
+                if (
+                  prev?.role !== fresh.role ||
+                  prev?.teamId !== fresh.teamId ||
+                  Boolean(prev?.mustChangePassword) !== Boolean(fresh.mustChangePassword)
+                ) {
                   return fresh
                 }
                 return prev

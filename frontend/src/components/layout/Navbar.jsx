@@ -150,16 +150,22 @@ export function Navbar() {
 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {/* Dashboard button - only for signed-in users */}
-          {user && (
-            <Link to={dash} className="hidden sm:block">
+          {/* Dashboard/Login button - Show on tablets and up */}
+          <Link to={dash} className="hidden sm:block">
+            {user ? (
               <Button size="sm" variant="secondary" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
                 <span className="hidden md:inline">Dashboard</span>
                 <span className="md:hidden">Dash</span>
                 <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
-            </Link>
-          )}
+            ) : (
+              <Button size="sm" className="gap-1 text-xs sm:gap-1.5 sm:text-sm">
+                <span className="hidden md:inline">Login</span>
+                <span className="md:hidden">Login</span>
+                <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              </Button>
+            )}
+          </Link>
 
           {/* Mobile menu toggle - Better touch target */}
           <button
@@ -254,16 +260,14 @@ export function Navbar() {
                 </motion.div>
               ))}
 
-              {/* Dashboard button in mobile menu — signed-in users only */}
-              {user && (
-                <div className="mt-3 border-t border-[rgb(var(--border))] pt-3 sm:pt-4">
-                  <Link to={dash} onClick={() => setOpen(false)}>
-                    <Button className="min-h-[44px] w-full active:scale-[0.98]">
-                      Dashboard
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              {/* Dashboard/Login button in mobile menu */}
+              <div className="mt-3 border-t border-[rgb(var(--border))] pt-3 sm:pt-4">
+                <Link to={dash} onClick={() => setOpen(false)}>
+                  <Button className="min-h-[44px] w-full active:scale-[0.98]">
+                    {user ? 'Dashboard' : 'Login'}
+                  </Button>
+                </Link>
+              </div>
             </div>
           </motion.div>
         ) : null}

@@ -61,6 +61,76 @@ const r = Router()
 r.use(verifyFirebaseToken, loadUserRole, attachEventContext)
 r.use(requireRole('participant'))
 
+/** ═══ First-login password change (OTP-verified) ═══ */
+
+/**
+ * POST /participant/password/request-otp
+ * Issues a one-time code and emails it (Brevo). Called when the user lands on
+ * the change-password screen. Rate-limited via the OTP service cooldown.
+ */
+r.post('/password/request-otp', async (req, res, next) => {
+  try {
+    const uid = req.user.uid
+    const email = req.user.email || req.profile?.email
+    if (!email) return res.status(400).json({ error: 'No email on file for this account.' })
+
+    const { issueOtp } = await import('../services/passwordOtp.js')
+    const issued = await issueOtp(uid)
+    if (!issued.ok) {
+      return res.status(429).json({ error: issued.error, retryAfterMs: issued.retryAfterMs || null })
+    }
+
+    const { sendOtpEmail } = await import('../services/emailService.js')
+    const activeEvent = await getActiveEvent()
+    sendOtpEmail({
+      to: email,
+      name: req.profile?.displayName || 'there',
+      otp: issued.otp,
+      eventName: activeEvent?.name || 'Smart Kopargaon Hackathon',
+    }).catch((e) => console.error('[password otp email]', e.message))
+
+    res.json({ ok: true, sentTo: email.replace(/(.{2}).*(@.*)/, '$1***$2') })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /participant/password/change
+ * Body: { otp, newPassword }. Verifies the OTP, updates the Firebase password
+ * via Admin SDK, and clears the mustChangePassword flag.
+ */
+r.post('/password/change', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const otp = String(req.body?.otp || '').trim()
+    const newPassword = String(req.body?.newPassword || '')
+
+    if (!otp) return res.status(400).json({ error: 'Verification code is required.' })
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' })
+    }
+
+    const { verifyOtp } = await import('../services/passwordOtp.js')
+    const check = await verifyOtp(uid, otp)
+    if (!check.ok) return res.status(400).json({ error: check.error })
+
+    const { getAuth } = await import('firebase-admin/auth')
+    await getAuth().updateUser(uid, { password: newPassword })
+
+    await db.doc(`users/${uid}`).set({
+      mustChangePassword: false,
+      passwordChangedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true })
+
+    res.json({ ok: true })
+  } catch (e) {
+    next(e)
+  }
+})
+
 /** Authenticated: resolve invite code to team id (scoped by active event). */
 r.post('/lookup-invite', async (req, res, next) => {
   try {
