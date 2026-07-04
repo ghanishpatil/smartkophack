@@ -487,9 +487,9 @@ function EmailDiagnostics({ api }) {
               }
             >
               {health.activeTransport === 'smtp'
-                ? '✓ SMTP (Hostinger)'
+                ? '✓ SMTP (Brevo)'
                 : health.activeTransport === 'brevo'
-                  ? '⚠ Brevo Fallback'
+                  ? '✓ Brevo API'
                   : '✗ None'}
             </Badge>
           </div>
@@ -509,7 +509,7 @@ function EmailDiagnostics({ api }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-ink-900">Hostinger SMTP</p>
+                  <p className="text-sm font-semibold text-ink-900">Brevo SMTP</p>
                   {health.smtp.healthy === true && (
                     <Badge tone="success" className="text-xs">Working</Badge>
                   )}
@@ -525,14 +525,6 @@ function EmailDiagnostics({ api }) {
                     <p>Host: {health.smtp.host}</p>
                     <p>User: {health.smtp.user}</p>
                     <p>Port: {health.smtp.port}</p>
-                    <p>
-                      Password length: {health.smtp.passLen}
-                      {health.smtp.passLen === 19
-                        ? ' ✓'
-                        : health.smtp.passLen === 16
-                          ? ' — dashes missing! must be 19'
-                          : ' — expected 19'}
-                    </p>
                   </div>
                 )}
                 {health.smtp.healthy === false && (
@@ -543,11 +535,11 @@ function EmailDiagnostics({ api }) {
                       </p>
                     )}
                     <p className="mt-2 text-xs text-red-700">
-                      ⚠ Authentication failed. In your production env set <code>SMTP_PASS</code> to the exact
-                      Hostinger mailbox password <strong>with dashes</strong> — it must be{' '}
-                      <span className="font-mono">nxzy-rk6y-dqft-1nkk</span> (19 characters). Also{' '}
-                      <code>SMTP_HOST</code>=smtp.hostinger.com, <code>SMTP_PORT</code>=465. Then redeploy the
-                      backend. (Password length above must read 19.)
+                      ⚠ SMTP is not connecting. Use Brevo:{' '}
+                      <code>SMTP_HOST</code>=smtp-relay.brevo.com, <code>SMTP_PORT</code>=587,{' '}
+                      <code>SMTP_USER</code>=your Brevo login, <code>SMTP_PASS</code>=your Brevo SMTP key. Note:
+                      SMTP ports are blocked on Railway's free/Hobby plan (needs Pro) — if you see a connection
+                      timeout, switch to the Brevo HTTP API instead.
                     </p>
                   </>
                 )}
@@ -576,36 +568,10 @@ function EmailDiagnostics({ api }) {
                   )}
                 </div>
                 {health.brevo.configured && (
-                  <div className="mt-1 space-y-0.5 text-xs text-ink-600 font-mono">
-                    <p>From: {health.brevo.fromAddress || '⚠ EMAIL_FROM_ADDRESS not set'}</p>
-                    <p>API key length: {health.brevo.keyLen}</p>
-                    <p>
-                      API key valid:{' '}
-                      {health.brevo.keyValid === true
-                        ? `✓ yes (${health.brevo.account})`
-                        : health.brevo.keyValid === false
-                          ? `✗ NO — ${health.brevo.keyError}`
-                          : 'unknown'}
-                    </p>
-                    {health.brevo.lastSendError && (
-                      <p className="text-red-700">Last send error: {health.brevo.lastSendError}</p>
-                    )}
-                  </div>
-                )}
-                {health.brevo.keyValid === false && (
-                  <p className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700">
-                    ⚠ The BREVO_API_KEY in your production env is invalid or rejected. Copy the exact key
-                    (starts with <code>xkeysib-</code>) from Brevo → SMTP &amp; API → API Keys into Railway, then redeploy.
-                  </p>
-                )}
-                {health.brevo.keyValid === true && health.brevo.lastSendError && (
-                  <p className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700">
-                    ⚠ Key works, but sends are failing — usually the sender <code>{health.brevo.fromAddress}</code>{' '}
-                    is not verified in Brevo. Verify it under Brevo → Senders, Domains &amp; IPs.
-                  </p>
+                  <p className="mt-1 text-xs text-ink-600 font-mono">From: {health.brevo.fromAddress}</p>
                 )}
                 {!health.brevo.configured && (
-                  <p className="mt-1 text-xs text-ink-500">Not configured (BREVO_API_KEY missing in production env)</p>
+                  <p className="mt-1 text-xs text-ink-500">Not configured (BREVO_API_KEY missing)</p>
                 )}
               </div>
             </div>
