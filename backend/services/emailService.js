@@ -861,37 +861,62 @@ export async function sendOtpEmail({ to, name, otp, eventName }) {
   const safeName = escapeHtml(name || 'there')
   const safeOtp = escapeHtml(String(otp))
   const safeEventName = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const gifUrl = `${getFrontendUrl()}/skh.gif`
+  const year = new Date().getFullYear()
   const subject = `Your verification code: ${safeOtp}`
   const htmlContent = `
     <!DOCTYPE html>
     <html>
     <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 28px 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .header h1 { margin: 0; font-size: 22px; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; text-align: center; }
-        .otp { font-size: 40px; font-weight: bold; letter-spacing: 10px; color: #667eea; background: white; border: 2px dashed #667eea; border-radius: 10px; padding: 20px; margin: 24px auto; display: inline-block; }
-        .footer { text-align: center; margin-top: 30px; color: #999; font-size: 12px; }
-      </style>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Verify Your Password Change</h1>
-        </div>
-        <div class="content">
-          <p style="text-align:left">Hi <strong>${safeName}</strong>,</p>
-          <p style="text-align:left">Enter this one-time code to set your new password:</p>
-          <div class="otp">${safeOtp}</div>
-          <p style="color:#666;font-size:13px">This code expires in <strong>10 minutes</strong> and can be used once.</p>
-          <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
-        </div>
-        <div class="footer">
-          <p>${safeEventName} | ${new Date().getFullYear()}</p>
-        </div>
-      </div>
+    <body style="margin:0;padding:0;background-color:#f2f6f9;font-family:'Inter',Arial,sans-serif;color:#22255e;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f2f6f9;">
+        <tr>
+          <td align="center" style="padding:24px 12px;">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+              <!-- Header with SKH gif -->
+              <tr>
+                <td align="center" style="background-color:#e6f4ff;padding:36px 20px 8px;">
+                  <img src="${gifUrl}" alt="SKH" width="260" style="display:block;border:0;width:100%;max-width:260px;height:auto;margin:0 auto;">
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="background-color:#e6f4ff;padding:6px 20px 32px;">
+                  <h1 style="margin:0;color:#185983;font-family:'Space Grotesk','Inter',Arial,sans-serif;font-size:26px;font-weight:700;">Verify Your Password Change</h1>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 8px;">
+                  <p style="margin:0;font-size:16px;line-height:150%;"><strong>Hi ${safeName},</strong></p>
+                  <p style="margin:12px 0 0;font-size:15px;line-height:160%;color:#5a6472;">Enter this one-time code to set your new password:</p>
+                </td>
+              </tr>
+              <!-- OTP -->
+              <tr>
+                <td align="center" style="padding:24px 40px 8px;">
+                  <div style="display:inline-block;font-family:'Space Grotesk','Courier New',monospace;font-size:40px;font-weight:700;letter-spacing:12px;color:#185983;background:#ffffff;border:2px dashed #185983;border-radius:10px;padding:18px 28px;">${safeOtp}</div>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:10px 40px 36px;">
+                  <p style="margin:0;font-size:13px;line-height:160%;color:#8a94a3;">This code expires in <strong style="color:#185983;">10 minutes</strong> and can be used once.</p>
+                  <p style="margin:8px 0 0;font-size:12px;line-height:160%;color:#a9b2bf;">If you didn't request this, you can safely ignore this email.</p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td align="center" style="background-color:#185983;padding:22px 20px;">
+                  <a href="${getFrontendUrl()}" style="color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">skh.sanjivaniuniversity.com</a>
+                  <p style="margin:6px 0 0;font-size:12px;color:#a9d4ec;">${safeEventName} &middot; ${year}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `
