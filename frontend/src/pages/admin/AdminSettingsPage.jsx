@@ -524,15 +524,32 @@ function EmailDiagnostics({ api }) {
                   <div className="mt-1 space-y-0.5 text-xs text-ink-600 font-mono">
                     <p>Host: {health.smtp.host}</p>
                     <p>User: {health.smtp.user}</p>
+                    <p>Port: {health.smtp.port}</p>
+                    <p>
+                      Password length: {health.smtp.passLen}
+                      {health.smtp.passLen === 19
+                        ? ' ✓'
+                        : health.smtp.passLen === 16
+                          ? ' — dashes missing! must be 19'
+                          : ' — expected 19'}
+                    </p>
                   </div>
                 )}
                 {health.smtp.healthy === false && (
-                  <p className="mt-2 text-xs text-red-700">
-                    ⚠ Authentication failed. Verify the mailbox password for{' '}
-                    <span className="font-mono">{health.smtp.user}</span> in the Hostinger email panel (hPanel →
-                    Emails). Set <code>SMTP_PASS</code> exactly as shown (keep any dashes),{' '}
-                    <code>SMTP_HOST</code>=smtp.hostinger.com, and <code>SMTP_PORT</code>=465 in your production env.
-                  </p>
+                  <>
+                    {health.smtp.error && (
+                      <p className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs font-mono text-red-700">
+                        SMTP error: {health.smtp.error}
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-red-700">
+                      ⚠ Authentication failed. In your production env set <code>SMTP_PASS</code> to the exact
+                      Hostinger mailbox password <strong>with dashes</strong> — it must be{' '}
+                      <span className="font-mono">nxzy-rk6y-dqft-1nkk</span> (19 characters). Also{' '}
+                      <code>SMTP_HOST</code>=smtp.hostinger.com, <code>SMTP_PORT</code>=465. Then redeploy the
+                      backend. (Password length above must read 19.)
+                    </p>
+                  </>
                 )}
                 {!health.smtp.configured && (
                   <p className="mt-1 text-xs text-ink-500">

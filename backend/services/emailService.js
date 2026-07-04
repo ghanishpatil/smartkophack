@@ -10,6 +10,7 @@
 let _smtpTransport = null
 let _smtpHealthy = null // null=unknown, true=working, false=failed
 let _smtpLastTry = 0
+let _smtpError = null // last SMTP init/verify error message (for admin diagnostics)
 const SMTP_RETRY_COOLDOWN_MS = 60 * 1000 // don't hammer the server after a failure
 
 // Stats for admin dashboard — reset daily
@@ -66,10 +67,12 @@ async function getSmtpTransport({ force = false } = {}) {
     await transport.verify()
     _smtpTransport = transport
     _smtpHealthy = true
+    _smtpError = null
     console.log(`[Email] SMTP transport configured and verified (${host}:${port} as ${user})`)
   } catch (e) {
     _smtpTransport = null
     _smtpHealthy = false
+    _smtpError = e.message
     console.error(`[Email] SMTP init/verify failed (${host}:${process.env.SMTP_PORT || 465} as ${user}):`, e.message)
   }
   return _smtpTransport
@@ -1001,8 +1004,13 @@ export async function getEmailHealth() {
     smtp: {
       configured: smtpConfigured,
       healthy: _smtpHealthy, // null=unknown, true=working, false=failed
-      host: smtpConfigured ? process.env.SMTP_HOST : null,
-      user: smtpConfigured ? process.env.SMTP_USER : null,
+      host: smtpConfigured ? (process.env.SMTP_HOST || '').trim() : null,
+      user: smtpConfigured ? (process.env.SMTP_USER || '').trim() : null,
+      port: smtpConfigured ? (Number((process.env.SMTP_PORT || '').trim()) || 465) : null,
+      // Diagnostics (admin-only): length of the trimmed password (never the value)
+      // and the last auth/connection error, to debug production env mismatches.
+      passLen: (process.env.SMTP_PASS || '').trim().length || 0,
+      error: _smtpHealthy === false ? (_smtpError || 'Authentication/connection failed') : null,
     },
     brevo: {
       configured: brevoConfigured,
