@@ -11,6 +11,8 @@ let _smtpTransport = null
 let _smtpHealthy = null // null=unknown, true=working, false=failed
 let _smtpLastTry = 0
 let _smtpError = null // last SMTP init/verify error message (for admin diagnostics)
+let _brevoError = null // last Brevo API send error (for admin diagnostics)
+let _lastTransport = null // 'smtp' | 'brevo' — which transport last succeeded
 const SMTP_RETRY_COOLDOWN_MS = 60 * 1000 // don't hammer the server after a failure
 
 // Stats for admin dashboard — reset daily
@@ -128,8 +130,9 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
     return { success: false, error: 'Invalid recipient email' }
   }
 
-  const fromName = process.env.EMAIL_FROM_NAME || 'Smart Kopargaon Hackathon'
-  const fromAddr = process.env.EMAIL_FROM_ADDRESS || process.env.SMTP_USER || 'noreply@skh.com'
+  const cleanEnv = (v) => (v || '').trim().replace(/^['"]+|['"]+$/g, '').trim()
+  const fromName = cleanEnv(process.env.EMAIL_FROM_NAME) || 'Smart Kopargaon Hackathon'
+  const fromAddr = cleanEnv(process.env.EMAIL_FROM_ADDRESS) || cleanEnv(process.env.SMTP_USER) || 'noreply@skh.com'
 
   // ─── Preferred: SMTP (best deliverability from an authenticated domain) ───
   const smtp = await getSmtpTransport()
@@ -143,6 +146,7 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
         text: textContent || undefined,
       })
       _emailStats.smtp.sent++
+      _lastTransport = 'smtp'
       console.log('[Email] Sent via SMTP:', { to, subject, messageId: info.messageId })
       return { success: true, messageId: info.messageId, transport: 'smtp' }
     } catch (error) {
@@ -154,7 +158,9 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
   }
 
   // ─── Fallback: Brevo REST API ───
-  if (!process.env.BREVO_API_KEY) {
+  const brevoKey = cleanEnv(process.env.BREVO_API_KEY)
+  if (!brevoKey) {
+    _brevoError = 'BREVO_API_KEY not set'
     console.warn('[Email] No SMTP and no Brevo API key configured. Email not sent.')
     return { success: false, reason: 'not_configured' }
   }
@@ -174,7 +180,7 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
       headers: {
         'accept': 'application/json',
         'content-type': 'application/json',
-        'api-key': process.env.BREVO_API_KEY,
+        'api-key': brevoKey,
       },
       body: JSON.stringify(payload),
     })
@@ -184,15 +190,19 @@ async function sendEmail({ to, toName, subject, htmlContent, textContent, params
     if (!res.ok) {
       _emailStats.brevo.failed++
       const errMsg = data?.message || data?.code || `HTTP ${res.status}`
+      _brevoError = `${errMsg} (from: ${fromAddr})`
       console.error('[Email] Brevo API error:', errMsg, JSON.stringify(data))
       return { success: false, error: errMsg }
     }
 
     _emailStats.brevo.sent++
+    _brevoError = null
+    _lastTransport = 'brevo'
     console.log('[Email] Sent via Brevo:', { to, subject, messageId: data.messageId })
     return { success: true, messageId: data.messageId, transport: 'brevo' }
   } catch (error) {
     _emailStats.brevo.failed++
+    _brevoError = error.message
     console.error('[Email] Failed to send:', error.message)
     return { success: false, error: error.message }
   }
@@ -1004,25 +1014,57 @@ export async function getEmailHealth() {
   // environment (e.g. right after fixing SMTP_PASS in the hosting dashboard).
   await getSmtpTransport({ force: true })
 
+  const cleanEnv = (v) => (v || '').trim().replace(/^['"]+|['"]+$/g, '').trim()
   const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
-  const brevoConfigured = !!process.env.BREVO_API_KEY
+  const brevoKey = cleanEnv(process.env.BREVO_API_KEY)
+  const brevoConfigured = !!brevoKey
+  const fromAddress = cleanEnv(process.env.EMAIL_FROM_ADDRESS) || cleanEnv(process.env.SMTP_USER) || null
+
+  // Live check: does the Brevo key actually work from THIS server (production)?
+  // Hits the lightweight /v3/account endpoint over HTTPS (port 443, not blocked).
+  let brevoKeyValid = null
+  let brevoAccount = null
+  let brevoKeyError = null
+  if (brevoConfigured) {
+    try {
+      const acc = await fetch('https://api.brevo.com/v3/account', {
+        method: 'GET',
+        headers: { accept: 'application/json', 'api-key': brevoKey },
+      })
+      const accData = await acc.json().catch(() => ({}))
+      if (acc.ok) {
+        brevoKeyValid = true
+        brevoAccount = accData?.email || `${accData?.firstName || ''} ${accData?.lastName || ''}`.trim() || 'connected'
+      } else {
+        brevoKeyValid = false
+        brevoKeyError = accData?.message || `HTTP ${acc.status}`
+      }
+    } catch (e) {
+      brevoKeyValid = false
+      brevoKeyError = e.message
+    }
+  }
 
   return {
     smtp: {
       configured: smtpConfigured,
       healthy: _smtpHealthy, // null=unknown, true=working, false=failed
-      host: smtpConfigured ? (process.env.SMTP_HOST || '').trim() : null,
-      user: smtpConfigured ? (process.env.SMTP_USER || '').trim() : null,
-      port: smtpConfigured ? (Number((process.env.SMTP_PORT || '').trim()) || 465) : null,
-      // Diagnostics (admin-only): length of the cleaned password (never the value)
-      // and the last auth/connection error, to debug production env mismatches.
-      passLen: (process.env.SMTP_PASS || '').trim().replace(/^['"]+|['"]+$/g, '').trim().length || 0,
+      host: smtpConfigured ? cleanEnv(process.env.SMTP_HOST) : null,
+      user: smtpConfigured ? cleanEnv(process.env.SMTP_USER) : null,
+      port: smtpConfigured ? (Number(cleanEnv(process.env.SMTP_PORT)) || 465) : null,
+      passLen: cleanEnv(process.env.SMTP_PASS).length || 0,
       error: _smtpHealthy === false ? (_smtpError || 'Authentication/connection failed') : null,
     },
     brevo: {
       configured: brevoConfigured,
-      fromAddress: process.env.EMAIL_FROM_ADDRESS || null,
+      keyLen: brevoKey.length || 0,
+      keyValid: brevoKeyValid, // true=key works, false=key rejected, null=not configured
+      account: brevoAccount, // Brevo account email when key is valid
+      keyError: brevoKeyError, // why the key check failed
+      fromAddress, // effective sender address
+      lastSendError: _brevoError, // last actual send error (e.g. sender not verified)
     },
+    lastTransport: _lastTransport,
     stats: {
       period: '24h',
       smtp: { ..._emailStats.smtp },

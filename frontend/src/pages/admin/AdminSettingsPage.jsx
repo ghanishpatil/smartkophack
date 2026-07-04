@@ -576,10 +576,36 @@ function EmailDiagnostics({ api }) {
                   )}
                 </div>
                 {health.brevo.configured && (
-                  <p className="mt-1 text-xs text-ink-600 font-mono">From: {health.brevo.fromAddress}</p>
+                  <div className="mt-1 space-y-0.5 text-xs text-ink-600 font-mono">
+                    <p>From: {health.brevo.fromAddress || '⚠ EMAIL_FROM_ADDRESS not set'}</p>
+                    <p>API key length: {health.brevo.keyLen}</p>
+                    <p>
+                      API key valid:{' '}
+                      {health.brevo.keyValid === true
+                        ? `✓ yes (${health.brevo.account})`
+                        : health.brevo.keyValid === false
+                          ? `✗ NO — ${health.brevo.keyError}`
+                          : 'unknown'}
+                    </p>
+                    {health.brevo.lastSendError && (
+                      <p className="text-red-700">Last send error: {health.brevo.lastSendError}</p>
+                    )}
+                  </div>
+                )}
+                {health.brevo.keyValid === false && (
+                  <p className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700">
+                    ⚠ The BREVO_API_KEY in your production env is invalid or rejected. Copy the exact key
+                    (starts with <code>xkeysib-</code>) from Brevo → SMTP &amp; API → API Keys into Railway, then redeploy.
+                  </p>
+                )}
+                {health.brevo.keyValid === true && health.brevo.lastSendError && (
+                  <p className="mt-2 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700">
+                    ⚠ Key works, but sends are failing — usually the sender <code>{health.brevo.fromAddress}</code>{' '}
+                    is not verified in Brevo. Verify it under Brevo → Senders, Domains &amp; IPs.
+                  </p>
                 )}
                 {!health.brevo.configured && (
-                  <p className="mt-1 text-xs text-ink-500">Not configured (BREVO_API_KEY missing)</p>
+                  <p className="mt-1 text-xs text-ink-500">Not configured (BREVO_API_KEY missing in production env)</p>
                 )}
               </div>
             </div>
