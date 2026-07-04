@@ -64,6 +64,11 @@ async function getSmtpTransport({ force = false } = {}) {
       port,
       secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
       auth: { user, pass },
+      // Fail fast if the host blocks outbound SMTP (e.g. Railway trial plans),
+      // so we fall back to the Brevo HTTP API quickly instead of hanging.
+      connectionTimeout: 10000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
     })
     // Verify connection/credentials before caching.
     await transport.verify()
