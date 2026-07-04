@@ -785,6 +785,7 @@ export async function sendCredentialsEmail({ to, name, tempPassword, eventName }
     const templatePath = path.join(__dirname, 'emailTemplates', 'credentials.html')
     const tpl = await fs.readFile(templatePath, 'utf-8')
     const htmlContent = tpl
+      .replace(/{{ASSET_BASE}}/g, getFrontendUrl())
       .replace(/{{EVENT_NAME}}/g, safeEventName)
       .replace(/{{NAME}}/g, safeName)
       .replace(/{{EMAIL}}/g, safeEmail)

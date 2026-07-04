@@ -82,12 +82,28 @@ r.post('/password/request-otp', async (req, res, next) => {
 
     const { sendOtpEmail } = await import('../services/emailService.js')
     const activeEvent = await getActiveEvent()
-    sendOtpEmail({
-      to: email,
-      name: req.profile?.displayName || 'there',
-      otp: issued.otp,
-      eventName: activeEvent?.name || 'Smart Kopargaon Hackathon',
-    }).catch((e) => console.error('[password otp email]', e.message))
+
+    let mail
+    try {
+      mail = await sendOtpEmail({
+        to: email,
+        name: req.profile?.displayName || 'there',
+        otp: issued.otp,
+        eventName: activeEvent?.name || 'Smart Kopargaon Hackathon',
+      })
+    } catch (e) {
+      console.error('[password otp email] send threw:', e.message)
+      mail = { success: false, error: e.message }
+    }
+
+    // If the email could not be sent, surface it instead of pretending success —
+    // otherwise the user waits for a code that never arrives.
+    if (!mail?.success) {
+      console.error('[password otp email] not delivered:', mail?.error || 'unknown')
+      return res.status(502).json({
+        error: 'We could not send the verification code right now. Please try again in a minute or contact the organizers.',
+      })
+    }
 
     res.json({ ok: true, sentTo: email.replace(/(.{2}).*(@.*)/, '$1***$2') })
   } catch (e) {
