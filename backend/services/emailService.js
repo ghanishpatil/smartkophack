@@ -36,11 +36,13 @@ async function getSmtpTransport({ force = false } = {}) {
   // Already have a verified transport — reuse it.
   if (_smtpTransport) return _smtpTransport
 
-  // Trim env values — copy/paste into hosting dashboards often adds stray
-  // whitespace or newlines that silently break authentication.
-  const host = (process.env.SMTP_HOST || '').trim()
-  const user = (process.env.SMTP_USER || '').trim()
-  const pass = (process.env.SMTP_PASS || '').trim()
+  // Trim env values and strip accidental surrounding quotes — copy/paste into
+  // hosting dashboards often adds stray whitespace, newlines, or wrapping
+  // quotes that silently break authentication.
+  const clean = (v) => (v || '').trim().replace(/^['"]+|['"]+$/g, '').trim()
+  const host = clean(process.env.SMTP_HOST)
+  const user = clean(process.env.SMTP_USER)
+  const pass = clean(process.env.SMTP_PASS)
   if (!host || !user || !pass) {
     _smtpHealthy = null
     return null
@@ -56,7 +58,7 @@ async function getSmtpTransport({ force = false } = {}) {
   _smtpLastTry = Date.now()
   try {
     const nodemailer = (await import('nodemailer')).default
-    const port = Number((process.env.SMTP_PORT || '').trim()) || 465
+    const port = Number(clean(process.env.SMTP_PORT)) || 465
     const transport = nodemailer.createTransport({
       host,
       port,
@@ -1007,9 +1009,9 @@ export async function getEmailHealth() {
       host: smtpConfigured ? (process.env.SMTP_HOST || '').trim() : null,
       user: smtpConfigured ? (process.env.SMTP_USER || '').trim() : null,
       port: smtpConfigured ? (Number((process.env.SMTP_PORT || '').trim()) || 465) : null,
-      // Diagnostics (admin-only): length of the trimmed password (never the value)
+      // Diagnostics (admin-only): length of the cleaned password (never the value)
       // and the last auth/connection error, to debug production env mismatches.
-      passLen: (process.env.SMTP_PASS || '').trim().length || 0,
+      passLen: (process.env.SMTP_PASS || '').trim().replace(/^['"]+|['"]+$/g, '').trim().length || 0,
       error: _smtpHealthy === false ? (_smtpError || 'Authentication/connection failed') : null,
     },
     brevo: {
