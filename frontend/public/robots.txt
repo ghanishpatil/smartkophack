@@ -1,17 +1,9 @@
 # robots.txt for Smart Kopargaon Hackathon
-# Public marketing/info pages are crawlable; private app areas are blocked.
+# Public pages are listed in the sitemap. Private app areas require login,
+# are not linked publicly, and are excluded from the sitemap — so they are
+# not crawled or indexed. We intentionally do NOT enumerate them here.
 
 User-agent: *
 Allow: /
-
-# Block private / authenticated areas (not for indexing)
-Disallow: /admin
-Disallow: /dashboard
-Disallow: /judge
-Disallow: /mentor
-Disallow: /auth
-Disallow: /change-password
-Disallow: /team
-Disallow: /join
 
 Sitemap: https://skh.sanjivaniuniversity.com/sitemap.xml
