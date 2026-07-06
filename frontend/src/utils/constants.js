@@ -93,19 +93,27 @@ export const SPONSORS = [
 export const FAQ_ITEMS = [
   {
     q: 'Who can participate?',
-    a: 'Students from recognized institutions across India may form teams. Cross-disciplinary teams are encouraged. Each participant must have a valid college ID.',
+    a: 'Students from recognized institutions may form teams. Cross-disciplinary teams are encouraged, and each participant must carry a valid college/institute ID.',
   },
   {
     q: 'What is the team size?',
-    a: 'Each team must have a minimum of 2 and a maximum of 4 members, including one team leader. The exact limits may be adjusted by the organizers — check the registration page for the current requirements.',
+    a: 'Each team must have 2 to 4 members, including one team leader. Check the registration page for the current requirements.',
+  },
+  {
+    q: 'How do we register?',
+    a: 'Registration is done on the Sanjivani University UMS portal — see the "How to Register" page for the step-by-step guide. Once your team is registered, the team leader receives dashboard login credentials by email within 24 to 48 hours.',
   },
   {
     q: 'Is there a registration fee?',
-    a: 'Yes, there is a registration fee of ₹400 per team (not per person). Payment must be completed before the registration deadline to confirm your spot.',
+    a: 'Yes, the registration fee is ₹600 per team (not per person). Payment must be completed before the registration deadline to confirm your team\'s spot.',
+  },
+  {
+    q: 'Which problem domains can we work on?',
+    a: 'There are 8 domains: Health, Education, Transportation, Food Safety & Security, Waste Management, Agriculture, Industry & MSME Innovation, and Open Innovation. Browse the Problem Statements page to choose one.',
   },
   {
     q: 'How are submissions evaluated?',
-    a: 'A jury panel scores innovation, feasibility, impact for Kopargaon Taluka, and demo quality using a structured rubric. Each criterion is scored independently.',
+    a: 'A jury panel scores innovation, feasibility, impact for Kopargaon Taluka, and demo quality using a structured rubric, with each criterion scored independently.',
   },
 ]
 

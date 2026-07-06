@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, Eye, EyeOff, ExternalLink, Info, Mail } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, ExternalLink, Info, Mail, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { publicApi } from '@/services/api.js'
 import { Input } from '@/components/ui/Input.jsx'
@@ -16,7 +16,28 @@ const slideVariants = {
   exit: (dir) => ({ x: dir > 0 ? -80 : 80, opacity: 0 }),
 }
 
-
+// Map Firebase/auth errors to clear, user-friendly messages (no raw codes).
+function friendlyAuthError(err) {
+  const code = err?.code || ''
+  const raw = err?.message || ''
+  const map = {
+    'auth/invalid-credential': 'Incorrect email or password. Please try again.',
+    'auth/invalid-login-credentials': 'Incorrect email or password. Please try again.',
+    'auth/wrong-password': 'Incorrect email or password. Please try again.',
+    'auth/user-not-found': 'No account found with this email. Check the address or contact the organizers.',
+    'auth/invalid-email': 'Please enter a valid email address.',
+    'auth/user-disabled': 'This account has been disabled. Please contact the organizers.',
+    'auth/too-many-requests': 'Too many attempts. Please wait a few minutes and try again.',
+    'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
+    'auth/missing-password': 'Please enter your password.',
+  }
+  if (map[code]) return map[code]
+  if (/not configured/i.test(raw)) return raw
+  if (/auth\//i.test(raw) || /firebase/i.test(raw)) {
+    return 'Sign in failed. Please check your email and password and try again.'
+  }
+  return raw || 'Sign in failed. Please try again.'
+}
 
 export function AuthPage() {
   usePageSeo({ title: 'Sign in', description: 'Sign in to the hackathon platform.' })
@@ -59,7 +80,7 @@ export function AuthPage() {
         setSuccess('If an account exists for that email, a reset link has been sent. Check your inbox (and spam).')
       }
     } catch (er) {
-      setErr(er.message || 'Authentication failed')
+      setErr(friendlyAuthError(er))
     } finally {
       setBusy(false)
     }
@@ -262,14 +283,16 @@ export function AuthPage() {
                     {/* Error */}
                     <AnimatePresence>
                       {err && (
-                        <motion.p
+                        <motion.div
                           initial={{ opacity: 0, y: -4 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
-                          className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-700"
+                          role="alert"
+                          className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-700 shadow-sm"
                         >
-                          {err}
-                        </motion.p>
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                          <span className="font-medium">{err}</span>
+                        </motion.div>
                       )}
                       {success && (
                         <motion.p
