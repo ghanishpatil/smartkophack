@@ -48,13 +48,19 @@ const deans = [
     id: 3,
     name: 'Dr. Makarand Kulkarni',
     designation: 'Dean, School of Sciences',
-    image: '',
+    image: '/dean-makarand.jpg',
   },
   {
     id: 4,
     name: 'Dr. Sarita Pawar',
     designation: 'Dean of SPS',
     image: '/dean-pharma.jpeg',
+  },
+  {
+    id: 5,
+    name: 'Dr. Vinod R. Malkar',
+    designation: 'Dean – Online Education & Distance Learning',
+    image: '/dean-malkar.png',
   },
 ]
 
@@ -205,7 +211,7 @@ export function PatronsSection() {
               people={deans}
               badge="Dean"
               accent="navy"
-              className="mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4"
+              className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-5"
             />
           </div>
         )}
