@@ -9,7 +9,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import {
-  Search, Building2, Layers, BookOpen, X, ChevronRight, Users as UsersIcon,
+  Search, Layers, BookOpen, X, ChevronRight, Users as UsersIcon,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Copy, Check, Star,
   Filter, ExternalLink, Clock, AlertCircle, TrendingUp, Flame, ChevronLeft,
   HeartPulse, GraduationCap, Bus, Utensils, Recycle, Sprout, Factory, Lightbulb, Tag,
@@ -221,7 +221,6 @@ function DetailDrawer({ ps, onClose, onToggleBookmark, isBookmarked, deadline })
           {/* Field rows */}
           <div className="divide-y divide-[rgb(var(--border))] px-6">
             {[
-              { label: 'Organization', value: ps.poweredBy || ps.organization, Icon: Building2 },
               { label: 'Department', value: ps.department, Icon: Layers },
               { label: 'Domain', value: ps.theme || ps.domain, Icon: domain.Icon },
             ].filter((f) => f.value).map(({ label, value, Icon }) => (
@@ -326,7 +325,6 @@ export function ProblemsPage() {
   const [eventCfg, setEventCfg] = useState(null)
   const [globalSearch, setGlobalSearch] = useState('')
   const [filters, setFilters] = useState({
-    organization: 'all',
     track: 'all',
     domain: 'all',
     participation: 'all',
@@ -383,7 +381,6 @@ export function ProblemsPage() {
   }, [])
 
   /* ── Derive filter options ── */
-  const orgs = useMemo(() => [...new Set(items.map((p) => p.poweredBy || p.organization).filter(Boolean))].sort(), [items])
   const tracks = useMemo(() => {
     const found = [...new Set(items.map((p) => p.category).filter(Boolean))]
     const merged = [...TRACKS]
@@ -406,16 +403,12 @@ export function ProblemsPage() {
       list = list.filter((p) =>
         (p.id || '').toLowerCase().includes(q) ||
         (p.title || '').toLowerCase().includes(q) ||
-        (p.poweredBy || p.organization || '').toLowerCase().includes(q) ||
         (p.theme || p.domain || '').toLowerCase().includes(q) ||
         (p.category || '').toLowerCase().includes(q) ||
         (p.description || '').toLowerCase().includes(q),
       )
     }
 
-    if (filters.organization !== 'all') {
-      list = list.filter((p) => (p.poweredBy || p.organization) === filters.organization)
-    }
     if (filters.track !== 'all') list = list.filter((p) => p.category === filters.track)
     if (filters.domain !== 'all') list = list.filter((p) => (p.theme || p.domain) === filters.domain)
 
@@ -448,23 +441,6 @@ export function ProblemsPage() {
         </span>
       ),
       size: 60,
-    },
-    {
-      id: 'organization',
-      header: ({ column }) => <SortableHeader column={column}>Organization</SortableHeader>,
-      accessorFn: (row) => row.poweredBy || row.organization || '',
-      cell: ({ getValue }) => {
-        const val = getValue()
-        const initial = (val || '?')[0].toUpperCase()
-        return (
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-50 text-[11px] font-bold text-brand-700">
-              {initial}
-            </div>
-            <span className="truncate text-xs text-ink-700">{val || '—'}</span>
-          </div>
-        )
-      },
     },
     {
       id: 'title',
@@ -588,7 +564,6 @@ export function ProblemsPage() {
   function clearFilters() {
     setGlobalSearch('')
     setFilters({
-      organization: 'all',
       track: 'all',
       domain: 'all',
       participation: 'all',
@@ -659,7 +634,7 @@ export function ProblemsPage() {
           <div className="flex-1">
             <Input
               icon={Search}
-              placeholder="Search by title, ID, organization, domain, keyword…"
+              placeholder="Search by title, ID, domain, keyword…"
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
             />
@@ -689,7 +664,6 @@ export function ProblemsPage() {
               className="mb-4 overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))]"
             >
               <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                <FilterSelect label="Organization" value={filters.organization} options={orgs} onChange={(v) => setFilters((f) => ({ ...f, organization: v }))} />
                 <FilterSelect label="Track" value={filters.track} options={tracks} onChange={(v) => setFilters((f) => ({ ...f, track: v }))} />
                 <FilterSelect label="Domain" value={filters.domain} options={domains} onChange={(v) => setFilters((f) => ({ ...f, domain: v }))} />
                 <FilterSelect
@@ -831,10 +805,6 @@ export function ProblemsPage() {
                       >
                         <Star className={`h-4 w-4 ${bookmarked ? 'fill-amber-400 text-amber-500' : ''}`} />
                       </button>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-ink-500">
-                      <Building2 className="h-3 w-3" />
-                      <span className="truncate">{ps.poweredBy || ps.organization || '—'}</span>
                     </div>
                     {(ps.theme || ps.domain) ? (
                       <div className="mt-2">
