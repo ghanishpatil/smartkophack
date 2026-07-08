@@ -162,6 +162,19 @@ export function HowToRegisterPage() {
                 </p>
               </div>
 
+              {/* OTP note */}
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <Info className="h-5 w-5" />
+                  <h3 className="font-display text-base font-semibold">OTP tip on the UMS portal</h3>
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-ink-700">
+                  On the UMS portal, you may <span className="font-semibold text-ink-900">not receive the OTP on your
+                  first attempt</span>. If that happens, click <span className="font-semibold text-ink-900">
+                  &ldquo;Resend OTP&rdquo;</span> — the code will be sent to you on the second try.
+                </p>
+              </div>
+
               {/* Credential timing */}
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                 <div className="flex items-center gap-2 text-emerald-700">

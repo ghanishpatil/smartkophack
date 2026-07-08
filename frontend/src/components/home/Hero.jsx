@@ -42,12 +42,20 @@ export function Hero() {
   
   return (
     <section className="relative w-full overflow-hidden border-b border-gray-200 min-h-[88vh] md:min-h-0 md:aspect-[16/9]">
-      {/* ── Background image — 1920×1080 banner, fills 16:9 frame edge to edge ── */}
+      {/* ── Background image — mobile uses the portrait reel banner; desktop uses the 16:9 banner ── */}
       <div className="absolute inset-0">
+        {/* Mobile (portrait reel) */}
+        <img
+          src="/hero-mobile.svg"
+          alt=""
+          className="h-full w-full object-cover object-center md:hidden"
+          draggable={false}
+        />
+        {/* Desktop / tablet (16:9 banner) */}
         <img
           src="/smartkpg15.png"
           alt=""
-          className="h-full w-full object-cover object-center"
+          className="hidden h-full w-full object-cover object-center md:block"
           draggable={false}
         />
         {/* Minimal gradient only on left side for text contrast, logos remain fully visible */}

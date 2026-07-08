@@ -1469,15 +1469,29 @@ export function adminRouter() {
             }
           }
 
-          // Domain (was: theme) — accept "domain" or legacy "theme" column. Must be one of 7 official domains.
+          // Domain (was: theme) — accept "domain" or legacy "theme" column. Must be one of 8 official domains.
           const DOMAINS = [
             'Health', 'Education', 'Transportation', 'Food Safety & Security',
             'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
           ]
+          // Normalize so common variants match the canonical domain:
+          // "and" ↔ "&", inconsistent spacing, and case are all treated as equal.
+          const normDomain = (s) => String(s)
+            .toLowerCase()
+            .replace(/\s*&\s*/g, ' & ')
+            .replace(/\s+and\s+/g, ' & ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          // Explicit aliases for labels that aren't an exact official domain.
+          const DOMAIN_ALIASES = {
+            'biodiversity & waste management': 'Waste Management',
+          }
           let theme = ''
           const domainRaw = typeof row.domain === 'string' ? row.domain.trim() : (typeof row.theme === 'string' ? row.theme.trim() : '')
           if (domainRaw) {
-            const matched = DOMAINS.find((d) => d.toLowerCase() === domainRaw.toLowerCase())
+            const key = normDomain(domainRaw)
+            let matched = DOMAINS.find((d) => normDomain(d) === key)
+            if (!matched && DOMAIN_ALIASES[key]) matched = DOMAIN_ALIASES[key]
             if (matched) theme = matched
             else {
               results.failed += 1
