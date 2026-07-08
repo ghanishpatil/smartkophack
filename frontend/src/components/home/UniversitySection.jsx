@@ -9,10 +9,11 @@ const stats = [
 export function UniversitySection() {
   return (
     <section className="relative overflow-hidden bg-white py-20 sm:py-28">
-      {/* Background image behind the cards */}
+      {/* Background image behind the cards.
+          Mobile: 'cover' so the image is not stretched/compressed on tall screens.
+          Desktop (md+): exact '100% 100%' fill to match the original PC look. */}
       <div
-        className="pointer-events-none absolute inset-0 bg-no-repeat"
-        style={{ backgroundImage: 'url(/su-card.png)', backgroundSize: '100% 100%', backgroundPosition: 'center' }}
+        className="pointer-events-none absolute inset-0 bg-[url(/su-card.png)] bg-cover bg-center bg-no-repeat md:bg-[length:100%_100%]"
       />
       {/* Subtle dot pattern */}
       <div className="pointer-events-none absolute inset-0 opacity-[0.04]" style={{
