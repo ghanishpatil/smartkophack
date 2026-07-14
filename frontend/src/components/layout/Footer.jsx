@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Mail, MapPin, Phone, Github, Twitter, Linkedin, Instagram, ExternalLink } from 'lucide-react'
+import { Mail, MapPin, Phone, Github, Twitter, Linkedin, Instagram, ExternalLink, MessageCircle } from 'lucide-react'
 import { APP, COORDINATORS } from '@/utils/constants.js'
 
 const footerLinks = {
@@ -24,6 +24,7 @@ const socials = [
   { icon: Twitter, href: 'https://x.com/skhackathon', label: 'Twitter' },
   { icon: Linkedin, href: 'https://www.linkedin.com/company/smart-kopargaon-hackathon/', label: 'LinkedIn' },
   { icon: Github, href: 'https://github.com/smartkopargaonhackathon-su', label: 'GitHub' },
+  { icon: MessageCircle, href: 'https://whatsapp.com/channel/0029VbBnF0wGk1FvfjRRqh3G', label: 'WhatsApp Community' },
 ]
 
 export function Footer() {
