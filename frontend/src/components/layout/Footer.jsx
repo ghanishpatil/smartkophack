@@ -23,6 +23,7 @@ const socials = [
   { icon: Instagram, href: 'https://www.instagram.com/skhackathon.su?igsh=ZjByZnRlc2t1ZTg3', label: 'Instagram' },
   { icon: Twitter, href: 'https://x.com/skhackathon', label: 'Twitter' },
   { icon: Linkedin, href: 'https://www.linkedin.com/company/smart-kopargaon-hackathon/', label: 'LinkedIn' },
+  { icon: Github, href: 'https://github.com/smartkopargaonhackathon-su', label: 'GitHub' },
 ]
 
 export function Footer() {
