@@ -21,9 +21,8 @@ const footerLinks = {
 
 const socials = [
   { icon: Instagram, href: 'https://www.instagram.com/skhackathon.su?igsh=ZjByZnRlc2t1ZTg3', label: 'Instagram' },
-  { icon: Twitter, href: '#', label: 'Twitter' },
-  { icon: Linkedin, href: '#', label: 'LinkedIn' },
-  { icon: Github, href: '#', label: 'GitHub' },
+  { icon: Twitter, href: 'https://x.com/skhackathon', label: 'Twitter' },
+  { icon: Linkedin, href: 'https://www.linkedin.com/company/smart-kopargaon-hackathon/', label: 'LinkedIn' },
 ]
 
 export function Footer() {

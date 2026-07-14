@@ -13,6 +13,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Copy, Check, Star,
   Filter, ExternalLink, Clock, AlertCircle, TrendingUp, Flame, ChevronLeft,
   HeartPulse, GraduationCap, Bus, Utensils, Recycle, Sprout, Factory, Lightbulb, Tag,
+  Download, FileText,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -22,6 +23,7 @@ import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { APP } from '@/utils/constants.js'
 import { publicApi } from '@/services/api.js'
 import { useEvent } from '@/context/EventContext.jsx'
+import { Link } from 'react-router-dom'
 
 /* ── Tracks (2): Software, Hardware ─────────────────────────── */
 const TRACKS = ['Software', 'Hardware']
@@ -601,6 +603,25 @@ export function ProblemsPage() {
               Browse curated challenges from government departments, industry partners, and academia.
               Search, filter, and select your problem to begin.
             </p>
+            
+            {/* Download & Guidelines Actions */}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <a
+                href="/SKH_IDEA_PRESENTATION_FORMAT.pptx"
+                download
+                className="inline-flex items-center gap-2 rounded-lg border-2 border-white/30 bg-white/10 px-4 py-2.5 font-semibold text-white backdrop-blur-sm transition-all hover:border-white/50 hover:bg-white/20 hover:shadow-lg"
+              >
+                <Download className="h-5 w-5" />
+                Download Presentation Format
+              </a>
+              <Link
+                to="/guidelines"
+                className="inline-flex items-center gap-2 rounded-lg border-2 border-emerald-400/40 bg-emerald-400/10 px-4 py-2.5 font-semibold text-white backdrop-blur-sm transition-all hover:border-emerald-400/60 hover:bg-emerald-400/20 hover:shadow-lg"
+              >
+                <FileText className="h-5 w-5" />
+                View Guidelines
+              </Link>
+            </div>
           </motion.div>
         </div>
       </section>
