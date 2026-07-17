@@ -81,6 +81,16 @@ export async function inviteLeader(rawEmail) {
   // Email credentials via Brevo (fire, but await so we can report send status)
   const mail = await sendCredentialsEmail({ to: email, name: 'Team Leader', tempPassword, eventName })
 
+  // Record when credentials were emailed (for the admin onboarding-status view).
+  if (mail?.success) {
+    try {
+      await db.doc(`users/${userRecord.uid}`).set({
+        credentialsSentAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true })
+    } catch { /* non-fatal */ }
+  }
+
   return { email, status: 'created', uid: userRecord.uid, emailed: Boolean(mail?.success) }
 }
 

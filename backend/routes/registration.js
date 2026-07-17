@@ -71,7 +71,9 @@ router.get(
       // Check authorization: must be admin or team member (schema: leaderId + memberIds)
       const memberIds = Array.isArray(teamData.memberIds) ? teamData.memberIds : []
       const isMember = teamData.leaderId === req.user.uid || memberIds.includes(req.user.uid)
-      if (req.user.role !== 'admin' && !isMember) {
+      // Role is resolved by loadUserRole into req.profile.role (req.user has no role).
+      const isAdmin = req.profile?.role === 'admin'
+      if (!isAdmin && !isMember) {
         return res.status(403).json({ error: 'Access denied' })
       }
 
@@ -187,8 +189,8 @@ router.get(
 
       const data = doc.data()
 
-      // Allow admin or owner to view
-      if (req.user.role !== 'admin' && data.userId !== req.user.uid) {
+      // Allow admin or owner to view (role lives on req.profile, not req.user).
+      if (req.profile?.role !== 'admin' && data.userId !== req.user.uid) {
         return res.status(403).json({ error: 'Access denied' })
       }
 

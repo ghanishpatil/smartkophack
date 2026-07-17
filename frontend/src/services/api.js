@@ -298,6 +298,8 @@ export function createApi(getToken, getEventId = () => '') {
     // Leader onboarding (admin)
     bulkInviteParticipants: (emails) =>
       authReq('/api/admin/participants/bulk-invite', { method: 'POST', body: { emails } }),
+    participantInviteStatus: () =>
+      authReq('/api/admin/participants/status'),
     sendResetLink: (email) =>
       authReq('/api/admin/participants/send-reset-link', { method: 'POST', body: { email } }),
     // First-login password change (participant)

@@ -2675,6 +2675,76 @@ export function adminRouter() {
   })
 
   /**
+   * Admin: Onboarding status of invited team leaders — read-only.
+   * Shows who was emailed credentials, who has logged in, and who has set
+   * their password (mustChangePassword flipped to false on first-login change).
+   */
+  router.get('/participants/status', async (req, res, next) => {
+    try {
+      const snap = await db()
+        .collection('users')
+        .where('invitedAsLeader', '==', true)
+        .limit(1000)
+        .get()
+
+      const toIso = (v) => {
+        try {
+          if (!v) return null
+          if (typeof v === 'string') return v
+          if (typeof v.toDate === 'function') return v.toDate().toISOString()
+          return null
+        } catch { return null }
+      }
+
+      const rows = snap.docs.map((d) => {
+        const x = d.data()
+        return {
+          uid: d.id,
+          email: x.email || '',
+          displayName: x.displayName || '',
+          invitedAt: toIso(x.createdAt),
+          credentialsSentAt: toIso(x.credentialsSentAt) || toIso(x.createdAt),
+          passwordSet: x.mustChangePassword === false,
+          passwordChangedAt: toIso(x.passwordChangedAt),
+          lastSignInTime: null,
+          loggedIn: false,
+        }
+      })
+
+      // Enrich with Firebase Auth last-sign-in time (batched, 100 uids per call).
+      try {
+        const { getAuth } = await import('firebase-admin/auth')
+        const auth = getAuth()
+        for (let i = 0; i < rows.length; i += 100) {
+          const chunk = rows.slice(i, i + 100)
+          const result = await auth.getUsers(chunk.map((r) => ({ uid: r.uid })))
+          const byUid = new Map(result.users.map((u) => [u.uid, u]))
+          for (const r of chunk) {
+            const u = byUid.get(r.uid)
+            const t = u?.metadata?.lastSignInTime || null
+            r.lastSignInTime = t ? new Date(t).toISOString() : null
+            r.loggedIn = Boolean(r.lastSignInTime)
+          }
+        }
+      } catch (e) {
+        console.warn('[participants/status] auth enrich failed:', e.message)
+      }
+
+      rows.sort((a, b) => (b.credentialsSentAt || '').localeCompare(a.credentialsSentAt || ''))
+
+      const summary = {
+        total: rows.length,
+        loggedIn: rows.filter((r) => r.loggedIn).length,
+        passwordSet: rows.filter((r) => r.passwordSet).length,
+        pending: rows.filter((r) => !r.passwordSet).length,
+      }
+      res.json({ ok: true, summary, participants: rows })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: Send a password-reset link to a user via Brevo (Fix 1 — better
    * deliverability than Firebase's default sender). Body: { email }
    */

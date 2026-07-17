@@ -8,6 +8,8 @@ import {
   MessageCircle, BookOpen, Building2, UserCog,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { doc, onSnapshot } from 'firebase/firestore'
+import { db } from '@/firebase/client.js'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { useEvent } from '@/context/EventContext.jsx'
 import { ROLES, roleHome } from '@/utils/roles.js'
@@ -125,6 +127,30 @@ export function DashboardLayout({ variant = 'default' }) {
   )
   const [paletteOpen, setPaletteOpen] = useState(false)
   const { mentorChatUnread } = useUnreadCounts()
+
+  // Participant sidebar: show the team name once the team is registered.
+  const [teamInfo, setTeamInfo] = useState({ name: '', registered: false })
+  useEffect(() => {
+    if (!isParticipantShell || !db || !profile?.teamId) {
+      setTeamInfo({ name: '', registered: false })
+      return
+    }
+    const unsub = onSnapshot(
+      doc(db, 'teams', profile.teamId),
+      (snap) => {
+        const d = snap.exists() ? snap.data() : null
+        setTeamInfo({ name: d?.name || '', registered: Boolean(d?.eventRegistered) })
+      },
+      () => setTeamInfo({ name: '', registered: false }),
+    )
+    return () => unsub()
+  }, [isParticipantShell, profile?.teamId])
+
+  // When the participant's team is registered, surface the team name in the
+  // sidebar identity block instead of the generic display name.
+  const identityName = (isParticipantShell && teamInfo.registered && teamInfo.name)
+    ? teamInfo.name
+    : (user?.displayName || 'User')
 
   // Global Cmd/Ctrl+K shortcut
   useEffect(() => {
@@ -255,10 +281,10 @@ export function DashboardLayout({ variant = 'default' }) {
         {!(isParticipantShell && collapsed) ? (
           <div className="mb-3 flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 font-display text-xs font-bold text-brand-600">
-              {(user?.displayName || user?.email || '?')[0].toUpperCase()}
+              {(identityName || user?.email || '?')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink-900">{user?.displayName || 'User'}</p>
+              <p className="truncate text-sm font-medium text-ink-900">{identityName}</p>
               <p className="truncate text-xs text-ink-500">{user?.email}</p>
             </div>
           </div>

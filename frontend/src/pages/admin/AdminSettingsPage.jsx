@@ -36,6 +36,23 @@ function InviteLeaders({ api }) {
   const [error, setError] = useState('')
   const fileRef = useRef(null)
 
+  const [status, setStatus] = useState(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+
+  const loadStatus = async () => {
+    setStatusLoading(true)
+    try {
+      const res = await api.participantInviteStatus()
+      setStatus(res)
+    } catch {
+      setStatus(null)
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  useEffect(() => { void loadStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const emails = text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)
 
   async function invite() {
@@ -46,6 +63,7 @@ function InviteLeaders({ api }) {
     try {
       const res = await api.bulkInviteParticipants(emails)
       setResult(res)
+      void loadStatus()
     } catch (e) {
       setError(e?.message || 'Invite failed.')
     } finally {
@@ -141,6 +159,66 @@ function InviteLeaders({ api }) {
             )}
           </div>
         )}
+      </div>
+
+      {/* ── Onboarding status: who was emailed, logged in, and set their password ── */}
+      <div className="mt-6 border-t border-[rgb(var(--border))] pt-5">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <Mail className="h-4 w-4 text-brand-600" /> Invited Participants — Onboarding Status
+          </h3>
+          <Button variant="ghost" size="sm" onClick={loadStatus} disabled={statusLoading}>
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${statusLoading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
+
+        {status?.summary && (
+          <div className="mt-3 flex flex-wrap gap-3 text-xs font-medium">
+            <span className="rounded-lg bg-brand-500/10 px-2.5 py-1 text-brand-700">Invited: {status.summary.total}</span>
+            <span className="rounded-lg bg-blue-500/10 px-2.5 py-1 text-blue-700">Logged in: {status.summary.loggedIn}</span>
+            <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-emerald-700">Password set: {status.summary.passwordSet}</span>
+            <span className="rounded-lg bg-amber-500/10 px-2.5 py-1 text-amber-700">Pending: {status.summary.pending}</span>
+          </div>
+        )}
+
+        <div className="mt-3 overflow-x-auto rounded-xl border border-[rgb(var(--border))]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[rgb(var(--surface-muted))] text-xs uppercase tracking-wide text-ink-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Email</th>
+                <th className="px-3 py-2 font-medium">Credentials Sent</th>
+                <th className="px-3 py-2 text-center font-medium">Logged In</th>
+                <th className="px-3 py-2 text-center font-medium">Password Set</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[rgb(var(--border))]">
+              {statusLoading && !status ? (
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-ink-500">Loading…</td></tr>
+              ) : !status?.participants?.length ? (
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-ink-500">No invited participants yet.</td></tr>
+              ) : (
+                status.participants.map((p) => (
+                  <tr key={p.uid} className="hover:bg-[rgb(var(--surface-muted))]/40">
+                    <td className="px-3 py-2 font-mono text-xs text-ink-800">{p.email}</td>
+                    <td className="px-3 py-2 text-xs text-ink-600">
+                      {p.credentialsSentAt ? new Date(p.credentialsSentAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {p.loggedIn
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-700"><CheckCircle className="h-3 w-3" /> Yes</span>
+                        : <span className="rounded-full bg-ink-200/60 px-2 py-0.5 text-[11px] font-medium text-ink-500">No</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {p.passwordSet
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><CheckCircle className="h-3 w-3" /> Done</span>
+                        : <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">Pending</span>}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Card>
   )
