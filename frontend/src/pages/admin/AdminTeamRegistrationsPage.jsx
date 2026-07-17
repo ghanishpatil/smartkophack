@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, Check, X, Clock, Loader2, Eye, ChevronDown, ChevronRight, AlertCircle, Search, RefreshCw } from 'lucide-react'
+import { Users, Check, X, Clock, Loader2, ChevronDown, ChevronRight, AlertCircle, Search, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
 import { Card } from '@/components/ui/Card.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -488,12 +488,13 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
                     <thead className="border-b border-[rgb(var(--border))]">
                       <tr>
                         <th className="pb-2 text-left text-xs font-medium text-ink-600">Name</th>
-                        <th className="pb-2 text-left text-xs font-medium text-ink-600">Institute</th>
+                        <th className="pb-2 text-left text-xs font-medium text-ink-600">College</th>
+                        <th className="pb-2 text-left text-xs font-medium text-ink-600">Location</th>
+                        <th className="pb-2 text-left text-xs font-medium text-ink-600">Year</th>
+                        <th className="pb-2 text-left text-xs font-medium text-ink-600">Department</th>
                         <th className="pb-2 text-left text-xs font-medium text-ink-600">Email</th>
                         <th className="pb-2 text-left text-xs font-medium text-ink-600">Phone</th>
                         <th className="pb-2 text-center text-xs font-medium text-ink-600">Status</th>
-                        <th className="pb-2 text-center text-xs font-medium text-ink-600">Registered</th>
-                        <th className="pb-2 text-center text-xs font-medium text-ink-600">ID Card</th>
                         <th className="pb-2 text-center text-xs font-medium text-ink-600">Actions</th>
                       </tr>
                     </thead>
@@ -535,15 +536,32 @@ function MemberTableRow({ member, onUpdateStatus }) {
     <tr className="hover:bg-[rgb(var(--surface-muted))]/30 transition-colors">
       {/* Name */}
       <td className="py-3 pr-4">
-        <div className="font-medium text-ink-900">{member.name}</div>
-        <div className="mt-0.5 font-mono text-xs text-ink-500">
-          {member.userId?.slice(0, 8)}...
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-ink-900">{member.name}</span>
+          {member.isLeader && (
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">Leader</span>
+          )}
         </div>
       </td>
 
-      {/* Institute */}
+      {/* College */}
       <td className="py-3 pr-4">
-        <div className="text-sm text-ink-700">{member.institute}</div>
+        <div className="text-sm text-ink-700">{member.institute || '—'}</div>
+      </td>
+
+      {/* Location */}
+      <td className="py-3 pr-4">
+        <div className="text-sm text-ink-700">{member.collegeLocation || '—'}</div>
+      </td>
+
+      {/* Year */}
+      <td className="py-3 pr-4">
+        <div className="text-sm text-ink-700">{member.yearOfStudy || '—'}</div>
+      </td>
+
+      {/* Department */}
+      <td className="py-3 pr-4">
+        <div className="text-sm text-ink-700">{member.department || '—'}</div>
       </td>
 
       {/* Email */}
@@ -579,29 +597,6 @@ function MemberTableRow({ member, onUpdateStatus }) {
             </span>
           )}
         </div>
-      </td>
-
-      {/* Registered Date */}
-      <td className="py-3 pr-4 text-center">
-        <div className="text-xs text-ink-600">
-          {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : 'N/A'}
-        </div>
-        <div className="text-xs text-ink-500">
-          {member.createdAt ? new Date(member.createdAt).toLocaleTimeString() : ''}
-        </div>
-      </td>
-
-      {/* ID Card */}
-      <td className="py-3 pr-4 text-center">
-        <a
-          href={member.idCardUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-lg bg-brand-500/10 px-2.5 py-1.5 text-xs font-medium text-brand-600 transition-colors hover:bg-brand-500/20"
-        >
-          <Eye className="h-3.5 w-3.5" />
-          View
-        </a>
       </td>
 
       {/* Actions */}

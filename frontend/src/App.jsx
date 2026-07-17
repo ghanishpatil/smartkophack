@@ -14,7 +14,6 @@ import { AuthPage } from '@/pages/AuthPage.jsx'
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage.jsx'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage.jsx'
 import { TeamPage } from '@/pages/TeamPage.jsx'
-import { JoinTeamPage } from '@/pages/JoinTeamPage.jsx'
 import { TimelinePage } from '@/pages/TimelinePage.jsx'
 import { SponsorsPage } from '@/pages/SponsorsPage.jsx'
 import { FAQPage } from '@/pages/FAQPage.jsx'
@@ -38,6 +37,9 @@ const ParticipantRegistrationPage = lazy(() =>
 )
 const ParticipantProblemsPage = lazy(() =>
   import('@/pages/dashboard/participant/ParticipantProblemsPage.jsx').then((m) => ({ default: m.ParticipantProblemsPage })),
+)
+const ParticipantProblemDetailPage = lazy(() =>
+  import('@/pages/dashboard/participant/ParticipantProblemDetailPage.jsx').then((m) => ({ default: m.ParticipantProblemDetailPage })),
 )
 const ParticipantAnnouncementsPage = lazy(() =>
   import('@/pages/dashboard/participant/ParticipantAnnouncementsPage.jsx').then((m) => ({
@@ -328,14 +330,6 @@ export default function App() {
               </AnimatedOutlet>
             }
           />
-          <Route
-            path="/join/:inviteCode"
-            element={
-              <AnimatedOutlet>
-                <JoinTeamPage />
-              </AnimatedOutlet>
-            }
-          />
         </Route>
 
         <Route element={<ProtectedRoute />}>
@@ -350,6 +344,7 @@ export default function App() {
             <Route path="/dashboard/matchmaking" element={<ParticipantMatchmakingPage />} />
             <Route path="/dashboard/registration" element={<ParticipantRegistrationPage />} />
             <Route path="/dashboard/problems" element={<ParticipantProblemsPage />} />
+            <Route path="/dashboard/problems/:psId" element={<ParticipantProblemDetailPage />} />
             <Route path="/dashboard/submission" element={<SubmissionPage />} />
             <Route path="/dashboard/chat" element={<ParticipantChatPage />} />
             <Route path="/dashboard/mentor-chat" element={<ParticipantMentorChatPage />} />

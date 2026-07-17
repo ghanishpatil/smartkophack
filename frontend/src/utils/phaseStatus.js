@@ -42,3 +42,15 @@ export function isPhaseSubmissionOpen(phase, now = Date.now()) {
   }
   return false
 }
+
+/**
+ * Whether a phase actually accepts file submissions. A phase with no required
+ * artifacts (e.g. a registration / problem-statement phase) is NOT a submission
+ * phase — the Submission Center should stay closed while it is active.
+ * MUST stay in sync with backend competitionPhases.js: phaseAcceptsSubmissions().
+ */
+export function phaseAcceptsSubmissions(phase) {
+  const req = phase?.requirements || {}
+  return ['pptRequired', 'pdfRequired', 'videoRequired', 'githubRequired', 'deployedUrlRequired']
+    .some((k) => Boolean(req[k]))
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Users, FileText, Check, X, Clock, Loader2, Download, Eye } from 'lucide-react'
+import { Users, FileText, Check, X, Clock, Loader2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
 import { Card } from '@/components/ui/Card.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
@@ -128,14 +128,13 @@ export function AdminRegistrationsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">Phone</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">ID Card</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[rgb(var(--border))]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-500">
                     No registrations found
                   </td>
                 </tr>
@@ -180,7 +179,7 @@ function StatsCard({ title, value, icon: Icon, color }) {
 }
 
 function RegistrationRow({ registration, onUpdateStatus }) {
-  const { status, name, institute, email, phone, idCardUrl, createdAt } = registration
+  const { status, name, institute, email, phone, createdAt } = registration
   const config = STATUS_CONFIG[status]
   const StatusIcon = config.icon
 
@@ -198,17 +197,6 @@ function RegistrationRow({ registration, onUpdateStatus }) {
           <StatusIcon className="h-3 w-3" />
           {config.label}
         </span>
-      </td>
-      <td className="px-4 py-3">
-        <a
-          href={idCardUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700"
-        >
-          <Eye className="h-4 w-4" />
-          View
-        </a>
       </td>
       <td className="px-4 py-3">
         <div className="flex gap-2">

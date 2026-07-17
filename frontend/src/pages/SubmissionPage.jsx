@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/Badge.jsx'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { submissionCompleteness } from '@/pages/dashboard/participant/progressUtils.js'
-import { isPhaseSubmissionOpen } from '@/utils/phaseStatus.js'
+import { isPhaseSubmissionOpen, phaseAcceptsSubmissions } from '@/utils/phaseStatus.js'
 
 const MAX_PPT_BYTES = 35 * 1024 * 1024
 const MAX_PDF_BYTES = 35 * 1024 * 1024
@@ -118,15 +118,14 @@ export function SubmissionPage() {
   // Phase is open if backend would accept a submission. Shared helper keeps this
   // consistent with backend isPhaseSubmissionOpen()/canTeamSubmit() so the UI
   // doesn't grey out uploads while the phase is genuinely open.
-  const phaseSubmissionsOpen = !activePhase || isPhaseSubmissionOpen(activePhase)
+  // A phase with no required artifacts (e.g. registration / problem-statements
+  // phase) is NOT a submission phase — the Submission Center stays closed.
+  const activePhaseIsSubmission = !activePhase || phaseAcceptsSubmissions(activePhase)
+  const phaseSubmissionsOpen = !activePhase || (isPhaseSubmissionOpen(activePhase) && activePhaseIsSubmission)
   const phaseDeadlinePassed = activePhase?.deadline && new Date(activePhase.deadline).getTime() < Date.now()
-  const phaseRequirements = activePhase?.requirements || {
-    pptRequired: true,
-    pdfRequired: true,
-    videoRequired: false,
-    githubRequired: false,
-    deployedUrlRequired: false,
-  }
+  const phaseRequirements = activePhase
+    ? (activePhase.requirements || { pptRequired: false, pdfRequired: false, videoRequired: false, githubRequired: false, deployedUrlRequired: false })
+    : { pptRequired: true, pdfRequired: true, videoRequired: false, githubRequired: false, deployedUrlRequired: false }
   
   // Check if payment is pending (Phase 3: Pay Later flow)
   const paymentPending = teamData && 
@@ -190,6 +189,14 @@ export function SubmissionPage() {
       setStatus('Submission is locked.')
       return
     }
+    if (activePhase && (!phaseSubmissionsOpen || phaseDeadlinePassed)) {
+      setStatus('Submissions are not open for the current phase.')
+      return
+    }
+    if (activePhase && !teamCanAccessActivePhase) {
+      setStatus('Your team is not shortlisted for this phase.')
+      return
+    }
     setStatus('')
     try {
       const result = await api.patchSubmissionMetadata({ githubUrl, status: 'draft' })
@@ -203,6 +210,10 @@ export function SubmissionPage() {
 
   async function finalize() {
     setStatus('')
+    if (!canFinalize) {
+      setStatus(finalizeBlockedReason || 'You cannot finalize yet.')
+      return
+    }
     try {
       await api.finalizeSubmission()
       setStatus('Submission finalized and locked.')
@@ -226,7 +237,7 @@ export function SubmissionPage() {
           <Upload className="h-7 w-7 text-brand-600" />
         </div>
         <p className="mt-4 text-lg font-semibold text-ink-900">No team yet</p>
-        <p className="mt-1 text-sm text-ink-500">Join or create a team before uploading submissions.</p>
+        <p className="mt-1 text-sm text-ink-500">Create a team before uploading submissions.</p>
         <Link to="/dashboard/team" className="mt-6 inline-flex items-center gap-2 rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600">
           Go to My Team <ArrowLeft className="h-4 w-4 rotate-180" />
         </Link>
@@ -235,6 +246,28 @@ export function SubmissionPage() {
   }
 
   const uploadsDisabled = locked || !teamCanAccessActivePhase || !phaseSubmissionsOpen || phaseDeadlinePassed
+
+  // ── Finalize gating ───────────────────────────────────────────────
+  // A team may only finalize when the submission window is genuinely open,
+  // all required artifacts are uploaded, and payment (if any) is settled.
+  const submissionWindowOpen = teamCanAccessActivePhase && phaseSubmissionsOpen && !phaseDeadlinePassed
+  const requiredComplete =
+    (!phaseRequirements.pptRequired || Boolean(sub?.pptUrl)) &&
+    (!phaseRequirements.pdfRequired || Boolean(sub?.pdfUrl)) &&
+    (!phaseRequirements.videoRequired || Boolean(sub?.videoUrl)) &&
+    (!phaseRequirements.githubRequired || Boolean(sub?.githubUrl)) &&
+    (!phaseRequirements.deployedUrlRequired || Boolean(sub?.deployedUrl))
+  const hasAnyUpload = Boolean(sub?.pptUrl || sub?.pdfUrl || sub?.videoUrl || sub?.githubUrl || sub?.deployedUrl)
+
+  let finalizeBlockedReason = ''
+  if (locked) finalizeBlockedReason = 'Your submission is already finalized and locked.'
+  else if (paymentPending) finalizeBlockedReason = 'Complete your payment to unlock submissions.'
+  else if (!teamCanAccessActivePhase) finalizeBlockedReason = 'Your team is not shortlisted for this phase.'
+  else if (phaseDeadlinePassed) finalizeBlockedReason = 'The deadline for the current phase has passed.'
+  else if (!phaseSubmissionsOpen) finalizeBlockedReason = 'Submissions are not open for the current phase yet.'
+  else if (!hasAnyUpload) finalizeBlockedReason = 'Upload your files before finalizing.'
+  else if (!requiredComplete) finalizeBlockedReason = 'Upload all required files before finalizing.'
+  const canFinalize = !finalizeBlockedReason
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -276,9 +309,11 @@ export function SubmissionPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {phaseSubmissionsOpen && !phaseDeadlinePassed ? (
-                    <Badge tone="success" dot pulse>Open</Badge>
+                    <Badge tone="success" dot pulse>Submissions Open</Badge>
                   ) : phaseDeadlinePassed ? (
                     <Badge tone="danger" dot>Deadline Passed</Badge>
+                  ) : !activePhaseIsSubmission ? (
+                    <Badge tone="warn" dot>No Submission Yet</Badge>
                   ) : (
                     <Badge tone="warn" dot>Closed</Badge>
                   )}
@@ -324,6 +359,22 @@ export function SubmissionPage() {
         </div>
       )}
 
+      {!locked && !paymentPending && !submissionWindowOpen && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-5 py-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="text-sm font-semibold text-ink-900">Submissions are not open yet</p>
+            <p className="mt-1 text-xs text-ink-600">
+              {phaseDeadlinePassed
+                ? 'The deadline for the current phase has passed. Uploads and finalizing are closed.'
+                : !teamCanAccessActivePhase
+                  ? 'Your team is not shortlisted for the current phase.'
+                  : 'You’ll be notified by email and WhatsApp when PPT submission opens.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ━━ Upload Grid ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <div className="grid gap-5 md:grid-cols-2">
         {/* PPT */}
@@ -351,7 +402,7 @@ export function SubmissionPage() {
               <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-6 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
                 <Upload className="h-6 w-6 text-ink-400" />
                 <span className="text-xs font-medium text-ink-600">{sub?.pptUrl ? 'Replace file' : 'Click to upload'}</span>
-                <input type="file" accept=".ppt,.pptx" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('ppt', f) }} />
+                <input type="file" accept=".ppt,.pptx" className="hidden" disabled={uploadsDisabled} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('ppt', f) }} />
               </label>
             </div>
           </div>
@@ -382,7 +433,7 @@ export function SubmissionPage() {
               <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-6 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
                 <Upload className="h-6 w-6 text-ink-400" />
                 <span className="text-xs font-medium text-ink-600">{sub?.pdfUrl ? 'Replace file' : 'Click to upload'}</span>
-                <input type="file" accept=".pdf" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('pdf', f) }} />
+                <input type="file" accept=".pdf" className="hidden" disabled={uploadsDisabled} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('pdf', f) }} />
               </label>
             </div>
           </div>
@@ -413,7 +464,7 @@ export function SubmissionPage() {
               <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-8 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
                 <Upload className="h-6 w-6 text-ink-400" />
                 <span className="text-xs font-medium text-ink-600">{sub?.videoUrl ? 'Replace video' : 'Click to upload'}</span>
-                <input type="file" accept="video/*" className="hidden" disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('video', f) }} />
+                <input type="file" accept="video/*" className="hidden" disabled={uploadsDisabled} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('video', f) }} />
               </label>
             </div>
           </div>
@@ -441,8 +492,8 @@ export function SubmissionPage() {
                   <CheckCircle className="h-3.5 w-3.5" /> Saved
                 </div>
               ) : null}
-              <Input className="mt-4" value={githubUrl} disabled={locked} onChange={(e) => setGithubUrl(e.target.value)} placeholder="https://github.com/org/repo" />
-              <Button variant="secondary" className="mt-3 w-full gap-2" disabled={locked} onClick={saveLinks}>
+              <Input className="mt-4" value={githubUrl} disabled={uploadsDisabled} onChange={(e) => setGithubUrl(e.target.value)} placeholder="https://github.com/org/repo" />
+              <Button variant="secondary" className="mt-3 w-full gap-2" disabled={uploadsDisabled} onClick={saveLinks}>
                 <Github className="h-4 w-4" /> Save Link
               </Button>
             </div>
@@ -471,7 +522,7 @@ export function SubmissionPage() {
                   <CheckCircle className="h-3.5 w-3.5" /> Saved
                 </div>
               ) : null}
-              <Input className="mt-4" defaultValue={sub?.deployedUrl || ''} disabled={locked} placeholder="https://your-app.vercel.app" onChange={(e) => {
+              <Input className="mt-4" defaultValue={sub?.deployedUrl || ''} disabled={uploadsDisabled} placeholder="https://your-app.vercel.app" onChange={(e) => {
                 const val = e.target.value
                 clearTimeout(deployedUrlTimer.current)
                 deployedUrlTimer.current = setTimeout(() => {
@@ -494,10 +545,16 @@ export function SubmissionPage() {
         </h2>
         <p className="mt-2 text-sm text-ink-600">
           Finalizing locks edits server-side. The API verifies phase & deadline before accepting.
+          You can only finalize once all required files are uploaded and the submission window is open.
         </p>
-        <Button className="mt-4 gap-2 shadow-lg shadow-brand-500/20" disabled={locked} onClick={finalize}>
+        <Button className="mt-4 gap-2 shadow-lg shadow-brand-500/20" disabled={!canFinalize} onClick={finalize}>
           <Lock className="h-4 w-4" /> Finalize & Lock
         </Button>
+        {!canFinalize && finalizeBlockedReason ? (
+          <p className="mt-3 flex items-center gap-2 text-xs font-medium text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {finalizeBlockedReason}
+          </p>
+        ) : null}
       </div>
 
       {/* ━━ Submitted Files Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}

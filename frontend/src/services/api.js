@@ -193,15 +193,16 @@ export function createApi(getToken, getEventId = () => '') {
     getTimeline: () => authReq('/api/timeline'),
     updateTimeline: (phases) =>
       authReq('/api/admin/timeline', { method: 'PUT', body: { phases } }),
-    lookupInvite: (inviteCode) =>
-      authReq('/api/participant/lookup-invite', { method: 'POST', body: { inviteCode } }),
     createTeam: (name, eventIdOverride) =>
       authReq('/api/participant/create-team', {
         method: 'POST',
         body: { name, eventId: eventIdOverride || ev() },
       }),
-    joinTeam: (inviteCode) =>
-      authReq('/api/participant/join-team', { method: 'POST', body: { inviteCode } }),
+    // New team-formation model: leader submits all member details in one step.
+    registerTeamMembers: (payload) =>
+      authReq('/api/participant/register-team-members', { method: 'POST', body: payload }),
+    teamMemberRegistrations: (teamId) =>
+      authReq(`/api/registrations/team/${encodeURIComponent(teamId)}/members`),
     registerTeamEvent: (paymentChoice = 'now') =>
       authReq('/api/participant/register-team-event', { method: 'POST', body: { paymentChoice } }),
     createRazorpayOrder: () =>

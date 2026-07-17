@@ -24,7 +24,7 @@ async function runBootstrap() {
       entryFeeAmount: 0,
       currency: 'INR',
       active: true,
-      minTeamSize: 2,
+      minTeamSize: 1,
       maxTeamSize: 4,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

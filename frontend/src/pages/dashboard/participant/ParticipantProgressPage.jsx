@@ -244,7 +244,7 @@ export function ParticipantProgressPage() {
 /** Suggests the next concrete action based on team state. */
 function NextStepCard({ team, regPending }) {
   const next = !team
-    ? { label: 'Create or Join a Team', to: '/dashboard/team', icon: Users, hint: 'Teams have 2–4 members.' }
+    ? { label: 'Create Your Team', to: '/dashboard/team', icon: Users, hint: 'Teams have 1–4 members.' }
     : !team.eventRegistered && !regPending
       ? { label: 'Register for the Event', to: '/dashboard/registration', icon: CreditCard, hint: 'Confirm your participation.' }
       : regPending

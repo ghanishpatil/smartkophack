@@ -53,7 +53,7 @@ async function setActiveEvent(eventId) {
     active: true, 
     updatedAt: new Date(),
     // Add default team size if not set
-    minTeamSize: eventSnap.data().minTeamSize || 2,
+    minTeamSize: eventSnap.data().minTeamSize || 1,
     maxTeamSize: eventSnap.data().maxTeamSize || 4,
   })
   

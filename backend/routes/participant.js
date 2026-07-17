@@ -147,30 +147,6 @@ r.post('/password/change', async (req, res, next) => {
   }
 })
 
-/** Authenticated: resolve invite code to team id (scoped by active event). */
-r.post('/lookup-invite', async (req, res, next) => {
-  try {
-    const db = getDb()
-    const code = String(req.body?.inviteCode || '')
-      .trim()
-      .slice(0, 20)
-      .toUpperCase()
-    if (code.length < 4) return res.status(400).json({ error: 'Invalid code' })
-    const eventId = req.eventId
-    if (!eventId) return res.status(400).json({ error: 'event edition required (header x-sk-event-id or profile).' })
-
-    let snap = await db.collection('teams').where('inviteCode', '==', code).where('eventId', '==', eventId).limit(1).get()
-    // MED-06: Removed cross-event fallback — only match teams in the current event
-    if (snap.empty) return res.json({ found: false })
-    const doc = snap.docs[0]
-    const data = doc.data()
-    if (data.eventId && data.eventId !== eventId) return res.json({ found: false })
-    res.json({ found: true, teamId: doc.id, name: data.name, eventId: data.eventId || eventId })
-  } catch (e) {
-    next(e)
-  }
-})
-
 function isTeamMember(team, uid) {
   return team.leaderId === uid || (Array.isArray(team.memberIds) && team.memberIds.includes(uid))
 }
@@ -235,69 +211,150 @@ r.post('/create-team', async (req, res, next) => {
   }
 })
 
-r.post('/join-team', async (req, res, next) => {
+/**
+ * POST /participant/register-team-members
+ *
+ * New team-formation model: the team leader submits ALL member details in one
+ * step (leader + up to (maxTeamSize-1) others). No invite codes, no self-join,
+ * no ID card. Members do not need their own accounts.
+ *
+ * Body: {
+ *   teamName?: string,
+ *   members: [{ fullName, email, phone, college, collegeLocation, yearOfStudy, department }]
+ * }
+ * members[0] is treated as the team leader.
+ */
+r.post('/register-team-members', async (req, res, next) => {
   try {
     const db = getDb()
     const uid = req.user.uid
     const prof = req.profile || {}
-    if (prof.teamId) return res.status(400).json({ error: 'Already in a team.' })
-
-    const code = String(req.body?.inviteCode || '')
-      .trim()
-      .slice(0, 20)
-      .toUpperCase()
-    const eventId = (await getActiveEvent())?.id || req.eventId
-    if (!eventId) {
-      return res.status(503).json({ error: 'Hackathon is starting up. Try again in a moment.' })
-    }
-
-    let snap = await db.collection('teams').where('inviteCode', '==', code).where('eventId', '==', eventId).limit(1).get()
-    // MED-06: Removed cross-event fallback lookup — if event-scoped lookup fails,
-    // return 404. Prevents joining teams from different event editions.
-    if (snap.empty) return res.status(404).json({ error: 'Invalid invite code.' })
-    const tdoc = snap.docs[0]
-    const team = tdoc.data()
-    if (team.eventId && team.eventId !== eventId) {
-      return res.status(400).json({ error: 'Invite code is for a different event edition.' })
-    }
+    const teamId = prof.teamId
+    if (!teamId) return res.status(400).json({ error: 'Create a team first.' })
 
     const merged = await getActiveEventConfig()
     const tf = allowTeamFormation(merged)
     if (!tf.ok) return res.status(403).json({ error: tf.reason })
 
-    const members = team.memberIds || []
-    if (members.includes(uid)) return res.status(400).json({ error: 'Already a member.' })
-    
-    // Phase 6: Team size validation using event config
+    const teamRef = db.doc(`teams/${teamId}`)
+    const teamSnap = await teamRef.get()
+    if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+    const team = teamSnap.data()
+
+    if (team.leaderId !== uid) {
+      return res.status(403).json({ error: 'Only the team leader can register team members.' })
+    }
+    if (team.submissionLocked) {
+      return res.status(403).json({ error: 'Team is locked — member details can no longer be edited.' })
+    }
+    const blockedMsg = participationBlockedMessage(team)
+    if (blockedMsg) return res.status(403).json({ error: blockedMsg })
+
+    const eventId = req.eventId
+    const scope = await ensureTeamEventScope(teamRef, team, eventId)
+    if (!scope.ok) return res.status(403).json({ error: scope.error })
+
+    // ── Validate payload ──────────────────────────────────────────────
     const maxSize = merged.maxTeamSize || 4
-    if (members.length >= maxSize) {
-      return res.status(400).json({ error: `Team is full. Maximum ${maxSize} members allowed.` })
+    const rawMembers = Array.isArray(req.body?.members) ? req.body.members : null
+    if (!rawMembers || rawMembers.length < 1) {
+      return res.status(400).json({ error: 'At least one team member (the leader) is required.' })
+    }
+    if (rawMembers.length > maxSize) {
+      return res.status(400).json({ error: `A team can have at most ${maxSize} members.` })
     }
 
-    // Use transaction to prevent race condition on member count
-    await db.runTransaction(async (tx) => {
-      const teamSnapTx = await tx.get(db.doc(`teams/${tdoc.id}`))
-      if (!teamSnapTx.exists) throw Object.assign(new Error('Team not found'), { status: 404 })
-      const teamTx = teamSnapTx.data()
-      const membersTx = teamTx.memberIds || []
-      if (membersTx.includes(uid)) throw Object.assign(new Error('Already a member.'), { status: 400 })
-      if (membersTx.length >= maxSize) {
-        throw Object.assign(new Error(`Team is full. Maximum ${maxSize} members allowed.`), { status: 400 })
-      }
-      const txPatch = { memberIds: FieldValue.arrayUnion(uid), updatedAt: FieldValue.serverTimestamp() }
-      if (!teamTx.eventId) txPatch.eventId = eventId
-      tx.update(db.doc(`teams/${tdoc.id}`), txPatch)
-      tx.set(db.doc(`users/${uid}`), { teamId: tdoc.id, activeEventId: eventId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phoneRegex = /^\d{10}$/
+    const clean = (v, max) => String(v ?? '').trim().slice(0, max)
+
+    const seenEmails = new Set()
+    const seenPhones = new Set()
+    const members = []
+
+    for (let i = 0; i < rawMembers.length; i++) {
+      const m = rawMembers[i] || {}
+      const fullName = clean(m.fullName, 100)
+      const email = clean(m.email, 120).toLowerCase()
+      const phone = clean(m.phone, 10)
+      const college = clean(m.college, 150)
+      const collegeLocation = clean(m.collegeLocation, 150)
+      const yearOfStudy = clean(m.yearOfStudy, 40)
+      const department = clean(m.department, 100)
+      const label = `Member ${i + 1}`
+
+      if (!fullName) return res.status(400).json({ error: `${label}: full name is required.` })
+      if (!email || !emailRegex.test(email)) return res.status(400).json({ error: `${label}: a valid email is required.` })
+      if (!phoneRegex.test(phone)) return res.status(400).json({ error: `${label}: phone number must be exactly 10 digits.` })
+      if (!college) return res.status(400).json({ error: `${label}: college name is required.` })
+      if (!collegeLocation) return res.status(400).json({ error: `${label}: college location is required.` })
+      if (!yearOfStudy) return res.status(400).json({ error: `${label}: year of study is required.` })
+      if (!department) return res.status(400).json({ error: `${label}: department is required.` })
+
+      if (seenEmails.has(email)) return res.status(400).json({ error: `Duplicate email within team: ${email}` })
+      if (seenPhones.has(phone)) return res.status(400).json({ error: `Duplicate phone number within team: ${phone}` })
+      seenEmails.add(email)
+      seenPhones.add(phone)
+
+      members.push({ fullName, email, phone, college, collegeLocation, yearOfStudy, department, isLeader: i === 0, order: i })
+    }
+
+    const teamName = clean(req.body?.teamName, 80) || team.name || 'Untitled team'
+    const nowIso = new Date().toISOString()
+
+    // ── Persist: replace member registrations + update team doc ───────
+    const batch = db.batch()
+
+    // Remove any previous member registrations for this team (idempotent re-submit).
+    const existing = await db.collection('memberRegistrations').where('teamId', '==', teamId).get()
+    existing.forEach((d) => batch.delete(d.ref))
+
+    members.forEach((m) => {
+      const ref = db.collection('memberRegistrations').doc()
+      batch.set(ref, {
+        name: m.fullName,
+        institute: m.college,
+        collegeLocation: m.collegeLocation,
+        yearOfStudy: m.yearOfStudy,
+        department: m.department,
+        email: m.email,
+        phone: m.phone,
+        isLeader: m.isLeader,
+        order: m.order,
+        // Leader is a real account; other members are leader-entered (no account).
+        userId: m.isLeader ? uid : '',
+        teamId,
+        teamName,
+        registeredBy: uid,
+        status: 'pending',
+        createdAt: nowIso,
+      })
     })
 
-    // Notify existing team members (fire-and-forget)
-    notifyTeamMemberJoined({ teamId: tdoc.id, newMemberUid: uid }).catch(() => {})
+    batch.set(teamRef, {
+      name: teamName,
+      teamSize: members.length,
+      membersRegisteredAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true })
 
-    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.TEAM_JOINED, teamId: tdoc.id, targetId: tdoc.id, targetType: 'team', description: `Joined team "${tdoc.data()?.name || tdoc.id}"` }).catch(() => {})
-    res.json({ ok: true, teamId: tdoc.id })
+    await batch.commit()
+
+    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.TEAM_CREATED, teamId, targetId: teamId, targetType: 'team', description: `Saved ${members.length} team member detail(s)`, metadata: { teamSize: members.length } }).catch(() => {})
+
+    res.json({ ok: true, teamId, teamSize: members.length, teamName })
   } catch (e) {
     next(e)
   }
+})
+
+// Joining a team by invite code has been removed. Teams are now formed entirely
+// by the team leader, who creates the team and enters all member details during
+// registration. This endpoint is intentionally disabled and returns 410 Gone.
+r.post('/join-team', async (req, res) => {
+  return res.status(410).json({
+    error: 'Joining teams by invite code is no longer supported. The team leader now adds all member details during registration.',
+  })
 })
 
 r.post('/register-team-event', async (req, res, next) => {
@@ -337,28 +394,32 @@ r.post('/register-team-event', async (req, res, next) => {
       })
     }
 
-    // Phase 6: Validate minimum team size before registration
-    const minSize = merged.minTeamSize || 2
-    const currentSize = (team.memberIds || []).length
-    if (currentSize < minSize) {
-      return res.status(400).json({ 
-        error: `Team must have at least ${minSize} members to register. Current: ${currentSize}`,
+    // New model: the leader declares team size (1-4) and enters all member
+    // details via /register-team-members, which stores them in memberRegistrations
+    // and records team.teamSize. Legacy teams fall back to memberIds length.
+    const minSize = merged.minTeamSize || 1
+    const legacySize = (team.memberIds || []).length
+    const declaredSize = typeof team.teamSize === 'number' && team.teamSize > 0 ? team.teamSize : legacySize
+
+    if (declaredSize < minSize) {
+      return res.status(400).json({
+        error: `Team must have at least ${minSize} member${minSize > 1 ? 's' : ''} to register.`,
         minTeamSize: minSize,
-        currentSize,
+        currentSize: declaredSize,
       })
     }
 
-    // BUG FIX #1: Validate that ALL team members have submitted their registration details
+    // Validate that member details have been submitted for the whole team.
     const memberRegsSnap = await db.collection('memberRegistrations')
       .where('teamId', '==', teamId)
       .get()
 
     const submittedCount = memberRegsSnap.size
-    const requiredCount = currentSize
+    const requiredCount = declaredSize
 
     if (submittedCount < requiredCount) {
-      return res.status(400).json({ 
-        error: `All ${requiredCount} team members must submit their registration details before team registration. Currently: ${submittedCount}/${requiredCount} completed.`,
+      return res.status(400).json({
+        error: `Please add details for all ${requiredCount} team member${requiredCount > 1 ? 's' : ''} before registering. Currently saved: ${submittedCount}/${requiredCount}.`,
         requiredCount,
         submittedCount,
       })
@@ -780,6 +841,32 @@ r.post('/finalize-submission', async (req, res, next) => {
       return res.status(403).json({ error: 'Complete registration and payment before finalizing submission.', redirectTo: '/dashboard/registration' })
     }
 
+    // Require that the actual submission artifacts are present before locking.
+    // Prevents finalizing an empty submission.
+    const subSnapForFinalize = await db.doc(`submissions/${teamId}`).get()
+    const subDataForFinalize = subSnapForFinalize.exists ? subSnapForFinalize.data() : {}
+    const effectiveSub = activePhaseForFinalize
+      ? (subDataForFinalize.phases?.[activePhaseForFinalize.id] || {})
+      : subDataForFinalize
+    const reqs = activePhaseForFinalize?.requirements || {
+      pptRequired: true, pdfRequired: true, videoRequired: false, githubRequired: false, deployedUrlRequired: false,
+    }
+    const anyUpload = Boolean(
+      effectiveSub.pptUrl || effectiveSub.pdfUrl || effectiveSub.videoUrl || effectiveSub.githubUrl || effectiveSub.deployedUrl,
+    )
+    if (!anyUpload) {
+      return res.status(400).json({ error: 'Upload your submission files before finalizing.' })
+    }
+    const missing = []
+    if (reqs.pptRequired && !effectiveSub.pptUrl) missing.push('PPT')
+    if (reqs.pdfRequired && !effectiveSub.pdfUrl) missing.push('PDF')
+    if (reqs.videoRequired && !effectiveSub.videoUrl) missing.push('Video')
+    if (reqs.githubRequired && !effectiveSub.githubUrl) missing.push('GitHub repo')
+    if (reqs.deployedUrlRequired && !effectiveSub.deployedUrl) missing.push('Deployed URL')
+    if (missing.length) {
+      return res.status(400).json({ error: `Upload all required files before finalizing. Missing: ${missing.join(', ')}.` })
+    }
+
     await teamRef.set({ submissionLocked: true, submissionFinalizedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
     await db.doc(`submissions/${teamId}`).set(
       {
@@ -902,8 +989,37 @@ r.get('/team-roster', async (req, res, next) => {
       }
     })
 
+    // New model: declared member details (leader-entered) live in memberRegistrations.
+    // Expose them so the team page can show the full roster even though only the
+    // leader has an account. Only the leader/self may view these details.
+    let memberDetails = []
+    if (uid === team.leaderId) {
+      try {
+        const regSnap = await db.collection('memberRegistrations').where('teamId', '==', teamId).get()
+        memberDetails = regSnap.docs
+          .map((d) => {
+            const x = d.data()
+            return {
+              id: d.id,
+              fullName: x.name || '',
+              email: x.email || '',
+              phone: x.phone || '',
+              college: x.institute || '',
+              collegeLocation: x.collegeLocation || '',
+              yearOfStudy: x.yearOfStudy || '',
+              department: x.department || '',
+              isLeader: Boolean(x.isLeader),
+              order: typeof x.order === 'number' ? x.order : 0,
+            }
+          })
+          .sort((a, b) => a.order - b.order)
+      } catch { memberDetails = [] }
+    }
+
     res.json({
       members,
+      memberDetails,
+      teamSize: typeof team.teamSize === 'number' ? team.teamSize : memberDetails.length,
       leaderId: team.leaderId || '',
       teamId,
       inviteCode: team.inviteCode || '',
@@ -951,7 +1067,7 @@ r.post('/remove-team-member', async (req, res, next) => {
 
     // Warn if removing would break minimum team size for a registered team
     if (team.eventRegistered) {
-      const minSize = merged.minTeamSize || 2
+      const minSize = merged.minTeamSize || 1
       const afterRemoveCount = members.filter(Boolean).length - 1
       if (afterRemoveCount < minSize) {
         return res.status(400).json({
@@ -1014,7 +1130,7 @@ r.post('/leave-team', async (req, res, next) => {
 
     // Warn if leaving would break minimum team size for a registered team
     if (!soleMember && team.eventRegistered) {
-      const minSize = merged.minTeamSize || 2
+      const minSize = merged.minTeamSize || 1
       const afterLeaveCount = members.filter(Boolean).length - 1
       if (afterLeaveCount < minSize) {
         return res.status(400).json({

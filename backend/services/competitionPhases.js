@@ -115,6 +115,17 @@ export function isPhaseSubmissionOpen(phase, now = Date.now()) {
   return true
 }
 
+/**
+ * Whether a phase actually accepts file submissions. A phase with no required
+ * artifacts (e.g. "Problem Statements Live & Registration Opens") is a
+ * registration/informational phase — teams cannot submit to it, even while it
+ * is the active phase.
+ */
+export function phaseAcceptsSubmissions(phase) {
+  const req = phase?.requirements || {}
+  return ALLOWED_REQUIREMENTS.some((k) => Boolean(req[k]))
+}
+
 /** Check if a team can submit to a specific phase */
 export function canTeamSubmit(team, phase) {
   if (!team || !phase) return false
@@ -123,6 +134,9 @@ export function canTeamSubmit(team, phase) {
   // BUGFIX: previously this required status === 'ACTIVE' only, which blocked
   // submissions during date-driven phases that getActivePhase() reports as active.
   if (!isPhaseSubmissionOpen(phase)) return false
+
+  // A phase that requires no artifacts is not a submission phase — block it.
+  if (!phaseAcceptsSubmissions(phase)) return false
 
   // First phase is open to all registered teams
   if (phase.order === 1) return true

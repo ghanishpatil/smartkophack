@@ -137,7 +137,7 @@ export async function getActiveEventConfig() {
       registrationOpensAt: null,
       registrationClosesAt: null,
       submissionDeadline: null,
-      minTeamSize: 2,
+      minTeamSize: 1,
       maxTeamSize: 4,
     }
     _activeEventConfigCache = { config, cachedAt: now }
@@ -159,7 +159,7 @@ export async function getActiveEventConfig() {
     registrationClosesAt: event.registrationClosesAt ?? null,
     submissionDeadline: event.submissionDeadline ?? null,
     evaluationCriteria: event.evaluationCriteria ?? null,
-    minTeamSize: typeof event.minTeamSize === 'number' ? event.minTeamSize : 2,
+    minTeamSize: typeof event.minTeamSize === 'number' ? event.minTeamSize : 1,
     maxTeamSize: typeof event.maxTeamSize === 'number' ? event.maxTeamSize : 4,
     competitionPhases: Array.isArray(event.competitionPhases) ? event.competitionPhases : [],
   }

@@ -97,7 +97,7 @@ export function ParticipantHomePage() {
   const regPending = team && feeRequired && paySt === 'pending' && (team.registrationStatus === 'pending' || team.registrationRequestedAt)
 
   const nextAction = !team
-    ? { label: 'Create or Join a Team', to: '/dashboard/team', icon: Users }
+    ? { label: 'Create Your Team', to: '/dashboard/team', icon: Users }
     : !team.eventRegistered && !regPending
       ? { label: 'Register for Event', to: '/dashboard/registration', icon: CreditCard }
       : regPending

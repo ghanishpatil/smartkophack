@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { SnitchLoader } from '@/components/ui/SnitchLoader.jsx'
 import { PaymentSuccessAnimation } from '@/components/ui/PaymentSuccessAnimation.jsx'
-import { TeamMemberRegistrationForm } from '@/components/participant/TeamMemberRegistrationForm.jsx'
+import { TeamRegistrationForm } from '@/components/participant/TeamRegistrationForm.jsx'
 import { loadRazorpayScript } from '@/utils/loadRazorpay.js'
 import { isRegistrationComplete } from '@/utils/teamRegistrationDisplay.js'
 import { formatLifecyclePhase } from '@/utils/eventLifecycleDisplay.js'
@@ -50,6 +50,7 @@ export function ParticipantRegistrationPage() {
   const { user } = useAuth()
   const {
     api,
+    profile,
     team,
     eventCfg,
     loading,
@@ -111,11 +112,12 @@ export function ParticipantRegistrationPage() {
   // Team docs store leaderId (a UID), not an isLeader flag — derive it.
   const isLeader = Boolean(user?.uid && (team?.leaderId === user.uid || roster?.leaderId === user.uid))
 
-  // Calculate member registration progress
-  const totalMembers = roster?.members?.length || 0
+  // New model: the leader declares team size (1-4) and enters all member details.
+  const declaredSize = typeof team?.teamSize === 'number' ? team.teamSize : 0
   const submittedMembers = memberRegistrations.length
-  const allMembersSubmitted = totalMembers > 0 && submittedMembers === totalMembers
-  const registrationProgress = totalMembers > 0 ? (submittedMembers / totalMembers) * 100 : 0
+  const totalMembers = declaredSize || submittedMembers
+  const allMembersSubmitted = declaredSize > 0 && submittedMembers >= declaredSize
+  const registrationProgress = totalMembers > 0 ? Math.min(100, (submittedMembers / totalMembers) * 100) : 0
 
   // Determine registration close date
   const registrationCloseDate = (() => {
@@ -434,7 +436,7 @@ export function ParticipantRegistrationPage() {
               <div>
                 <p className="font-display text-lg font-semibold text-ink-900">Create or join a team first</p>
                 <p className="mt-2 max-w-sm text-sm text-ink-600">
-                  Registration is per team. Head to My Team to create one or enter an invite code.
+                  Registration is per team. Head to My Team to create your team first.
                 </p>
               </div>
               <Link
@@ -505,30 +507,32 @@ export function ParticipantRegistrationPage() {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-ink-500">
-                  Team leader must fill all member registration details (name, institute, email, phone, ID card) before the team can proceed.
+                  The team leader fills in details for every member (name, email, mobile, college, location, year, department) before the team can proceed.
                 </p>
               </Card>
             </motion.div>
 
-            {/* Member Forms - Only show if leader and not submitted */}
+            {/* Team & Member details form — leader enters everyone's details */}
             {!allMembersSubmitted && isLeader && (
               <motion.div variants={cardVariants}>
-                {!roster ? (
-                  <Card className="p-6">
-                    <p className="text-sm text-ink-600">Loading team members...</p>
-                  </Card>
-                ) : roster.members && roster.members.length > 0 ? (
-                  <TeamMemberRegistrationForm
-                    members={roster.members}
-                    teamId={team.id}
-                    user={user}
-                    onSuccess={loadMemberRegistrations}
-                  />
-                ) : (
-                  <Card className="p-6">
-                    <p className="text-sm text-red-600">No team members found. Please refresh or contact support.</p>
-                  </Card>
-                )}
+                <TeamRegistrationForm
+                  team={team}
+                  user={user}
+                  profile={profile}
+                  api={api}
+                  maxTeamSize={eventCfg?.maxTeamSize || 4}
+                  existing={memberRegistrations.map((r) => ({
+                    fullName: r.name || '',
+                    email: r.email || '',
+                    phone: r.phone || '',
+                    college: r.institute || '',
+                    collegeLocation: r.collegeLocation || '',
+                    yearOfStudy: r.yearOfStudy || '',
+                    department: r.department || '',
+                    order: typeof r.order === 'number' ? r.order : 0,
+                  }))}
+                  onSuccess={async () => { await refreshTeam(); await loadMemberRegistrations() }}
+                />
               </motion.div>
             )}
 
