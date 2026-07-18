@@ -46,7 +46,7 @@ export function Hero() {
       <div className="absolute inset-0">
         {/* Mobile (portrait reel) */}
         <img
-          src="/hero-mobile.svg"
+          src="/hero-mobile-latest.png"
           alt=""
           className="h-full w-full object-cover object-center md:hidden"
           draggable={false}
