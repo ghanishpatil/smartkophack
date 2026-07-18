@@ -53,7 +53,7 @@ export function Hero() {
         />
         {/* Desktop / tablet (16:9 banner) */}
         <img
-          src="/smartkpg15.png"
+          src="/hero-desktop-latest.png"
           alt=""
           className="hidden h-full w-full object-cover object-center md:block"
           draggable={false}
