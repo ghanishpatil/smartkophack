@@ -40,7 +40,7 @@ export function ParticipantTeamPage() {
   const [copiedId, setCopiedId] = useState(false)
 
   async function copyTeamId() {
-    const id = team?.id || roster?.teamId
+    const id = team?.inviteCode || roster?.inviteCode
     if (!id) return
     try {
       await navigator.clipboard.writeText(id)
@@ -165,8 +165,8 @@ export function ParticipantTeamPage() {
                       <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
                         <Hash className="h-3 w-3" /> Team ID
                       </span>
-                      <code className="max-w-full truncate rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 font-mono text-xs text-ink-800">
-                        {team.id || roster?.teamId}
+                      <code className="max-w-full truncate rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 font-mono text-sm font-bold tracking-wider text-ink-800">
+                        {team.inviteCode || roster?.inviteCode || '—'}
                       </code>
                       <button
                         type="button"

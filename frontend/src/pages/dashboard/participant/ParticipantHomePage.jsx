@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -16,6 +17,9 @@ import {
   Rocket,
   Trophy,
   Zap,
+  Hash,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { formatDate } from '@/utils/format.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -87,6 +91,16 @@ export function ParticipantHomePage() {
 
   const { items: announcements, loading: annLoading } = useAnnouncements(4, { eventId, participantFeed: true })
 
+  const [copiedId, setCopiedId] = useState(false)
+  async function copyTeamId() {
+    if (!team?.inviteCode) return
+    try {
+      await navigator.clipboard.writeText(team.inviteCode)
+      setCopiedId(true)
+      setTimeout(() => setCopiedId(false), 1800)
+    } catch { /* clipboard unavailable */ }
+  }
+
   const feeRequired = Boolean(eventCfg?.entryFeeEnabled && (eventCfg?.entryFeeAmount ?? 0) > 0)
   const paySt = team?.paymentStatus || ''
   const feeResolved = !feeRequired || paySt === 'paid' || paySt === 'waived' || paySt === 'not_required'
@@ -139,6 +153,25 @@ export function ParticipantHomePage() {
                 ? 'All steps complete — you\'re all set for the hackathon!'
                 : `${steps.length - completed} step${steps.length - completed !== 1 ? 's' : ''} remaining to be hackathon-ready.`}
             </p>
+
+            {/* Team ID (replaces the old join code) */}
+            {team?.inviteCode && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                  <Hash className="h-3 w-3" /> Team ID
+                </span>
+                <code className="rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 font-mono text-sm font-bold tracking-wider text-ink-800">
+                  {team.inviteCode}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyTeamId}
+                  className="inline-flex items-center gap-1 rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 text-xs font-medium text-brand-600 transition-colors hover:bg-brand-500/5"
+                >
+                  {copiedId ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+                </button>
+              </div>
+            )}
 
             {/* Deadline chips */}
             <div className="mt-4 flex flex-wrap gap-2">
