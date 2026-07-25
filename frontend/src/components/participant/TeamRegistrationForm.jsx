@@ -134,34 +134,43 @@ export function TeamRegistrationForm({ team, user, profile, api, maxTeamSize = 4
       </div>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Team Name"
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Team Phoenix"
-            maxLength={80}
-            required
-          />
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink-700">Number of Members</label>
-            <div className="flex gap-2">
-              {Array.from({ length: maxTeamSize }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setSize(n)}
-                  className={`h-11 flex-1 rounded-xl border-2 text-sm font-bold transition-colors ${
-                    size === n
-                      ? 'border-brand-500 bg-brand-500/10 text-brand-700'
-                      : 'border-[rgb(var(--border))] text-ink-500 hover:border-brand-400'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+        <Input
+          label="Team Name"
+          value={teamName}
+          onChange={(e) => setTeamName(e.target.value)}
+          placeholder="Team Phoenix"
+          maxLength={80}
+          required
+        />
+
+        {/* Team size selector — full-width & clearly tappable (mobile-friendly) */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-ink-700">
+            Total team members <span className="text-ink-400">(including you)</span>
+          </label>
+          <p className="mb-2 text-xs text-ink-500">
+            Pick how many people are in your team, then fill each member's details below.
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {Array.from({ length: maxTeamSize }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setSize(n)}
+                aria-pressed={size === n}
+                className={`h-12 w-full rounded-xl border-2 text-base font-bold transition-colors ${
+                  size === n
+                    ? 'border-brand-500 bg-brand-500/10 text-brand-700'
+                    : 'border-[rgb(var(--border))] text-ink-500 hover:border-brand-400'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
           </div>
+          <p className="mt-2 text-xs font-medium text-brand-600">
+            Selected: {size} member{size === 1 ? '' : 's'}
+          </p>
         </div>
 
         {members.map((m, idx) => (

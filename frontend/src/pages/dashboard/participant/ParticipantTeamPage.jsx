@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Clock, Crown, LogOut, Users, Pencil, Github, Linkedin, Globe, Tag, Shield, Sparkles, Mail, Phone, MapPin, GraduationCap, Building2, Info, ArrowRight } from 'lucide-react'
+import { Clock, Crown, LogOut, Users, Pencil, Github, Linkedin, Globe, Tag, Shield, Sparkles, Mail, Phone, MapPin, GraduationCap, Building2, Info, ArrowRight, Hash, Copy, Check } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useParticipantWorkspace } from '@/hooks/useParticipantWorkspace.js'
 import { useAuth } from '@/context/AuthContext.jsx'
@@ -37,6 +37,17 @@ export function ParticipantTeamPage() {
   const [busy, setBusy] = useState(false)
   const [roster, setRoster] = useState(null)
   const [rosterLoading, setRosterLoading] = useState(false)
+  const [copiedId, setCopiedId] = useState(false)
+
+  async function copyTeamId() {
+    const id = team?.id || roster?.teamId
+    if (!id) return
+    try {
+      await navigator.clipboard.writeText(id)
+      setCopiedId(true)
+      setTimeout(() => setCopiedId(false), 1800)
+    } catch { /* clipboard unavailable */ }
+  }
 
   const loadRoster = useCallback(async () => {
     if (!team?.id) { setRoster(null); return }
@@ -142,12 +153,28 @@ export function ParticipantTeamPage() {
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-cyan-500 font-display text-xl font-bold text-white shadow-lg shadow-brand-500/30">
                     {(team.name || 'T').charAt(0).toUpperCase()}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="font-display text-2xl font-extrabold text-ink-900">{team.name}</h2>
                     <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-ink-500">
                       <span className="flex items-center gap-1">
                         <Users className="h-3.5 w-3.5" /> {teamSize} member{teamSize === 1 ? '' : 's'}
                       </span>
+                    </div>
+                    {/* Team ID — used to identify your team (replaces the old join code) */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                        <Hash className="h-3 w-3" /> Team ID
+                      </span>
+                      <code className="max-w-full truncate rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 font-mono text-xs text-ink-800">
+                        {team.id || roster?.teamId}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={copyTeamId}
+                        className="inline-flex items-center gap-1 rounded-md border border-[rgb(var(--border))] bg-white px-2 py-1 text-xs font-medium text-brand-600 transition-colors hover:bg-brand-500/5"
+                      >
+                        {copiedId ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+                      </button>
                     </div>
                   </div>
                 </div>
