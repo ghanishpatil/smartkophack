@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog.jsx'
 
 export function ParticipantProblemDetailPage() {
   const { psId } = useParams()
@@ -62,18 +63,47 @@ export function ParticipantProblemDetailPage() {
   const full = maxTeams != null && count >= maxTeams
   const selected = team?.problemStatementId === problem?.id
 
+  // If the team has its own Open Innovation idea, warn before switching away —
+  // selecting a curated problem statement deletes their idea.
+  const [ownIdea, setOwnIdea] = useState(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const loadOwnIdea = useCallback(async () => {
+    try {
+      const res = await api.getOpenInnovation()
+      setOwnIdea(res?.idea || null)
+    } catch {
+      setOwnIdea(null)
+    }
+  }, [api])
+
+  useEffect(() => { void loadOwnIdea() }, [loadOwnIdea])
+
+  function requestSelect() {
+    if (!team || !problem) return
+    if (ownIdea && ownIdea.id !== problem.id) {
+      setConfirmOpen(true)
+      return
+    }
+    void select()
+  }
+
   async function select() {
     if (!team || !problem) return
     setBusy(true)
     setMsg('')
     try {
-      await api.selectProblem(problem.id)
+      const res = await api.selectProblem(problem.id)
       await refreshTeam()
-      setMsg('Problem statement selected for your team.')
+      await loadOwnIdea()
+      setMsg(res?.discardedOpenInnovationId
+        ? 'Problem statement selected. Your Open Innovation idea has been removed.'
+        : 'Problem statement selected for your team.')
     } catch (e) {
       setMsg(e.message || 'Could not select problem')
     } finally {
       setBusy(false)
+      setConfirmOpen(false)
     }
   }
 
@@ -195,7 +225,7 @@ export function ParticipantProblemDetailPage() {
           <Button
             className="gap-2"
             disabled={busy || (full && !selected) || !canSelect}
-            onClick={select}
+            onClick={requestSelect}
           >
             {selected ? (<><CheckCircle2 className="h-4 w-4" /> Selected</>) : full ? 'Problem Full' : 'Select this problem'}
           </Button>
@@ -204,6 +234,27 @@ export function ParticipantProblemDetailPage() {
           </Link>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Switch away from your Open Innovation idea?"
+        description="Selecting this problem statement will discard the idea your team created."
+        confirmLabel="Switch & delete idea"
+        cancelLabel="Keep my idea"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => void select()}
+      >
+        <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/50 p-3">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-500">{ownIdea?.id}</p>
+          <p className="mt-0.5 font-semibold text-ink-900">{ownIdea?.title}</p>
+        </div>
+        <p className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-red-800">
+          This <strong>permanently deletes</strong> your Open Innovation problem statement. It cannot
+          be undone.
+        </p>
+      </ConfirmDialog>
     </motion.div>
   )
 }

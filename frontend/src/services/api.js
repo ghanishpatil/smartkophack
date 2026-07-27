@@ -181,6 +181,9 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/problem-statements/bulk-import', { method: 'POST', body: { items } }),
     deleteAdminProblemStatement: (psId) =>
       authReq(`/api/admin/problem-statements/${encodeURIComponent(psId)}`, { method: 'DELETE' }),
+    // Admin listing includes drafts + private Open Innovation entries
+    listAdminProblemStatements: (eventId) =>
+      authReq(`/api/admin/problem-statements${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
     adminSystemHealth: () => authReq('/api/admin/system-health'),
     // Security Center
     listPlatformActivity: (limit = 300) => authReq(`/api/admin/security/activity?limit=${limit}`),
@@ -214,6 +217,10 @@ export function createApi(getToken, getEventId = () => '') {
         method: 'POST',
         body: { problemStatementId },
       }),
+    // Open Innovation — a team's own problem statement
+    getOpenInnovation: () => authReq('/api/participant/open-innovation'),
+    saveOpenInnovation: (body) =>
+      authReq('/api/participant/open-innovation', { method: 'POST', body }),
     patchSubmissionMetadata: (patch) =>
       authReq('/api/participant/submission-metadata', { method: 'POST', body: { patch } }),
     finalizeSubmission: () =>

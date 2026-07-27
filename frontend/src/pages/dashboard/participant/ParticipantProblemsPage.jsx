@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Flame, Search, ArrowRight, Filter, ChevronDown } from 'lucide-react'
@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
+import { OpenInnovationCard } from '@/components/participant/OpenInnovationCard.jsx'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog.jsx'
 
 export function ParticipantProblemsPage() {
   usePageSeo({ title: 'Problem Statements', description: 'Browse and select your track.' })
@@ -97,18 +99,49 @@ export function ParticipantProblemsPage() {
     ['paid', 'waived', 'not_required'].includes(team?.paymentStatus || '')
   const canSelect = Boolean(team?.eventRegistered && payOk)
 
+  // Tracks whether the team currently has its own Open Innovation idea, so we
+  // can warn before switching to an admin-curated problem statement (which
+  // permanently discards their idea).
+  const [ownIdea, setOwnIdea] = useState(null)
+  const [pendingPid, setPendingPid] = useState('')
+
+  const loadOwnIdea = useCallback(async () => {
+    try {
+      const res = await api.getOpenInnovation()
+      setOwnIdea(res?.idea || null)
+    } catch {
+      setOwnIdea(null)
+    }
+  }, [api])
+
+  useEffect(() => { void loadOwnIdea() }, [loadOwnIdea])
+
+  /** Entry point for the Select button — warns first if an own idea exists. */
+  function requestSelect(pid) {
+    if (!team) return
+    if (ownIdea && ownIdea.id !== pid) {
+      setPendingPid(pid)
+      return
+    }
+    void select(pid)
+  }
+
   async function select(pid) {
     if (!team) return
     setBusy(true)
     setMsg('')
     try {
-      await api.selectProblem(pid)
+      const res = await api.selectProblem(pid)
       await refreshTeam()
-      setMsg('Problem statement updated.')
+      await loadOwnIdea()
+      setMsg(res?.discardedOpenInnovationId
+        ? 'Problem statement updated. Your Open Innovation idea has been removed.'
+        : 'Problem statement updated.')
     } catch (e) {
       setMsg(e.message || 'Could not select problem')
     } finally {
       setBusy(false)
+      setPendingPid('')
     }
   }
 
@@ -161,6 +194,36 @@ export function ParticipantProblemsPage() {
       {msg ? (
         <p className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-4 py-3 text-sm">{msg}</p>
       ) : null}
+
+      {/* ── Open Innovation: submit your own problem statement ── */}
+      <OpenInnovationCard
+        api={api}
+        team={team}
+        canSelect={canSelect && !selectionLocked}
+        onSaved={async () => { await refreshTeam(); await loadOwnIdea() }}
+      />
+
+      {/* Warning before discarding the team's own Open Innovation idea */}
+      <ConfirmDialog
+        open={Boolean(pendingPid)}
+        title="Switch away from your Open Innovation idea?"
+        description="Choosing a problem statement from the official list will discard the idea your team created."
+        confirmLabel="Switch & delete idea"
+        cancelLabel="Keep my idea"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setPendingPid('')}
+        onConfirm={() => void select(pendingPid)}
+      >
+        <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/50 p-3">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-500">{ownIdea?.id}</p>
+          <p className="mt-0.5 font-semibold text-ink-900">{ownIdea?.title}</p>
+        </div>
+        <p className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-red-800">
+          This <strong>permanently deletes</strong> your Open Innovation problem statement. It cannot
+          be undone — you would need to add it again from scratch.
+        </p>
+      </ConfirmDialog>
 
       {/* Toolbar: search + filters toggle */}
       <div>
@@ -301,7 +364,7 @@ export function ParticipantProblemsPage() {
                     <Button
                       size="sm"
                       disabled={busy || (full && !selected) || selectionLocked || !canSelect}
-                      onClick={() => select(p.id)}
+                      onClick={() => requestSelect(p.id)}
                     >
                       {selected ? 'Selected' : 'Select'}
                     </Button>

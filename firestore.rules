@@ -168,9 +168,25 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ─── Problem Statements (public read) ────────────────────────────
+    // ─── Problem Statements ──────────────────────────────────────────
+    // Curated problems are public. Participant-authored Open Innovation ideas
+    // are marked `visibility: 'private'` and must only be readable by the
+    // owning team, admins, and judges (evaluation) — never by the public or
+    // by other participants.
     match /problemStatements/{id} {
-      allow read: if true;
+      allow get: if !('visibility' in resource.data)
+        || resource.data.visibility != 'private'
+        || (
+          signedIn() && (
+            isAdmin()
+            || isJudge()
+            || ownTeamId() == resource.data.ownerTeamId
+          )
+        );
+      // Listing the collection cannot be evaluated per-document for privacy,
+      // so restrict client-side listing to admins. Everyone else reads the
+      // curated list through the public API (which filters private entries).
+      allow list: if signedIn() && isAdmin();
       allow write: if isAdmin();
     }
 

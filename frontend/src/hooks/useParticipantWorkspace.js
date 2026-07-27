@@ -82,10 +82,40 @@ export function useParticipantWorkspace() {
     }
   }, [eventId, refreshProfile])
 
-  const selectedProblem = useMemo(
-    () => problems.find((p) => p.id === team?.problemStatementId) || null,
-    [problems, team?.problemStatementId],
+  // Open Innovation ideas are private, so they are NOT part of the public
+  // problem list. Fetch the team's own idea so the dashboard can still show it
+  // as the selected problem statement.
+  const [ownIdea, setOwnIdea] = useState(null)
+  const selectedPid = team?.problemStatementId || ''
+  const inPublicList = useMemo(
+    () => problems.some((p) => p.id === selectedPid),
+    [problems, selectedPid],
   )
+
+  useEffect(() => {
+    if (!selectedPid || inPublicList) { setOwnIdea(null); return }
+    let cancelled = false
+    api.getOpenInnovation()
+      .then((res) => { if (!cancelled) setOwnIdea(res?.idea || null) })
+      .catch(() => { if (!cancelled) setOwnIdea(null) })
+    return () => { cancelled = true }
+  }, [selectedPid, inPublicList, api])
+
+  const selectedProblem = useMemo(() => {
+    const fromList = problems.find((p) => p.id === selectedPid)
+    if (fromList) return fromList
+    if (ownIdea && ownIdea.id === selectedPid) {
+      // Normalize to the same shape the UI expects for a problem statement.
+      return {
+        ...ownIdea,
+        category: ownIdea.track || '',
+        theme: 'Open Innovation',
+        domain: 'Open Innovation',
+        openInnovation: true,
+      }
+    }
+    return null
+  }, [problems, selectedPid, ownIdea])
 
   const registrationBlockedReason = useMemo(() => {
     if (!eventCfg) return ''

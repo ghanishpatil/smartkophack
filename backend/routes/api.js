@@ -268,14 +268,19 @@ r.get('/problem-statements', async (req, res, next) => {
           snap = await db.collection('problemStatements').get()
         }
       }
-      return snap.docs.map((d) => {
-        const data = d.data()
-        return {
-          id: d.id,
-          ...data,
-          selectionCount: typeof data.selectionCount === 'number' ? data.selectionCount : 0,
-        }
-      })
+      return snap.docs
+        .map((d) => {
+          const data = d.data()
+          return {
+            id: d.id,
+            ...data,
+            selectionCount: typeof data.selectionCount === 'number' ? data.selectionCount : 0,
+          }
+        })
+        // SECURITY: participant-authored Open Innovation ideas are private.
+        // They must never appear in the public/shared listing (this response is
+        // cached per-event and served to everyone, including unauthenticated users).
+        .filter((p) => p.visibility !== 'private')
     })
     res.json(data)
   } catch (e) {
@@ -1259,6 +1264,39 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * Admin listing of problem statements — includes drafts AND private
+   * participant-authored Open Innovation entries (which the public endpoint
+   * deliberately filters out).
+   */
+  router.get('/problem-statements', async (req, res, next) => {
+    try {
+      const activeEvent = await getActiveEvent()
+      const eventId = String(req.query.eventId || req.eventId || activeEvent?.id || '').trim()
+
+      let snap
+      let q = db().collection('problemStatements')
+      if (eventId) q = q.where('eventId', '==', eventId)
+      try {
+        snap = await q.orderBy('order', 'asc').get()
+      } catch {
+        snap = await q.get()
+      }
+
+      const items = snap.docs.map((d) => {
+        const data = d.data()
+        return {
+          id: d.id,
+          ...data,
+          selectionCount: typeof data.selectionCount === 'number' ? data.selectionCount : 0,
+        }
+      })
+      res.json(items)
+    } catch (e) {
+      next(e)
+    }
+  })
+
   router.post('/problem-statements', async (req, res, next) => {
     try {
       const body = req.body || {}
@@ -1585,7 +1623,15 @@ export function adminRouter() {
       if (evScope && ped && ped !== evScope) {
         return res.status(400).json({ error: 'Problem statement belongs to a different edition.' })
       }
-      if (typeof body.published === 'boolean') patch.published = body.published
+      // Open Innovation entries are participant-authored and reserved for their
+      // team: they are never published publicly and stay private.
+      const isOpenInnovationPs = snap.data().origin === 'open_innovation'
+      if (isOpenInnovationPs) {
+        patch.published = false
+        patch.visibility = 'private'
+      } else if (typeof body.published === 'boolean') {
+        patch.published = body.published
+      }
       if (body.maxTeams === null) patch.maxTeams = FieldValue.delete()
       else if (typeof body.maxTeams === 'number' && body.maxTeams >= 0) patch.maxTeams = body.maxTeams
       if (typeof body.title === 'string') patch.title = body.title.trim().slice(0, 200)

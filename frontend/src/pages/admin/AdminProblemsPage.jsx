@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Upload, Download, FileSpreadsheet, X, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Upload, Download, FileSpreadsheet, X, CheckCircle2, AlertCircle, Trash2, Lightbulb } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -11,7 +11,7 @@ import {
   displayDepartment,
   displayTheme,
 } from '@/utils/problemStatementDisplay.js'
-import { publicApi } from '@/services/api.js'
+
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Input, Textarea } from '@/components/ui/Input.jsx'
@@ -185,7 +185,8 @@ export function AdminProblemsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await publicApi.listProblemStatements(eventId || undefined)
+      // Admin endpoint includes drafts + private Open Innovation entries.
+      const list = await api.listAdminProblemStatements(eventId || undefined)
       setRows(Array.isArray(list) ? list : [])
     } catch {
       setRows([])
@@ -228,6 +229,12 @@ export function AdminProblemsPage() {
       return String(a.title || '').localeCompare(String(b.title || ''))
     })
   }, [rows])
+
+  // Participant-authored Open Innovation submissions are listed separately from
+  // the curated problem bank.
+  const isOpenInnovation = (ps) => ps?.origin === 'open_innovation'
+  const curatedRows = useMemo(() => sortedRows.filter((p) => !isOpenInnovation(p)), [sortedRows])
+  const openInnovationRows = useMemo(() => sortedRows.filter(isOpenInnovation), [sortedRows])
 
   function rowTitle(ps) {
     return edits[ps.id]?.title ?? ps.title ?? ''
@@ -553,7 +560,7 @@ export function AdminProblemsPage() {
             </div>
           ) : null}
         </div>
-        {sortedRows.map((ps) => {
+        {curatedRows.map((ps) => {
           const isOpen = openPsIds.has(ps.id)
           const orgDisp = displayOrganization(ps)
           const catDisp = displayCategory(ps)
@@ -594,6 +601,8 @@ export function AdminProblemsPage() {
               {isOpen ? (
                 <div className="border-t border-[rgb(var(--border))] px-4 pb-4 pt-2">
                   <p className="mb-4 font-mono text-[11px] text-ink-500">{ps.id}</p>
+
+
                   <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -736,9 +745,106 @@ export function AdminProblemsPage() {
             </Card>
           )
         })}
-        {rows.length === 0 ? (
+        {curatedRows.length === 0 ? (
           <p className="text-sm text-ink-500">No problems yet — add one above.</p>
         ) : null}
+      </div>
+
+      {/* ── Open Innovation: participant-submitted problem statements ── */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-ink-900">
+            <Lightbulb className="h-4 w-4 text-amber-500" />
+            Open Innovation (submitted by teams)
+          </h2>
+          <span className="text-xs text-ink-500">{openInnovationRows.length} submission(s)</span>
+        </div>
+        <p className="text-xs text-ink-500">
+          These are participant-authored problem statements. Each is private to its team and never
+          published on the public site. Judges assigned the <strong>Open Innovation</strong> domain
+          can see and evaluate them.
+        </p>
+
+        {openInnovationRows.length === 0 ? (
+          <p className="text-sm text-ink-500">No Open Innovation submissions yet.</p>
+        ) : (
+          openInnovationRows.map((ps) => {
+            const isOpen = openPsIds.has(ps.id)
+            const e = edits[ps.id] || {}
+            return (
+              <Card key={ps.id} className="overflow-hidden border-amber-500/30 p-0">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-amber-500/[0.04]"
+                  aria-expanded={isOpen}
+                  onClick={() => togglePsOpen(ps.id)}
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+                    {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-ink-900">{ps.title || '(untitled)'}</span>
+                    <span className="mt-0.5 block truncate text-xs text-ink-500">
+                      <span className="font-mono">{ps.id}</span>
+                      {ps.ownerTeamName ? ` · ${ps.ownerTeamName}` : ''}
+                      {ps.category ? ` · ${ps.category}` : ''}
+                      {ps.selfDomain ? ` · ${ps.selfDomain}` : ''}
+                    </span>
+                  </span>
+                  <Badge tone="warn" className="shrink-0">private</Badge>
+                </button>
+
+                {isOpen ? (
+                  <div className="border-t border-[rgb(var(--border))] px-4 pb-4 pt-3">
+                    <div className="mb-4 grid gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs sm:grid-cols-2">
+                      <p className="text-ink-600">Problem ID: <span className="font-mono text-ink-900">{ps.id}</span></p>
+                      <p className="text-ink-600">Team: <strong className="text-ink-900">{ps.ownerTeamName || '—'}</strong></p>
+                      <p className="text-ink-600">Team ID: <span className="font-mono text-ink-800">{ps.ownerTeamId || '—'}</span></p>
+                      <p className="text-ink-600">Track: <strong className="text-ink-900">{ps.category || '—'}</strong></p>
+                      <p className="text-ink-600">Their domain choice: <strong className="text-ink-900">{ps.selfDomain || '—'}</strong></p>
+                      <p className="text-ink-600">Judging domain: <strong className="text-ink-900">{ps.theme || '—'}</strong></p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        label="Title"
+                        value={e.title ?? ps.title ?? ''}
+                        onChange={(ev) => setEdits((prev) => ({ ...prev, [ps.id]: { ...prev[ps.id], title: ev.target.value } }))}
+                      />
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-ink-700">Track</label>
+                        <select
+                          value={e.category ?? ps.category ?? ''}
+                          onChange={(ev) => setEdits((prev) => ({ ...prev, [ps.id]: { ...prev[ps.id], category: ev.target.value } }))}
+                          className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          <option value="">— Select track —</option>
+                          {TRACK_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <Textarea
+                      className="mt-3"
+                      label="Brief of the idea (as written by the team)"
+                      rows={6}
+                      value={e.description ?? ps.description ?? ''}
+                      onChange={(ev) => setEdits((prev) => ({ ...prev, [ps.id]: { ...prev[ps.id], description: ev.target.value } }))}
+                    />
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <Button size="sm" type="button" onClick={() => saveRow(ps)}>Save changes</Button>
+                      <Button size="sm" variant="secondary" type="button" onClick={() => void deletePs(ps)}>Delete</Button>
+                      <span className="ml-auto text-xs text-ink-500">
+                        Selections: {typeof ps.selectionCount === 'number' ? ps.selectionCount : 0}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
+            )
+          })
+        )}
       </div>
 
       {/* Bulk Import Modal */}

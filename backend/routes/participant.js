@@ -29,6 +29,13 @@ import {
 import { notifyTeamMemberJoined, notifyRegistrationComplete, notifySubmissionFinalized } from '../services/notificationService.js'
 import { logActivity, actorFromReq, ACTIVITY_TYPE } from '../services/activityLog.js'
 import { getActivePhase, canTeamSubmit } from '../services/competitionPhases.js'
+import {
+  OPEN_INNOVATION_DOMAIN,
+  OI_ORIGIN,
+  OI_VISIBILITY,
+  nextOpenInnovationId,
+  normalizeOpenInnovationInput,
+} from '../services/openInnovation.js'
 
 // LOW-02: Use crypto.randomInt instead of Math.random() for cryptographically
 // secure invite codes. Math.random() is predictable; randomInt is not.
@@ -607,6 +614,9 @@ r.post('/select-problem', async (req, res, next) => {
 
     const newPsRef = db.doc(`problemStatements/${problemStatementId}`)
 
+    // Set when the team's own Open Innovation idea is discarded by this switch.
+    let discardedOwnIdea = ''
+
     await db.runTransaction(async (tx) => {
       const teamSnap = await tx.get(teamRef)
       if (!teamSnap.exists) throw Object.assign(new Error('Team not found'), { status: 404 })
@@ -636,8 +646,16 @@ r.post('/select-problem', async (req, res, next) => {
         const oldRef = db.doc(`problemStatements/${oldPid}`)
         const oldSnap = await tx.get(oldRef)
         if (oldSnap.exists) {
-          // MED-05: atomic server-side decrement — no read-then-write race
-          tx.update(oldRef, { selectionCount: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() })
+          const oldData = oldSnap.data() || {}
+          // A team switching from its own Open Innovation idea to a curated
+          // problem statement discards the idea — it exists only for that team.
+          if (oldData.origin === OI_ORIGIN && oldData.ownerTeamId === teamId) {
+            tx.delete(oldRef)
+            discardedOwnIdea = oldPid
+          } else {
+            // MED-05: atomic server-side decrement — no read-then-write race
+            tx.update(oldRef, { selectionCount: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() })
+          }
         }
       }
 
@@ -649,8 +667,195 @@ r.post('/select-problem', async (req, res, next) => {
       })
     })
 
-    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.PROBLEM_SELECTED, teamId, targetId: problemStatementId, targetType: 'problemStatement', description: `Selected problem statement`, metadata: { problemStatementId } }).catch(() => {})
-    res.json({ ok: true })
+    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.PROBLEM_SELECTED, teamId, targetId: problemStatementId, targetType: 'problemStatement', description: discardedOwnIdea ? `Selected problem statement (discarded Open Innovation idea ${discardedOwnIdea})` : `Selected problem statement`, metadata: { problemStatementId, discardedOpenInnovationId: discardedOwnIdea || null } }).catch(() => {})
+    res.json({ ok: true, discardedOpenInnovationId: discardedOwnIdea || null })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
+})
+
+/** ═══ Open Innovation — participant-authored problem statements ═══ */
+
+/**
+ * Shared guard for creating/editing an Open Innovation idea.
+ * Returns { ok, status, error, team, teamRef, merged }.
+ */
+async function openInnovationGuard(req) {
+  const db = getDb()
+  const uid = req.user.uid
+  const teamId = req.profile?.teamId
+  if (!teamId) return { ok: false, status: 400, error: 'Create a team first.' }
+
+  const merged = await getActiveEventConfig()
+  const gatePhase = allowSelectProblem(merged)
+  if (!gatePhase.ok) return { ok: false, status: 403, error: gatePhase.reason }
+
+  const teamRef = db.doc(`teams/${teamId}`)
+  const teamSnap = await teamRef.get()
+  if (!teamSnap.exists) return { ok: false, status: 404, error: 'Team not found.' }
+  const team = teamSnap.data()
+
+  if (!isTeamMember(team, uid)) return { ok: false, status: 403, error: 'Forbidden.' }
+  if (team.leaderId !== uid) {
+    return { ok: false, status: 403, error: 'Only the team leader can manage your Open Innovation idea.' }
+  }
+
+  const blocked = participationBlockedMessage(team)
+  if (blocked) return { ok: false, status: 403, error: blocked }
+
+  // Editable only until the submission is finalized/locked.
+  if (team.submissionLocked) {
+    return { ok: false, status: 403, error: 'Your submission is locked — the idea can no longer be edited.' }
+  }
+
+  const gateTeam = teamMaySelectProblem(merged, team)
+  if (!gateTeam.ok) return { ok: false, status: 403, error: gateTeam.reason }
+
+  const scope = await ensureTeamEventScope(teamRef, team, req.eventId)
+  if (!scope.ok) return { ok: false, status: 403, error: scope.error }
+
+  return { ok: true, team, teamRef, teamId, merged }
+}
+
+/** Shape an Open Innovation doc for the owning team. */
+function openInnovationView(id, d) {
+  return {
+    id,
+    title: d.title || '',
+    track: d.category || '',
+    domain: d.selfDomain || '',
+    description: d.description || '',
+    origin: d.origin || '',
+    visibility: d.visibility || '',
+    ownerTeamId: d.ownerTeamId || '',
+    createdAt: d.createdAt || null,
+    updatedAt: d.updatedAt || null,
+  }
+}
+
+/**
+ * GET /participant/open-innovation — the calling team's own idea (if any).
+ * Never cached and never exposed publicly.
+ */
+r.get('/open-innovation', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const teamId = req.profile?.teamId
+    if (!teamId) return res.json({ idea: null })
+
+    const teamSnap = await db.doc(`teams/${teamId}`).get()
+    if (!teamSnap.exists) return res.json({ idea: null })
+    const team = teamSnap.data()
+    if (!isTeamMember(team, req.user.uid)) return res.status(403).json({ error: 'Forbidden.' })
+
+    const snap = await db.collection('problemStatements')
+      .where('ownerTeamId', '==', teamId)
+      .where('origin', '==', OI_ORIGIN)
+      .limit(1)
+      .get()
+
+    if (snap.empty) return res.json({ idea: null })
+    const doc = snap.docs[0]
+    res.json({
+      idea: openInnovationView(doc.id, doc.data()),
+      selected: team.problemStatementId === doc.id,
+      locked: Boolean(team.submissionLocked),
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /participant/open-innovation — create or update the team's own idea.
+ * Creates a private problem statement (skhoi###) and selects it for the team.
+ */
+r.post('/open-innovation', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const guard = await openInnovationGuard(req)
+    if (!guard.ok) return res.status(guard.status).json({ error: guard.error })
+    const { team, teamRef, teamId } = guard
+
+    const parsed = normalizeOpenInnovationInput(req.body)
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error })
+    const { title, track, selfDomain, description } = parsed.value
+
+    const eventId = team.eventId || req.eventId || (await getActiveEvent())?.id || ''
+
+    // Reuse the team's existing idea doc if it already has one (edit flow).
+    const existingSnap = await db.collection('problemStatements')
+      .where('ownerTeamId', '==', teamId)
+      .where('origin', '==', OI_ORIGIN)
+      .limit(1)
+      .get()
+
+    const isUpdate = !existingSnap.empty
+    const psId = isUpdate ? existingSnap.docs[0].id : await nextOpenInnovationId(eventId)
+    const psRef = db.doc(`problemStatements/${psId}`)
+
+    const base = {
+      title,
+      description,
+      category: track,               // Track (Software | Hardware)
+      theme: OPEN_INNOVATION_DOMAIN,  // Domain used for judge assignment
+      domain: OPEN_INNOVATION_DOMAIN, // legacy mirror kept in sync
+      selfDomain,                     // participant's own domain choice (metadata)
+      origin: OI_ORIGIN,
+      visibility: OI_VISIBILITY,
+      ownerTeamId: teamId,
+      ownerTeamName: team.name || '',
+      published: false,               // never listed publicly
+      maxTeams: 1,                    // reserved for the owning team
+      eventId,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: req.user.uid,
+    }
+
+    if (isUpdate) {
+      await psRef.set(base, { merge: true })
+    } else {
+      await psRef.set({
+        ...base,
+        order: 9000,
+        selectionCount: 0,
+        assignedJudgeIds: [],
+        createdAt: FieldValue.serverTimestamp(),
+        createdByUid: req.user.uid,
+      })
+    }
+
+    // Auto-select the idea for the team (increment only on first selection).
+    if (team.problemStatementId !== psId) {
+      await db.runTransaction(async (tx) => {
+        const tSnap = await tx.get(teamRef)
+        const t = tSnap.data() || {}
+        const oldPid = t.problemStatementId || ''
+        if (oldPid && oldPid !== psId) {
+          const oldRef = db.doc(`problemStatements/${oldPid}`)
+          const oldSnap = await tx.get(oldRef)
+          if (oldSnap.exists) {
+            tx.update(oldRef, { selectionCount: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() })
+          }
+        }
+        tx.set(psRef, { selectionCount: 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+        tx.update(teamRef, { problemStatementId: psId, updatedAt: FieldValue.serverTimestamp() })
+      })
+    }
+
+    logActivity({
+      ...actorFromReq(req),
+      activityType: ACTIVITY_TYPE.PROBLEM_SELECTED,
+      teamId,
+      targetId: psId,
+      targetType: 'problemStatement',
+      description: isUpdate ? 'Updated Open Innovation idea' : 'Submitted Open Innovation idea',
+      metadata: { problemStatementId: psId, track, selfDomain },
+    }).catch(() => {})
+
+    const saved = await psRef.get()
+    res.json({ ok: true, created: !isUpdate, idea: openInnovationView(psId, saved.data() || {}) })
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })
     next(e)
