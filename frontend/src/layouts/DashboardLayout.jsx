@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Target, Bell, Settings, Menu, X, ChevronLeft, ChevronRight,
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
-  MessageCircle, BookOpen, Building2, UserCog,
+  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -306,6 +306,34 @@ export function DashboardLayout({ variant = 'default' }) {
 
   return (
     <div className="min-h-screen bg-[rgb(var(--page-bg))] lg:flex lg:h-screen lg:overflow-hidden">
+      {/* Participant dashboard is desktop-only — block phones & tablets (< lg). */}
+      {isParticipantShell ? (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-6 bg-[rgb(var(--page-bg))] px-6 text-center lg:hidden">
+          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-brand-500/10 text-brand-600 ring-1 ring-brand-500/20">
+            <MonitorSmartphone className="h-10 w-10" />
+          </div>
+          <div className="max-w-sm">
+            <h1 className="font-display text-2xl font-extrabold text-ink-900">Please use a computer</h1>
+            <p className="mt-3 text-sm leading-relaxed text-ink-600">
+              The participant dashboard is optimized for desktop. For the best experience and to
+              complete every step correctly — team registration, problem selection, and submissions —
+              please open this on a <strong>laptop or PC</strong>.
+            </p>
+            <p className="mt-3 text-xs text-ink-500">
+              The public website works fine on mobile — only the dashboard needs a larger screen.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+              <Home className="mr-1.5 h-4 w-4" /> Back to website
+            </Button>
+            <Button variant="ghost" size="sm" className="text-ink-500 hover:text-red-600" onClick={() => logout().then(() => navigate('/'))}>
+              <LogOut className="mr-1.5 h-4 w-4" /> Sign out
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Mobile top bar */}
       {shellMobile ? (
         <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-[rgb(var(--border))] bg-[rgb(var(--page-bg))]/90 px-4 backdrop-blur-xl lg:hidden">

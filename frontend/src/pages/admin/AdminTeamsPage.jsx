@@ -86,6 +86,21 @@ export function AdminTeamsPage() {
     if (fresh) setDrawerTeam(fresh)
   }, [teams, drawerId])
 
+  // Member details are leader-entered and stored separately from account UIDs,
+  // so fetch them for the drawer (memberIds only holds the leader's account).
+  const [drawerMembers, setDrawerMembers] = useState([])
+  const [drawerMembersLoading, setDrawerMembersLoading] = useState(false)
+  useEffect(() => {
+    if (!drawerId) { setDrawerMembers([]); return }
+    let cancelled = false
+    setDrawerMembersLoading(true)
+    api.teamMemberRegistrations(drawerId)
+      .then((res) => { if (!cancelled) setDrawerMembers(Array.isArray(res?.registrations) ? res.registrations : []) })
+      .catch(() => { if (!cancelled) setDrawerMembers([]) })
+      .finally(() => { if (!cancelled) setDrawerMembersLoading(false) })
+    return () => { cancelled = true }
+  }, [drawerId, api])
+
   const selectedIds = useMemo(() => Object.keys(rowSelection).filter((id) => rowSelection[id]), [rowSelection])
 
   // Newest first: most recently created/registered teams show at the top.
@@ -192,7 +207,7 @@ export function AdminTeamsPage() {
         { header: 'Invite Code', accessor: (r) => r.inviteCode },
         { header: 'Event ID', accessor: (r) => r.eventId },
         { header: 'Leader ID', accessor: (r) => r.leaderId },
-        { header: 'Members', accessor: (r) => (r.memberIds || []).length },
+        { header: 'Members', accessor: (r) => (typeof r.teamSize === 'number' && r.teamSize > 0) ? r.teamSize : (r.memberIds || []).length },
         { header: 'Registration', accessor: (r) => deriveRegistrationStatus(r) },
         { header: 'Event Registered', accessor: (r) => r.eventRegistered ? 'Yes' : 'No' },
         { header: 'Payment Status', accessor: (r) => r.paymentStatus || '' },
@@ -560,15 +575,43 @@ export function AdminTeamsPage() {
               <dd className="text-sm font-medium text-ink-900">{resolveName(drawerTeam.leaderId)}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase text-ink-500">Members ({Array.isArray(drawerTeam.memberIds) ? drawerTeam.memberIds.length : 0})</dt>
-              <dd className="mt-1 max-h-32 space-y-1 overflow-y-auto">
-                {(drawerTeam.memberIds || []).length === 0 ? <span className="text-xs text-ink-400">—</span> : null}
-                {(drawerTeam.memberIds || []).map((uid) => (
-                  <div key={uid} className="flex items-center gap-2 text-sm">
-                    <span className="font-medium text-ink-800">{resolveName(uid)}</span>
-                    {uid === drawerTeam.leaderId && <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">Leader</span>}
-                  </div>
-                ))}
+              <dt className="text-xs uppercase text-ink-500">
+                Members ({drawerMembers.length || (Array.isArray(drawerTeam.memberIds) ? drawerTeam.memberIds.length : 0)})
+              </dt>
+              <dd className="mt-1 max-h-64 space-y-2 overflow-y-auto">
+                {drawerMembersLoading ? (
+                  <span className="text-xs text-ink-400">Loading members…</span>
+                ) : drawerMembers.length > 0 ? (
+                  drawerMembers
+                    .slice()
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((m) => (
+                      <div key={m.id} className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-ink-900">{m.name || '—'}</span>
+                          {m.isLeader ? <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">Leader</span> : null}
+                        </div>
+                        <div className="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-ink-600 sm:grid-cols-2">
+                          {m.email ? <span className="truncate">✉ {m.email}</span> : null}
+                          {m.phone ? <span>☎ {m.phone}</span> : null}
+                          {m.institute ? <span className="truncate">🏫 {m.institute}</span> : null}
+                          {m.collegeLocation ? <span className="truncate">📍 {m.collegeLocation}</span> : null}
+                          {m.yearOfStudy ? <span>🎓 {m.yearOfStudy}</span> : null}
+                          {m.department ? <span className="truncate">🏷 {m.department}</span> : null}
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  /* Legacy fallback: teams created before the new model store account UIDs. */
+                  (drawerTeam.memberIds || []).length === 0
+                    ? <span className="text-xs text-ink-400">—</span>
+                    : (drawerTeam.memberIds || []).map((uid) => (
+                        <div key={uid} className="flex items-center gap-2 text-sm">
+                          <span className="font-medium text-ink-800">{resolveName(uid)}</span>
+                          {uid === drawerTeam.leaderId && <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">Leader</span>}
+                        </div>
+                      ))
+                )}
               </dd>
             </div>
             <div>

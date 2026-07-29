@@ -137,7 +137,7 @@ export function AdminShortlistingPage() {
       { header: 'Team Name', accessor: (r) => r.name },
       { header: 'Invite Code', accessor: (r) => r.inviteCode },
       { header: 'Problem', accessor: (r) => r.problemStatementId },
-      { header: 'Members', accessor: (r) => (r.memberIds || []).length },
+      { header: 'Members', accessor: (r) => (typeof r.teamSize === 'number' && r.teamSize > 0) ? r.teamSize : (r.memberIds || []).length },
     ])
   }
 

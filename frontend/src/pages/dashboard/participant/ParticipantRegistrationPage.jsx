@@ -67,6 +67,7 @@ export function ParticipantRegistrationPage() {
   const [nowMs, setNowMs] = useState(null)
   const [roster, setRoster] = useState(null)
   const [memberRegistrations, setMemberRegistrations] = useState([])
+  const [editingMembers, setEditingMembers] = useState(false)
 
   // Load team roster
   useEffect(() => {
@@ -509,11 +510,23 @@ export function ParticipantRegistrationPage() {
                 <p className="mt-2 text-xs text-ink-500">
                   The team leader fills in details for every member (name, email, mobile, college, location, year, department) before the team can proceed.
                 </p>
+                {allMembersSubmitted && isLeader && !registered && !awaitingPayment ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {editingMembers ? (
+                      <Button size="sm" variant="ghost" onClick={() => setEditingMembers(false)}>Cancel editing</Button>
+                    ) : (
+                      <Button size="sm" variant="secondary" onClick={() => setEditingMembers(true)}>Edit team details</Button>
+                    )}
+                    <span className="text-xs text-ink-500">You can edit team &amp; member details until you confirm registration.</span>
+                  </div>
+                ) : null}
               </Card>
             </motion.div>
 
-            {/* Team & Member details form — leader enters everyone's details */}
-            {!allMembersSubmitted && isLeader && (
+            {/* Team & Member details form — leader enters everyone's details.
+                Shown before submission, and again when editing (allowed until
+                the team confirms its registration). */}
+            {((!allMembersSubmitted && isLeader) || (editingMembers && isLeader && !registered && !awaitingPayment)) && (
               <motion.div variants={cardVariants}>
                 <TeamRegistrationForm
                   team={team}
@@ -531,13 +544,13 @@ export function ParticipantRegistrationPage() {
                     department: r.department || '',
                     order: typeof r.order === 'number' ? r.order : 0,
                   }))}
-                  onSuccess={async () => { await refreshTeam(); await loadMemberRegistrations() }}
+                  onSuccess={async () => { setEditingMembers(false); await refreshTeam(); await loadMemberRegistrations() }}
                 />
               </motion.div>
             )}
 
-            {/* Event Registration Card - Only show if all members submitted */}
-            {allMembersSubmitted && (
+            {/* Event Registration Card - shown once members submitted (hidden while editing) */}
+            {allMembersSubmitted && !editingMembers && (
               <motion.div variants={cardVariants}>
                 <Card className="border-brand-500/15 bg-gradient-to-b from-[rgb(var(--surface))] to-brand-500/[0.03] transition-shadow hover:shadow-lg">
                   <div className="flex flex-wrap items-start justify-between gap-4">

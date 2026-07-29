@@ -254,6 +254,10 @@ r.post('/register-team-members', async (req, res, next) => {
     if (team.submissionLocked) {
       return res.status(403).json({ error: 'Team is locked — member details can no longer be edited.' })
     }
+    // Editable only until the team confirms its event registration.
+    if (isRegistrationComplete(team, merged) || isAwaitingRegistrationPayment(team, merged)) {
+      return res.status(403).json({ error: 'Your team is already registered — member details can no longer be edited.' })
+    }
     const blockedMsg = participationBlockedMessage(team)
     if (blockedMsg) return res.status(403).json({ error: blockedMsg })
 
