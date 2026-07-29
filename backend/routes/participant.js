@@ -2002,6 +2002,61 @@ r.post('/mentor-chat/mark-read', async (req, res, next) => {
   }
 })
 
+/**
+ * GET /participant/mentor-chat/status
+ * Reports whether a mentor is assigned to the participant's team. Assignment can
+ * happen three ways (mirrors mentorCanAccessTeam): direct team.mentorIds, the
+ * team's problem-statement mentorIds, or a mentor's domain+track assignment that
+ * matches the team's problem statement. Used to show a friendly "a mentor will
+ * be assigned soon" state before anyone is attached. Read-only, never throws.
+ */
+r.get('/mentor-chat/status', async (req, res) => {
+  try {
+    const db = getDb()
+    const prof = req.profile || {}
+    const teamId = prof.teamId
+    if (!teamId) return res.json({ assigned: false, hasTeam: false })
+
+    const teamSnap = await db.doc(`teams/${teamId}`).get()
+    if (!teamSnap.exists) return res.json({ assigned: false, hasTeam: false })
+    const team = teamSnap.data()
+
+    // 1. Direct assignment on the team document.
+    if (Array.isArray(team.mentorIds) && team.mentorIds.length > 0) {
+      return res.json({ assigned: true, hasTeam: true })
+    }
+
+    // 2 & 3. Via the team's problem statement (direct PS mentor, or domain/track).
+    if (team.problemStatementId) {
+      const psSnap = await db.doc(`problemStatements/${team.problemStatementId}`).get()
+      if (psSnap.exists) {
+        const psData = psSnap.data()
+        if (Array.isArray(psData.mentorIds) && psData.mentorIds.length > 0) {
+          return res.json({ assigned: true, hasTeam: true })
+        }
+        // Domain + track: any mentor whose assignments match this PS.
+        const psDomain = psData.theme || psData.domain || ''
+        const psTrack = psData.category || ''
+        const mentorsSnap = await db.collection('users').where('role', '==', 'mentor').get()
+        const matched = mentorsSnap.docs.some((d) => {
+          const assignments = Array.isArray(d.data()?.mentorAssignments) ? d.data().mentorAssignments : []
+          return assignments.some((a) => {
+            const domainMatch = !a.domain || a.domain === psDomain
+            const trackMatch = !a.track || a.track === psTrack
+            return (a.domain || a.track) && domainMatch && trackMatch
+          })
+        })
+        if (matched) return res.json({ assigned: true, hasTeam: true })
+      }
+    }
+
+    return res.json({ assigned: false, hasTeam: true })
+  } catch {
+    // Fail open to the neutral "not assigned yet" state rather than erroring.
+    res.json({ assigned: false, hasTeam: true })
+  }
+})
+
 /** GET /participant/mentor-chat/messages - Get mentor chat messages for participant's team */
 r.get('/mentor-chat/messages', async (req, res, next) => {
   try {

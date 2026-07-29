@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
-import { Users, FileText, Layers, X } from 'lucide-react'
+import { Users, FileText, Layers, X, Search, UserCheck } from 'lucide-react'
 import { publicApi } from '@/services/api.js'
 
 const DOMAIN_OPTIONS = [
@@ -45,6 +45,9 @@ export function AdminMentorsPage() {
   const [msg, setMsg] = useState('')
   const [msgType, setMsgType] = useState('info')
 
+  // Search filter for the "which team → which mentor" overview.
+  const [teamMentorSearch, setTeamMentorSearch] = useState('')
+
   const refresh = useCallback(async () => {
     try {
       const [userRows, teamRows, ps, ov] = await Promise.all([
@@ -67,6 +70,74 @@ export function AdminMentorsPage() {
   useEffect(() => { void refresh() }, [refresh])
 
   const mentors = users.filter((u) => u.role === ROLES.MENTOR)
+
+  // uid → mentor display info (email/name), for resolving assignment references.
+  const mentorInfoById = useMemo(() => {
+    const map = new Map()
+    for (const u of users) map.set(u.id, { email: u.email || u.id, name: u.displayName || u.email || u.id })
+    return map
+  }, [users])
+
+  // psId → problem statement (for domain/track + PS-level mentor lookup).
+  const psById = useMemo(() => {
+    const map = new Map()
+    for (const ps of problems) map.set(ps.id, ps)
+    return map
+  }, [problems])
+
+  // Resolve, for every team, the mentor(s) effectively assigned to it. Mirrors the
+  // backend logic: direct (team.mentorIds), via the team's problem statement
+  // (ps.mentorIds), or via a mentor's domain+track assignment matching the PS.
+  const teamMentorRows = useMemo(() => {
+    return teams.map((t) => {
+      const ps = t.problemStatementId ? psById.get(t.problemStatementId) : null
+      const psDomain = ps ? (ps.theme || ps.domain || '') : ''
+      const psTrack = ps ? (ps.category || '') : ''
+      const found = new Map() // mentorId → Set<reason>
+      const addReason = (mentorId, reason) => {
+        if (!mentorId) return
+        if (!found.has(mentorId)) found.set(mentorId, new Set())
+        found.get(mentorId).add(reason)
+      }
+
+      // 1. Direct team assignment.
+      for (const mid of (Array.isArray(t.mentorIds) ? t.mentorIds : [])) addReason(mid, 'Direct')
+      // 2. Via the team's problem statement.
+      if (ps) for (const mid of (Array.isArray(ps.mentorIds) ? ps.mentorIds : [])) addReason(mid, 'Problem statement')
+      // 3. Via domain + track match.
+      if (ps) {
+        for (const m of overview) {
+          const assigns = Array.isArray(m.mentorAssignments) ? m.mentorAssignments : []
+          const match = assigns.some((a) => {
+            const domainMatch = !a.domain || a.domain === psDomain
+            const trackMatch = !a.track || a.track === psTrack
+            return (a.domain || a.track) && domainMatch && trackMatch
+          })
+          if (match) addReason(m.id, 'Domain + track')
+        }
+      }
+
+      const resolved = [...found.entries()].map(([mid, reasons]) => ({
+        id: mid,
+        email: mentorInfoById.get(mid)?.email || mid,
+        name: mentorInfoById.get(mid)?.name || mid,
+        reasons: [...reasons],
+      }))
+      return { team: t, mentors: resolved }
+    })
+  }, [teams, psById, overview, mentorInfoById])
+
+  const filteredTeamMentorRows = useMemo(() => {
+    const q = teamMentorSearch.trim().toLowerCase()
+    if (!q) return teamMentorRows
+    return teamMentorRows.filter(({ team, mentors: ms }) => {
+      const hay = [
+        team.name, team.inviteCode, team.code, team.id, team.problemStatementId,
+        ...ms.map((m) => m.email), ...ms.map((m) => m.name),
+      ].filter(Boolean).join(' ').toLowerCase()
+      return hay.includes(q)
+    })
+  }, [teamMentorRows, teamMentorSearch])
 
   function showMsg(text, type = 'info') {
     setMsg(text)
@@ -122,6 +193,27 @@ export function AdminMentorsPage() {
     } catch (e) { showMsg(e.message || 'Failed.', 'error') }
   }
 
+  // Remove a mentor that is directly assigned to a single team.
+  async function removeDirectMentor(tId, mentorId) {
+    try {
+      await api.unassignMentor({ teamId: tId, mentorId })
+      showMsg('Mentor removed from team.', 'success')
+      await refresh()
+    } catch (e) { showMsg(e.message || 'Failed.', 'error') }
+  }
+
+  // Remove a mentor from the team's problem statement. This affects EVERY team
+  // under that PS, so confirm before proceeding.
+  async function removeMentorFromPS(psId, mentorId) {
+    if (!psId) return
+    if (!globalThis.confirm('This removes the mentor from the problem statement — it affects ALL teams working on that PS, not just this one. Continue?')) return
+    try {
+      await api.unassignMentorFromProblem({ problemStatementId: psId, mentorId })
+      showMsg('Mentor removed from problem statement.', 'success')
+      await refresh()
+    } catch (e) { showMsg(e.message || 'Failed.', 'error') }
+  }
+
   if (loading) return <Skeleton className="h-64 w-full rounded-2xl" />
 
   return (
@@ -154,6 +246,93 @@ export function AdminMentorsPage() {
           No users with Mentor role found. Assign the mentor role first via Access Control.
         </p>
       )}
+
+      {/* ═══ Team ↔ Mentor overview ═══ */}
+      <Card>
+        <div className="mb-4 flex items-center gap-2">
+          <UserCheck className="h-5 w-5 text-brand-600" />
+          <h2 className="font-display text-lg font-semibold text-ink-900">Team ↔ Mentor Assignments</h2>
+        </div>
+        <p className="mb-4 text-sm text-ink-600">
+          Which mentor is assigned to which team — resolved across direct, problem-statement, and
+          domain+track assignments. Click the <X className="inline h-3 w-3 align-[-1px]" /> on a
+          <strong> Direct</strong> or <strong> Problem statement</strong> badge to remove that mentor.
+          Domain+track assignments are managed below. To change a mentor, remove the current one and
+          assign another using the options below.
+        </p>
+
+        <div className="relative mb-4">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <input
+            value={teamMentorSearch}
+            onChange={(e) => setTeamMentorSearch(e.target.value)}
+            placeholder="Search by team, mentor, or PS…"
+            className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+        </div>
+
+        {teams.length === 0 ? (
+          <p className="rounded-lg bg-[rgb(var(--surface-muted))]/50 px-4 py-3 text-sm text-ink-500">No teams yet.</p>
+        ) : filteredTeamMentorRows.length === 0 ? (
+          <p className="rounded-lg bg-[rgb(var(--surface-muted))]/50 px-4 py-3 text-sm text-ink-500">No teams match your search.</p>
+        ) : (
+          <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+            {filteredTeamMentorRows.map(({ team, mentors: ms }) => (
+              <div key={team.id} className="rounded-lg border border-[rgb(var(--border))] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink-900">{team.name || 'Unnamed team'}</p>
+                    <p className="text-xs text-ink-500">
+                      <span className="font-mono">{team.inviteCode || team.code || team.id.slice(0, 6)}</span>
+                      {team.problemStatementId ? <> · PS <span className="font-mono">{team.problemStatementId}</span></> : ' · no PS selected'}
+                    </p>
+                  </div>
+                  {ms.length === 0 ? (
+                    <Badge tone="warn" className="text-xs">No mentor assigned</Badge>
+                  ) : (
+                    <Badge tone="success" className="text-xs">{ms.length} mentor{ms.length > 1 ? 's' : ''}</Badge>
+                  )}
+                </div>
+                {ms.length > 0 ? (
+                  <div className="mt-2 space-y-1.5">
+                    {ms.map((m) => (
+                      <div key={m.id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-medium text-ink-800">{m.name}</span>
+                        {m.name !== m.email ? <span className="text-ink-500">{m.email}</span> : null}
+                        {m.reasons.map((r) => {
+                          // Direct + PS assignments can be removed here; domain+track is
+                          // managed in the "Current Domain + Track Assignments" card since
+                          // removing it affects every matching team.
+                          const removable = r === 'Direct' || r === 'Problem statement'
+                          const onRemove =
+                            r === 'Direct' ? () => removeDirectMentor(team.id, m.id)
+                              : r === 'Problem statement' ? () => removeMentorFromPS(team.problemStatementId, m.id)
+                                : null
+                          return (
+                            <span key={r} className="inline-flex items-center gap-1 rounded-full border border-brand-500/20 bg-brand-500/5 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                              {r}
+                              {removable ? (
+                                <button
+                                  type="button"
+                                  onClick={onRemove}
+                                  className="rounded-full p-0.5 hover:bg-red-500/10 hover:text-red-600"
+                                  title={r === 'Direct' ? 'Remove mentor from this team' : 'Remove mentor from this problem statement (affects all its teams)'}
+                                >
+                                  <X className="h-2.5 w-2.5" />
+                                </button>
+                              ) : null}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* ═══ Option 1: Domain + Track ═══ */}
       <Card>

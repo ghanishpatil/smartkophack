@@ -2908,6 +2908,38 @@ export function adminRouter() {
     }
   })
 
+  /** Remove a mentor directly assigned to a team (clears team.mentorIds entry). */
+  router.post('/mentors/unassign', async (req, res, next) => {
+    try {
+      const { teamId, mentorId } = req.body || {}
+      if (!teamId || !mentorId) return res.status(400).json({ error: 'teamId and mentorId required' })
+      if (!isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid teamId.' })
+      if (!isValidDocId(mentorId)) return res.status(400).json({ error: 'Invalid mentorId.' })
+
+      const teamSnap = await db().doc(`teams/${teamId}`).get()
+      if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+
+      await db()
+        .doc(`teams/${teamId}`)
+        .set(
+          { mentorIds: FieldValue.arrayRemove(mentorId), updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        )
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'mentor.unassign_team',
+        targetType: 'team',
+        targetId: teamId,
+        metadata: { mentorId },
+      })
+
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /** Assign mentor to a problem statement (mentors all teams under that PS) */
   router.post('/mentors/assign-problem', async (req, res, next) => {
     try {

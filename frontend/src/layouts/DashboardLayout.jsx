@@ -37,7 +37,7 @@ const nav = {
     { to: '/dashboard/problems', label: 'Problem Statements', icon: Target },
     { to: '/dashboard/submission', label: 'Submission', icon: FileUp },
     { group: 'Communicate' },
-    { to: '/dashboard/chat', label: 'Team Chat', icon: MessageCircle },
+    { to: '/dashboard/chat', label: 'Team Storage', icon: FolderLock },
     { to: '/dashboard/mentor-chat', label: 'Mentor Chat', icon: Handshake },
     { to: '/dashboard/announcements', label: 'Announcements', icon: Megaphone },
     { group: 'Account' },

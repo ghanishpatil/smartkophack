@@ -20,6 +20,7 @@ export function ParticipantMentorChatPage() {
   const [sending, setSending] = useState(false)
   const [text, setText] = useState('')
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [mentorAssigned, setMentorAssigned] = useState(null) // null = still checking
   const messagesEndRef = useRef(null)
   const containerRef = useRef(null)
   const inputRef = useRef(null)
@@ -63,6 +64,16 @@ export function ParticipantMentorChatPage() {
     })
     return () => unsub()
   }, [teamId])
+
+  // Check whether a mentor is assigned to this team (direct, via PS, or domain/track).
+  useEffect(() => {
+    if (!teamId) { setMentorAssigned(false); return }
+    let cancelled = false
+    api.mentorChatStatus()
+      .then((res) => { if (!cancelled) setMentorAssigned(Boolean(res?.assigned)) })
+      .catch(() => { if (!cancelled) setMentorAssigned(false) })
+    return () => { cancelled = true }
+  }, [teamId, api])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -112,6 +123,26 @@ export function ParticipantMentorChatPage() {
         <MessageCircle className="mb-4 h-12 w-12 text-ink-300" />
         <h2 className="font-display text-xl font-bold text-ink-900">No Team Yet</h2>
         <p className="mt-2 text-sm text-ink-500">Join or create a team to chat with your mentor.</p>
+      </div>
+    )
+  }
+
+  // Before a mentor is attached to the team, show a friendly waiting state.
+  // If a mentor has already messaged, one is clearly engaged, so keep the chat
+  // (the participant's own messages don't count toward this).
+  const mentorHasMessaged = messages.some((m) => m.senderRole === 'mentor')
+  if (mentorAssigned === false && !mentorHasMessaged) {
+    return (
+      <div className="mx-auto flex h-[60vh] max-w-3xl flex-col items-center justify-center text-center">
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600">
+          <UserCheck className="h-8 w-8" />
+        </div>
+        <h2 className="font-display text-xl font-bold text-ink-900">A mentor will be assigned soon</h2>
+        <p className="mt-2 max-w-md text-sm text-ink-500">
+          Your team doesn&apos;t have a mentor yet. Once the organizers assign one, this space will
+          open up and you can start chatting with them right here.
+        </p>
+        <p className="mt-1 text-xs text-ink-400">Hang tight — you&apos;ll be able to reach your mentor from this page.</p>
       </div>
     )
   }

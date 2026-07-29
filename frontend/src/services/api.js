@@ -139,6 +139,8 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/announcements/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
     assignMentor: (payload) =>
       authReq('/api/admin/mentors/assign', { method: 'POST', body: payload }),
+    unassignMentor: (payload) =>
+      authReq('/api/admin/mentors/unassign', { method: 'POST', body: payload }),
     assignMentorToProblem: (payload) =>
       authReq('/api/admin/mentors/assign-problem', { method: 'POST', body: payload }),
     unassignMentorFromProblem: (payload) =>
@@ -253,6 +255,8 @@ export function createApi(getToken, getEventId = () => '') {
       } }),
     mentorChatUnread: () =>
       authReq('/api/participant/mentor-chat/unread'),
+    mentorChatStatus: () =>
+      authReq('/api/participant/mentor-chat/status'),
     mentorChatMarkRead: () =>
       authReq('/api/participant/mentor-chat/mark-read', { method: 'POST' }),
     leaveTeam: () => authReq('/api/participant/leave-team', { method: 'POST' }),

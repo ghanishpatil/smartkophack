@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
-import { Send, Trash2, MessageCircle, Users, ArrowDown } from 'lucide-react'
+import { Send, Trash2, MessageCircle, Users, ArrowDown, FolderLock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { db } from '@/firebase/client.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { ChatFileUpload, FileMessageBubble } from '@/components/chat/ChatFileUpload.jsx'
 
 export function ParticipantChatPage() {
-  usePageSeo({ title: 'Team Chat', description: 'Chat with your team members.' })
+  usePageSeo({ title: 'Team Storage', description: "Save and share your team's files and notes." })
   const api = useApi()
   const { user, profile } = useAuth()
   const [chatInfo, setChatInfo] = useState(null)
@@ -136,9 +136,9 @@ export function ParticipantChatPage() {
   if (!chatInfo?.exists) {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center text-center">
-        <MessageCircle className="mb-4 h-12 w-12 text-ink-300" />
+        <FolderLock className="mb-4 h-12 w-12 text-ink-300" />
         <h2 className="font-display text-xl font-bold text-ink-900">No Team Yet</h2>
-        <p className="mt-2 text-sm text-ink-500">Join or create a team to start chatting with your teammates.</p>
+        <p className="mt-2 text-sm text-ink-500">Create your team to get a private space for storing your team's files and notes.</p>
       </div>
     )
   }
@@ -149,15 +149,15 @@ export function ParticipantChatPage() {
       <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600">
-            <MessageCircle className="h-5 w-5" />
+            <FolderLock className="h-5 w-5" />
           </div>
           <div>
             <h2 className="font-display text-sm font-bold text-ink-900 sm:text-base">
-              {chatInfo.teamName}
+              {chatInfo.teamName} · Team Storage
             </h2>
             <div className="flex items-center gap-1.5">
               <Users className="h-3 w-3 text-ink-400" />
-              <span className="text-xs text-ink-500">{chatInfo.members?.length || 0} members</span>
+              <span className="text-xs text-ink-500">Private space to save your team's files &amp; notes</span>
             </div>
           </div>
         </div>
@@ -174,8 +174,9 @@ export function ParticipantChatPage() {
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <MessageCircle className="mb-3 h-8 w-8 text-ink-300" />
-            <p className="text-sm text-ink-500">No messages yet. Say hi to your team!</p>
+            <FolderLock className="mb-3 h-8 w-8 text-ink-300" />
+            <p className="text-sm text-ink-500">Nothing saved yet.</p>
+            <p className="mt-1 text-xs text-ink-400">Upload files or add notes to keep your team's materials here.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -249,7 +250,7 @@ export function ParticipantChatPage() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
+          placeholder="Add a note, or use the paperclip to upload a file..."
           rows={1}
           className="min-h-[2.5rem] max-h-32 flex-1 resize-none rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         />
