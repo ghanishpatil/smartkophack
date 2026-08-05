@@ -143,11 +143,22 @@ router.get(
           ? teamData.teamSize
           : memberIdsLen
 
+        // Count member approval statuses so the list view can show pending icon.
+        let pendingMembers = 0
+        let approvedMembers = 0
+        for (const r of registrations) {
+          const s = String(r.status || 'pending').toLowerCase()
+          if (s === 'approved') approvedMembers++
+          else if (s === 'pending') pendingMembers++
+        }
+
         teams.push({
           id: teamId,
           name: teamData.name || 'Unnamed Team',
           totalMembers: declaredSize,
           registeredMembers: registrations.length,
+          pendingMembers,
+          approvedMembers,
           eventRegistered: teamData.eventRegistered || false,
           paymentStatus: teamData.paymentStatus || 'unpaid',
           createdAt: teamData.createdAt,

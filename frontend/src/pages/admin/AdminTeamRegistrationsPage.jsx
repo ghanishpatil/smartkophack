@@ -128,9 +128,9 @@ export function AdminTeamRegistrationsPage() {
     
     let matchesStatus = true
     if (statusFilter === 'complete') {
-      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && team.eventRegistered
+      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && (team.pendingMembers || 0) === 0
     } else if (statusFilter === 'pendingApproval') {
-      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && !team.eventRegistered
+      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && (team.pendingMembers || 0) > 0
     } else if (statusFilter === 'partial') {
       matchesStatus = registeredMembers > 0 && registeredMembers < totalMembers
     } else if (statusFilter === 'notStarted') {
@@ -370,7 +370,7 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
 
   const isComplete = totalMembers > 0 && registeredMembers === totalMembers
   const isPartial = registeredMembers > 0 && registeredMembers < totalMembers
-  const isPendingApproval = isComplete && !team.eventRegistered
+  const isPendingApproval = isComplete && (team.pendingMembers || 0) > 0
 
   // Calculate approval stats from details
   const approvedCount = details?.registrations?.filter(r => r.status === 'approved').length || 0
@@ -443,7 +443,7 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
           {isPendingApproval && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600">
               <Clock className="h-3.5 w-3.5" />
-              Pending Approval
+              Pending · {team.pendingMembers}
             </span>
           )}
           {isPartial && (
