@@ -294,4 +294,62 @@ router.put(
   }
 )
 
+/**
+ * @route   PUT /api/registrations/members/bulk-approve
+ * @desc    Approve all *pending* member registrations for the given teams in one
+ *          go (admin only). Only touches docs whose status is 'pending' — already
+ *          approved/rejected members are left untouched. No other team fields are
+ *          modified, so registration/submission gating is unaffected.
+ * @access  Private (Admin)
+ */
+router.put(
+  '/members/bulk-approve',
+  verifyFirebaseToken,
+  loadUserRole,
+  requireRole('admin'),
+  async (req, res, next) => {
+    try {
+      const rawIds = Array.isArray(req.body?.teamIds) ? req.body.teamIds : []
+      const teamIds = [...new Set(rawIds.filter((id) => typeof id === 'string' && id.trim()))].slice(0, 1000)
+      if (teamIds.length === 0) {
+        return res.status(400).json({ error: 'teamIds array is required.' })
+      }
+
+      const db = getDb()
+      const nowIso = new Date().toISOString()
+      const uid = req.user.uid
+
+      let approved = 0
+      let batch = db.batch()
+      let ops = 0
+
+      // Per-team query keeps us on the auto-created single-field index (teamId),
+      // avoiding any composite-index requirement in production. Status is
+      // filtered in memory so we only update genuinely pending members.
+      for (const teamId of teamIds) {
+        const snap = await db.collection('memberRegistrations')
+          .where('teamId', '==', teamId)
+          .get()
+        for (const d of snap.docs) {
+          const s = String(d.data()?.status || 'pending').toLowerCase()
+          if (s !== 'pending') continue
+          batch.update(d.ref, { status: 'approved', updatedAt: nowIso, updatedBy: uid })
+          approved++
+          ops++
+          if (ops >= 450) {
+            await batch.commit()
+            batch = db.batch()
+            ops = 0
+          }
+        }
+      }
+      if (ops > 0) await batch.commit()
+
+      res.json({ ok: true, approved, teams: teamIds.length })
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
 export default router

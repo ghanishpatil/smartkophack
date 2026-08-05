@@ -21,6 +21,8 @@ export function AdminTeamRegistrationsPage() {
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedTeams, setSelectedTeams] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
   const { user } = useAuth()
 
   useEffect(() => {
@@ -109,6 +111,46 @@ export function AdminTeamRegistrationsPage() {
     }
   }
 
+  function toggleTeamSelection(teamId) {
+    setSelectedTeams(prev => {
+      const next = new Set(prev)
+      if (next.has(teamId)) next.delete(teamId)
+      else next.add(teamId)
+      return next
+    })
+  }
+
+  // Approve all pending members for the given teams via the bulk endpoint.
+  async function bulkApprove(teamIds) {
+    const ids = teamIds.filter(Boolean)
+    if (ids.length === 0) return
+    if (!window.confirm(`Approve all pending members for ${ids.length} team(s)?`)) return
+    setBulkBusy(true)
+    try {
+      const token = await user.getIdToken()
+      const res = await fetch(`${API_BASE}/api/registrations/members/bulk-approve`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamIds: ids }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Bulk approve failed')
+      }
+      const data = await res.json()
+      // Refresh list (updates pending counts) and drop cached details so an
+      // expanded row re-fetches the new statuses.
+      setTeamDetails({})
+      setSelectedTeams(new Set())
+      await fetchTeams()
+      alert(`Approved ${data.approved} pending member(s) across ${data.teams} team(s).`)
+    } catch (e) {
+      alert(e.message || 'Bulk approve failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   const stats = {
     totalTeams: teams.length,
     fullyRegistered: teams.filter(t => t.registeredMembers === t.totalMembers && t.totalMembers > 0).length,
@@ -139,6 +181,27 @@ export function AdminTeamRegistrationsPage() {
     
     return matchesSearch && matchesStatus
   })
+
+  // Teams (within the current filter) that still have members awaiting approval.
+  const pendingTeamsInView = filteredTeams.filter(t => (t.pendingMembers || 0) > 0)
+  // Selected teams that actually have something to approve.
+  const selectedPendingIds = filteredTeams
+    .filter(t => selectedTeams.has(t.id) && (t.pendingMembers || 0) > 0)
+    .map(t => t.id)
+  const allPendingSelected = pendingTeamsInView.length > 0 &&
+    pendingTeamsInView.every(t => selectedTeams.has(t.id))
+
+  function toggleSelectAllPending() {
+    setSelectedTeams(prev => {
+      const next = new Set(prev)
+      if (allPendingSelected) {
+        pendingTeamsInView.forEach(t => next.delete(t.id))
+      } else {
+        pendingTeamsInView.forEach(t => next.add(t.id))
+      }
+      return next
+    })
+  }
 
   if (loading) {
     return (
@@ -282,6 +345,36 @@ export function AdminTeamRegistrationsPage() {
         </div>
       </Card>
 
+      {/* Bulk approve toolbar */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-3">
+        <span className="text-sm text-ink-600">
+          {selectedPendingIds.length > 0
+            ? `${selectedPendingIds.length} selected team(s) with pending members`
+            : `${pendingTeamsInView.length} team(s) awaiting approval in view`}
+        </span>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkBusy || selectedPendingIds.length === 0}
+            onClick={() => bulkApprove(selectedPendingIds)}
+            className="gap-1.5"
+          >
+            {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Approve Selected ({selectedPendingIds.length})
+          </Button>
+          <Button
+            size="sm"
+            disabled={bulkBusy || pendingTeamsInView.length === 0}
+            onClick={() => bulkApprove(pendingTeamsInView.map(t => t.id))}
+            className="gap-1.5"
+          >
+            {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Approve All Pending ({pendingTeamsInView.length})
+          </Button>
+        </div>
+      </div>
+
       {/* Teams Table */}
       <Card className="overflow-hidden">
         {filteredTeams.length === 0 ? (
@@ -297,6 +390,16 @@ export function AdminTeamRegistrationsPage() {
             <table className="w-full">
               <thead className="bg-[rgb(var(--surface-muted))] border-b border-[rgb(var(--border))]">
                 <tr>
+                  <th className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer rounded border-ink-300 text-brand-500 focus:ring-brand-500"
+                      checked={allPendingSelected}
+                      onChange={toggleSelectAllPending}
+                      disabled={pendingTeamsInView.length === 0}
+                      title="Select all teams awaiting approval"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-ink-600">
                     Team Name
                   </th>
@@ -324,6 +427,8 @@ export function AdminTeamRegistrationsPage() {
                     team={team}
                     expanded={expandedTeam === team.id}
                     details={teamDetails[team.id]}
+                    selected={selectedTeams.has(team.id)}
+                    onSelectToggle={() => toggleTeamSelection(team.id)}
                     onToggle={() => fetchTeamDetails(team.id)}
                     onUpdateStatus={updateMemberStatus}
                   />
@@ -360,7 +465,7 @@ function StatsCard({ title, value, icon: Icon, color }) {
   )
 }
 
-function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
+function TeamTableRow({ team, expanded, details, selected, onSelectToggle, onToggle, onUpdateStatus }) {
   const totalMembers = team.totalMembers || 0
   const registeredMembers = team.registeredMembers || 0
   
@@ -380,6 +485,18 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
   return (
     <>
       <tr className="hover:bg-[rgb(var(--surface-muted))]/50 transition-colors">
+        {/* Select checkbox */}
+        <td className="px-4 py-4 text-center">
+          <input
+            type="checkbox"
+            className="h-4 w-4 cursor-pointer rounded border-ink-300 text-brand-500 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-40"
+            checked={selected}
+            onChange={onSelectToggle}
+            disabled={(team.pendingMembers || 0) === 0}
+            title={(team.pendingMembers || 0) === 0 ? 'No pending members to approve' : 'Select team'}
+          />
+        </td>
+
         {/* Team Name */}
         <td className="px-6 py-4">
           <div className="flex items-center gap-3">
@@ -489,7 +606,7 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
       {/* Expanded Member Details Row */}
       {expanded && details && (
         <tr>
-          <td colSpan="6" className="bg-[rgb(var(--surface-muted))]/30 px-6 py-4">
+          <td colSpan="7" className="bg-[rgb(var(--surface-muted))]/30 px-6 py-4">
             {!details.registrations || details.registrations.length === 0 ? (
               <div className="rounded-lg bg-white p-8 text-center">
                 <AlertCircle className="mx-auto h-8 w-8 text-ink-400" />
