@@ -16,7 +16,6 @@ import { ROLES, roleHome } from '@/utils/roles.js'
 import { Button } from '@/components/ui/Button.jsx'
 import { APP } from '@/utils/constants.js'
 import { AdminScopeBanner } from '@/components/admin/AdminScopeBanner.jsx'
-import { AdminChatbot } from '@/components/admin/AdminChatbot.jsx'
 import { CommandPalette } from '@/components/admin/CommandPalette.jsx'
 import { EmailVerificationBanner } from '@/components/participant/EmailVerificationBanner.jsx'
 import { useUnreadCounts } from '@/hooks/useUnreadCounts.js'
@@ -422,8 +421,6 @@ export function DashboardLayout({ variant = 'default' }) {
           <Outlet />
         </div>
       </div>
-      {/* Admin AI chatbot — only shown in admin shell */}
-      {isAdminShell ? <AdminChatbot /> : null}
       {/* Command palette — only shown in admin shell */}
       {isAdminShell ? <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} /> : null}
 
