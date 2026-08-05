@@ -171,7 +171,7 @@ export function ContactPage() {
                       <Phone className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-ink-900">{l.name}</p>
+                      <p className="text-sm font-medium text-ink-900">{l.name}{l.role ? <span className="ml-1.5 text-xs font-normal text-ink-500">({l.role})</span> : null}</p>
                       <p className="mt-0.5 text-sm text-ink-600">{l.phone}</p>
                     </div>
                   </motion.a>

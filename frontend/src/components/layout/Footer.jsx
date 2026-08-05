@@ -165,7 +165,7 @@ export function Footer() {
                 <li key={l.phone} className="flex items-center gap-2.5 text-sm text-ink-400">
                   <Phone className="h-3.5 w-3.5 shrink-0 text-brand-500" />
                   <a className="transition-colors hover:text-brand-400" href={`tel:+91${l.phone}`}>
-                    <span className="text-ink-300">{l.name}</span> · {l.phone}
+                    <span className="text-ink-300">{l.name}</span>{l.role ? <span className="text-ink-500"> ({l.role})</span> : null} · {l.phone}
                   </a>
                 </li>
               ))}

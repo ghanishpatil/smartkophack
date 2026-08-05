@@ -16,7 +16,8 @@ export const COORDINATORS = {
   ],
   leaders: [
     { name: 'Atharva Deshmukh', phone: '7517647277' },
-    { name: 'Aditya Mhaismale', phone: '9284093469' },
+    { name: 'Saifullah Pathan', phone: '7219502062' },
+    { name: 'Soham Kadu', phone: '9021538647', role: 'Hospitality Head' },
   ],
 }
 
