@@ -128,7 +128,9 @@ export function AdminTeamRegistrationsPage() {
     
     let matchesStatus = true
     if (statusFilter === 'complete') {
-      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers
+      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && team.eventRegistered
+    } else if (statusFilter === 'pendingApproval') {
+      matchesStatus = totalMembers > 0 && registeredMembers === totalMembers && !team.eventRegistered
     } else if (statusFilter === 'partial') {
       matchesStatus = registeredMembers > 0 && registeredMembers < totalMembers
     } else if (statusFilter === 'notStarted') {
@@ -240,6 +242,16 @@ export function AdminTeamRegistrationsPage() {
               }`}
             >
               Complete
+            </button>
+            <button
+              onClick={() => setStatusFilter('pendingApproval')}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                statusFilter === 'pendingApproval'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-[rgb(var(--surface-muted))] text-ink-600 hover:bg-[rgb(var(--surface-muted))]/80'
+              }`}
+            >
+              Pending Approval
             </button>
             <button
               onClick={() => setStatusFilter('partial')}
@@ -358,6 +370,7 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
 
   const isComplete = totalMembers > 0 && registeredMembers === totalMembers
   const isPartial = registeredMembers > 0 && registeredMembers < totalMembers
+  const isPendingApproval = isComplete && !team.eventRegistered
 
   // Calculate approval stats from details
   const approvedCount = details?.registrations?.filter(r => r.status === 'approved').length || 0
@@ -421,10 +434,16 @@ function TeamTableRow({ team, expanded, details, onToggle, onUpdateStatus }) {
 
         {/* Status Badge */}
         <td className="px-6 py-4 text-center">
-          {isComplete && (
+          {isComplete && !isPendingApproval && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600">
               <Check className="h-3.5 w-3.5" />
               Complete
+            </span>
+          )}
+          {isPendingApproval && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600">
+              <Clock className="h-3.5 w-3.5" />
+              Pending Approval
             </span>
           )}
           {isPartial && (
