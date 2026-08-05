@@ -92,7 +92,7 @@ export function GuidelinesPage() {
                 <div>
                   <h3 className="font-semibold">Presentation Deck</h3>
                   <p className="mt-1 text-sm text-ink-600">
-                    Upload a PDF presentation (10-15 slides) covering problem statement, solution, implementation, and impact.
+                    Upload a PDF presentation (6-7 slides) covering problem statement, solution, implementation, and impact.
                   </p>
                 </div>
               </div>
