@@ -109,3 +109,5 @@ Firestore `users/{uid}` documents should include `role`: `participant` | `admin`
 ## License
 
 Use and modify for the hackathon and university operations as needed.
+
+<!-- deploy: trigger Railway rebuild — 2026-08-07 -->
