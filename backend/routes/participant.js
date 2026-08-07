@@ -66,9 +66,12 @@ function problemBelongsToEvent(psData, eventId) {
 
 const r = Router()
 r.use(verifyFirebaseToken, loadUserRole, attachEventContext)
-r.use(requireRole('participant'))
 
 /** ═══ First-login password change (OTP-verified) ═══ */
+// NOTE: These password routes are intentionally registered BEFORE the
+// participant-only guard below, so that ANY invited user (participant, judge,
+// or mentor) can set their password on first login. They only ever act on the
+// caller's own account (req.user.uid).
 
 /**
  * POST /participant/password/request-otp
@@ -153,6 +156,12 @@ r.post('/password/change', async (req, res, next) => {
     next(e)
   }
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Everything below this point is participant-only. (The password routes above
+// are shared so judges/mentors can complete first-login password setup too.)
+// ─────────────────────────────────────────────────────────────────────────────
+r.use(requireRole('participant'))
 
 function isTeamMember(team, uid) {
   return team.leaderId === uid || (Array.isArray(team.memberIds) && team.memberIds.includes(uid))
