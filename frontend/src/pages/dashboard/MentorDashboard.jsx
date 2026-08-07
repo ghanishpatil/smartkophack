@@ -24,7 +24,32 @@ function TeamCard({ t, problemStatements, notes, session, setNotes, setSession, 
           <Badge tone="brand">{t.status || 'active'}</Badge>
         </div>
       </div>
-      {ps && <p className="mt-1 text-xs text-ink-500">PS: {ps.title}</p>}
+      {ps ? (
+        <div className="mt-2 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-ink-700">
+              {ps.isOpenInnovation ? 'Open Innovation Problem Statement' : 'Problem Statement'}
+            </span>
+            <span className="font-mono text-[10px] text-ink-400">{ps.id}</span>
+            {ps.isOpenInnovation && <Badge tone="warn">Open Innovation</Badge>}
+          </div>
+          <p className="mt-1 text-sm font-medium text-ink-900">{ps.title}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {ps.category && <Badge tone="default">{ps.category}</Badge>}
+            {ps.theme && <Badge tone="default">{ps.theme}</Badge>}
+            {ps.isOpenInnovation && ps.selfDomain && <Badge tone="default">{ps.selfDomain}</Badge>}
+          </div>
+          {ps.description && (
+            <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-ink-600">
+              {ps.description}
+            </p>
+          )}
+        </div>
+      ) : t.problemStatementId ? (
+        <p className="mt-1 text-xs text-ink-400">Problem statement: {t.problemStatementId}</p>
+      ) : (
+        <p className="mt-1 text-xs text-ink-400">No problem statement selected yet.</p>
+      )}
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div>
           <label className="mb-1 flex items-center gap-2 text-sm font-medium text-ink-700">

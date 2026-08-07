@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw, Loader2, Check, UserPlus, Send, Upload, Download } from 'lucide-react'
+import { Settings, Info, Eye, Trophy, Mail, CheckCircle, AlertTriangle, XCircle, RefreshCw, Loader2, Check, UserPlus, Send, Upload, Download, Gavel, Handshake } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -224,6 +224,195 @@ function InviteLeaders({ api }) {
   )
 }
 
+/**
+ * Admin: bulk-invite jury members or mentors by email — creates accounts +
+ * emails role-specific credentials. Mirrors InviteLeaders but is fully driven by
+ * props so the team-leader flow above stays untouched.
+ */
+function InviteStaff({ icon: Icon, title, description, placeholder, templateName, statusHeading, emptyLabel, inviteFn, statusFn }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const fileRef = useRef(null)
+  const [status, setStatus] = useState(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+
+  const loadStatus = async () => {
+    setStatusLoading(true)
+    try {
+      setStatus(await statusFn())
+    } catch {
+      setStatus(null)
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  useEffect(() => { void loadStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const emails = text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)
+
+  async function invite() {
+    setError('')
+    setResult(null)
+    if (emails.length === 0) { setError('Enter at least one email.'); return }
+    setBusy(true)
+    try {
+      const res = await inviteFn(emails)
+      setResult(res)
+      void loadStatus()
+    } catch (e) {
+      setError(e?.message || 'Invite failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function onCsvSelected(e) {
+    setError('')
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const emailsFromCsv = extractEmailsFromCsv(String(reader.result || ''))
+        if (emailsFromCsv.length === 0) {
+          setError('No emails found in that CSV. Use a column named "email".')
+          return
+        }
+        const existing = new Set(text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean))
+        for (const em of emailsFromCsv) existing.add(em)
+        setText([...existing].join('\n'))
+      } catch {
+        setError('Could not read that CSV file.')
+      }
+    }
+    reader.readAsText(file)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function downloadTemplate() {
+    const csv = ['email', 'person1@example.com', 'person2@example.com'].join('\n')
+    downloadCSV(templateName, csv)
+  }
+
+  return (
+    <Card>
+      <h2 className="flex items-center gap-2 font-display text-base font-semibold text-ink-900">
+        <Icon className="h-4 w-4 text-brand-600" /> {title}
+      </h2>
+      <p className="mt-1 text-xs text-ink-500">{description}</p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onCsvSelected} className="hidden" />
+        <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload className="mr-1.5 h-3.5 w-3.5" /> Import CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={downloadTemplate}>
+          <Download className="mr-1.5 h-3.5 w-3.5" /> Download template
+        </Button>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <Textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} />
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-ink-500">{emails.length} email{emails.length === 1 ? '' : 's'} detected</span>
+          <Button onClick={invite} disabled={busy || emails.length === 0} loading={busy}>
+            <Send className="mr-1.5 h-4 w-4" /> Create & Email Credentials
+          </Button>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
+
+        {result && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+            <div className="flex flex-wrap gap-3 font-medium">
+              <span className="text-emerald-700">Created: {result.summary.created}</span>
+              <span className="text-amber-700">Skipped: {result.summary.skipped}</span>
+              <span className="text-red-700">Failed: {result.summary.failed}</span>
+              <span className="text-ink-500">Total: {result.summary.total}</span>
+            </div>
+            {Array.isArray(result.results) && result.results.some((r) => r.status !== 'created') && (
+              <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-ink-600">
+                {result.results
+                  .filter((r) => r.status !== 'created')
+                  .map((r, i) => (
+                    <li key={i}>
+                      <span className="font-mono">{r.email || '—'}</span>: {r.status}
+                      {r.reason ? ` (${r.reason})` : ''}{r.error ? ` — ${r.error}` : ''}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 border-t border-[rgb(var(--border))] pt-5">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <Mail className="h-4 w-4 text-brand-600" /> {statusHeading}
+          </h3>
+          <Button variant="ghost" size="sm" onClick={loadStatus} disabled={statusLoading}>
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${statusLoading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
+
+        {status?.summary && (
+          <div className="mt-3 flex flex-wrap gap-3 text-xs font-medium">
+            <span className="rounded-lg bg-brand-500/10 px-2.5 py-1 text-brand-700">Invited: {status.summary.total}</span>
+            <span className="rounded-lg bg-blue-500/10 px-2.5 py-1 text-blue-700">Logged in: {status.summary.loggedIn}</span>
+            <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-emerald-700">Password set: {status.summary.passwordSet}</span>
+            <span className="rounded-lg bg-amber-500/10 px-2.5 py-1 text-amber-700">Pending: {status.summary.pending}</span>
+          </div>
+        )}
+
+        <div className="mt-3 overflow-x-auto rounded-xl border border-[rgb(var(--border))]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[rgb(var(--surface-muted))] text-xs uppercase tracking-wide text-ink-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Email</th>
+                <th className="px-3 py-2 font-medium">Credentials Sent</th>
+                <th className="px-3 py-2 text-center font-medium">Logged In</th>
+                <th className="px-3 py-2 text-center font-medium">Password Set</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[rgb(var(--border))]">
+              {statusLoading && !status ? (
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-ink-500">Loading…</td></tr>
+              ) : !status?.participants?.length ? (
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-ink-500">{emptyLabel}</td></tr>
+              ) : (
+                status.participants.map((p) => (
+                  <tr key={p.uid} className="hover:bg-[rgb(var(--surface-muted))]/40">
+                    <td className="px-3 py-2 font-mono text-xs text-ink-800">{p.email}</td>
+                    <td className="px-3 py-2 text-xs text-ink-600">
+                      {p.credentialsSentAt ? new Date(p.credentialsSentAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {p.loggedIn
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-700"><CheckCircle className="h-3 w-3" /> Yes</span>
+                        : <span className="rounded-full bg-ink-200/60 px-2 py-0.5 text-[11px] font-medium text-ink-500">No</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {p.passwordSet
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><CheckCircle className="h-3 w-3" /> Done</span>
+                        : <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">Pending</span>}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 /** Reusable toggle row — accessible checkbox with a custom switch look. */
 function ToggleRow({ checked, onChange, title, description, tone = 'default' }) {
   const toneBorder = {
@@ -415,6 +604,32 @@ export function AdminSettingsPage() {
 
       {/* Invite Team Leaders */}
       <InviteLeaders api={api} />
+
+      {/* Invite Jury Members */}
+      <InviteStaff
+        icon={Gavel}
+        title="Invite Jury Members"
+        description="Paste or import jury emails. Each gets an account with a temporary password emailed to them. They set a new password (OTP-verified) on first login."
+        placeholder={'judge1@example.com\njudge2@example.com'}
+        templateName="judge-emails-template.csv"
+        statusHeading="Invited Jury Members — Onboarding Status"
+        emptyLabel="No invited jury members yet."
+        inviteFn={api.bulkInviteJudges}
+        statusFn={api.judgeInviteStatus}
+      />
+
+      {/* Invite Mentors */}
+      <InviteStaff
+        icon={Handshake}
+        title="Invite Mentors"
+        description="Paste or import mentor emails. Each gets an account with a temporary password emailed to them. They set a new password (OTP-verified) on first login."
+        placeholder={'mentor1@example.com\nmentor2@example.com'}
+        templateName="mentor-emails-template.csv"
+        statusHeading="Invited Mentors — Onboarding Status"
+        emptyLabel="No invited mentors yet."
+        inviteFn={api.bulkInviteMentors}
+        statusFn={api.mentorInviteStatus}
+      />
 
       {/* Results Preview — shown when admin is about to publish */}
       {eventForm.resultsPublished || eventForm.evaluationsOpen ? (

@@ -511,17 +511,45 @@ export async function sendEvaluationCompleteEmail({ to, name, teamName }) {
 // 9. Account Credentials Email — sent when admin bulk-creates a leader account.
 // Contains their email, a temporary password, and the platform link.
 // Uses the branded credentials.html template with an inline fallback.
-export async function sendCredentialsEmail({ to, name, tempPassword, eventName }) {
-  const safeName = escapeHtml(name || 'Team Leader')
+// Role-specific copy for the credentials email. `participant` keeps the exact
+// wording the team-leader email has always used, so that path is unchanged.
+const CREDENTIALS_ROLE_COPY = {
+  participant: {
+    defaultName: 'Team Leader',
+    introLine: 'Your team has been registered successfully',
+    subtitleLine: 'and manage your team, problem statement &amp; submissions.',
+    fallbackIntro: 'as a team leader',
+    attachPdf: true,
+  },
+  judge: {
+    defaultName: 'Jury Member',
+    introLine: 'You have been added as a Jury Member',
+    subtitleLine: 'and review your assigned teams &amp; submit evaluations.',
+    fallbackIntro: 'as a jury member',
+    attachPdf: false,
+  },
+  mentor: {
+    defaultName: 'Mentor',
+    introLine: 'You have been added as a Mentor',
+    subtitleLine: 'and guide your assigned teams via mentor chat.',
+    fallbackIntro: 'as a mentor',
+    attachPdf: false,
+  },
+}
+
+export async function sendCredentialsEmail({ to, name, tempPassword, eventName, role = 'participant' }) {
+  const copy = CREDENTIALS_ROLE_COPY[role] || CREDENTIALS_ROLE_COPY.participant
+  const safeName = escapeHtml(name || copy.defaultName)
   const safeEmail = escapeHtml(to)
   const safePassword = escapeHtml(String(tempPassword))
   const safeEventName = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
   const loginUrl = `${getFrontendUrl()}/auth`
   const subject = `Your ${safeEventName} login credentials`
 
-  // Attach the "How to Register" PDF guide (only on this credentials email).
+  // Attach the "How to Register" PDF guide only on the team-leader credentials
+  // email (judges/mentors don't register teams).
   const pdfPath = join(TEMPLATES_DIR, 'How-To-Register-SKH.pdf')
-  const attachments = existsSync(pdfPath)
+  const attachments = (copy.attachPdf && existsSync(pdfPath))
     ? [{ filename: 'How-To-Register-SKH.pdf', path: pdfPath }]
     : []
 
@@ -537,6 +565,8 @@ export async function sendCredentialsEmail({ to, name, tempPassword, eventName }
       .replace(/{{EMAIL}}/g, safeEmail)
       .replace(/{{PASSWORD}}/g, safePassword)
       .replace(/{{LOGIN_URL}}/g, loginUrl)
+      .replace(/{{INTRO_LINE}}/g, copy.introLine)
+      .replace(/{{SUBTITLE_LINE}}/g, copy.subtitleLine)
       .replace(/{{YEAR}}/g, String(new Date().getFullYear()))
     return sendEmail({ to, toName: name, subject, htmlContent, attachments })
   } catch (e) {
@@ -545,7 +575,7 @@ export async function sendCredentialsEmail({ to, name, tempPassword, eventName }
 
   const bodyHtml = `
     <p style="margin:0 0 14px;"><strong>Hi ${safeName},</strong></p>
-    <p style="margin:0 0 16px;">An account has been created for you as a team leader on the ${safeEventName} platform. Use the credentials below to sign in:</p>
+    <p style="margin:0 0 16px;">An account has been created for you ${copy.fallbackIntro} on the ${safeEventName} platform. Use the credentials below to sign in:</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;margin:0 0 16px;">
       <tr><td style="padding:14px 16px;border-bottom:1px solid #eef2f6;"><span style="display:block;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Email</span><strong style="font-family:'Courier New',monospace;color:#0f172a;">${safeEmail}</strong></td></tr>
       <tr><td style="padding:14px 16px;"><span style="display:block;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Temporary Password</span><strong style="font-family:'Courier New',monospace;color:#0f172a;">${safePassword}</strong></td></tr>
@@ -554,7 +584,7 @@ export async function sendCredentialsEmail({ to, name, tempPassword, eventName }
       🔒 For your security, you'll be asked to <strong>set a new password</strong> (verified by a one-time code sent to this email) the first time you log in.
     </div>
     ${ctaButton('Log in to the Platform', loginUrl)}
-    <p style="margin:20px 0 0;color:#64748b;font-size:14px;">📎 A step-by-step <strong>“How to Register”</strong> guide is attached to this email (PDF).</p>
+    ${copy.attachPdf ? '<p style="margin:20px 0 0;color:#64748b;font-size:14px;">📎 A step-by-step <strong>“How to Register”</strong> guide is attached to this email (PDF).</p>' : ''}
   `
   const htmlContent = renderBrandedEmail({ title: `Your ${safeEventName} Access`, bodyHtml })
   return sendEmail({ to, toName: name, subject, htmlContent, attachments })

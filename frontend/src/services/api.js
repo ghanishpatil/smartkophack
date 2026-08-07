@@ -311,6 +311,15 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/participants/bulk-invite', { method: 'POST', body: { emails } }),
     participantInviteStatus: () =>
       authReq('/api/admin/participants/status'),
+    // Judge & mentor credential invites (admin) — same flow as leaders, diff role
+    bulkInviteJudges: (emails) =>
+      authReq('/api/admin/judges/bulk-invite', { method: 'POST', body: { emails } }),
+    judgeInviteStatus: () =>
+      authReq('/api/admin/judges/status'),
+    bulkInviteMentors: (emails) =>
+      authReq('/api/admin/mentors/bulk-invite', { method: 'POST', body: { emails } }),
+    mentorInviteStatus: () =>
+      authReq('/api/admin/mentors/status'),
     sendResetLink: (email) =>
       authReq('/api/admin/participants/send-reset-link', { method: 'POST', body: { email } }),
     // First-login password change (participant)

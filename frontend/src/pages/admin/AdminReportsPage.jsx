@@ -67,21 +67,24 @@ export function AdminReportsPage() {
   const [teams, setTeams] = useState([])
   const [subs, setSubs] = useState([])
   const [evals, setEvals] = useState([])
+  const [problems, setProblems] = useState([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, sub, evRows] = await Promise.all([
+      const [s, t, sub, evRows, ps] = await Promise.all([
         api.adminStats(),
         api.adminTeams(),
         api.adminSubmissions(),
         api.adminEvaluations().catch(() => []),
+        api.listAdminProblemStatements().catch(() => []),
       ])
       setStats(s)
       setTeams(Array.isArray(t) ? t : [])
       setSubs(Array.isArray(sub) ? sub : [])
       setEvals(Array.isArray(evRows) ? evRows : [])
+      setProblems(Array.isArray(ps) ? ps : [])
     } catch {
       setStats(null)
     } finally {
@@ -130,6 +133,77 @@ export function AdminReportsPage() {
       { name: 'Pending', count: pending },
     ]
   }, [evals])
+
+  // Teams per domain: map each team's selected problem statement to its domain
+  // (theme is the Domain field; domain is a legacy mirror). Counts how many
+  // teams are participating in each domain.
+  const domainDistribution = useMemo(() => {
+    const psDomain = new Map()
+    for (const ps of problems) {
+      psDomain.set(ps.id, ps.theme || ps.domain || 'Unspecified')
+    }
+    const counts = new Map()
+    let noPs = 0
+    for (const t of teams) {
+      const pid = t.problemStatementId
+      if (!pid) { noPs++; continue }
+      const domain = psDomain.get(pid) || 'Unknown'
+      counts.set(domain, (counts.get(domain) || 0) + 1)
+    }
+    const rows = [...counts.entries()]
+      .map(([domain, count]) => ({ domain, count }))
+      .sort((a, b) => b.count - a.count)
+    return { rows, noPs, totalWithPs: teams.length - noPs }
+  }, [problems, teams])
+
+  // Teams per track: map each team's selected problem statement to its track
+  // (category is the Track field — Software / Hardware).
+  const trackDistribution = useMemo(() => {
+    const psTrack = new Map()
+    for (const ps of problems) {
+      psTrack.set(ps.id, ps.category || 'Unspecified')
+    }
+    const counts = new Map()
+    let noPs = 0
+    for (const t of teams) {
+      const pid = t.problemStatementId
+      if (!pid) { noPs++; continue }
+      const track = psTrack.get(pid) || 'Unknown'
+      counts.set(track, (counts.get(track) || 0) + 1)
+    }
+    const rows = [...counts.entries()]
+      .map(([track, count]) => ({ track, count }))
+      .sort((a, b) => b.count - a.count)
+    return { rows, noPs, totalWithPs: teams.length - noPs }
+  }, [problems, teams])
+
+  // Open Innovation teams broken down by the participant's own problem domain
+  // (selfDomain — e.g. Waste Management, Health, Other). Open Innovation problem
+  // statements are participant-submitted; their official theme is always
+  // "Open Innovation", but each carries the author's chosen domain in selfDomain.
+  const openInnovationByDomain = useMemo(() => {
+    const isOpenInnovation = (ps) => {
+      const domain = String(ps.theme || ps.domain || '').toLowerCase()
+      return domain === 'open innovation' || ps.origin === 'open_innovation'
+    }
+    const oiDomain = new Map()
+    for (const ps of problems) {
+      if (isOpenInnovation(ps)) oiDomain.set(ps.id, ps.selfDomain || 'Unspecified')
+    }
+    const counts = new Map()
+    let total = 0
+    for (const t of teams) {
+      const pid = t.problemStatementId
+      if (!pid || !oiDomain.has(pid)) continue
+      const domain = oiDomain.get(pid) || 'Unspecified'
+      counts.set(domain, (counts.get(domain) || 0) + 1)
+      total++
+    }
+    const rows = [...counts.entries()]
+      .map(([domain, count]) => ({ domain, count }))
+      .sort((a, b) => b.count - a.count)
+    return { rows, total }
+  }, [problems, teams])
 
   const submissionStats = useMemo(() => {
     const finalized = subs.filter((s) => s.status === 'submitted' || s.finalizedAt).length
@@ -271,6 +345,98 @@ export function AdminReportsPage() {
                 <Bar dataKey="teams" fill={COLORS.brand} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
+      {/* Teams per Domain */}
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-ink-900">Teams per Domain</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              How many teams are participating in each domain (based on their selected problem statement)
+            </p>
+          </div>
+          <Badge tone="brand">{domainDistribution.totalWithPs} teams with a PS</Badge>
+        </div>
+        {domainDistribution.rows.length > 0 ? (
+          <div className="mt-5 space-y-4">
+            {domainDistribution.rows.map((d) => (
+              <StageBar
+                key={d.domain}
+                label={d.domain}
+                value={d.count}
+                max={domainDistribution.rows[0].count}
+                className="from-violet-500 to-purple-400"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-ink-400">No teams have selected a problem statement yet.</p>
+        )}
+        {domainDistribution.noPs > 0 && (
+          <p className="mt-4 border-t border-[rgb(var(--border))] pt-3 text-xs text-ink-500">
+            {domainDistribution.noPs} team{domainDistribution.noPs > 1 ? 's have' : ' has'} not selected a problem statement yet.
+          </p>
+        )}
+      </Card>
+
+      {/* Teams per Track */}
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-ink-900">Teams per Track</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              How many teams are participating in each track — Software / Hardware (based on their selected problem statement)
+            </p>
+          </div>
+          <Badge tone="brand">{trackDistribution.totalWithPs} teams with a PS</Badge>
+        </div>
+        {trackDistribution.rows.length > 0 ? (
+          <div className="mt-5 space-y-4">
+            {trackDistribution.rows.map((t) => (
+              <StageBar
+                key={t.track}
+                label={t.track}
+                value={t.count}
+                max={trackDistribution.rows[0].count}
+                className="from-cyan-500 to-blue-400"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-ink-400">No teams have selected a problem statement yet.</p>
+        )}
+        {trackDistribution.noPs > 0 && (
+          <p className="mt-4 border-t border-[rgb(var(--border))] pt-3 text-xs text-ink-500">
+            {trackDistribution.noPs} team{trackDistribution.noPs > 1 ? 's have' : ' has'} not selected a problem statement yet.
+          </p>
+        )}
+      </Card>
+
+      {/* Open Innovation by Domain */}
+      {openInnovationByDomain.total > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-ink-900">Open Innovation — by Domain</h2>
+              <p className="mt-1 text-xs text-ink-500">
+                Problem-domain split (e.g. Waste Management, Health) among teams in the Open Innovation domain
+              </p>
+            </div>
+            <Badge tone="brand">{openInnovationByDomain.total} teams</Badge>
+          </div>
+          <div className="mt-5 space-y-4">
+            {openInnovationByDomain.rows.map((d) => (
+              <StageBar
+                key={d.domain}
+                label={d.domain}
+                value={d.count}
+                max={openInnovationByDomain.rows[0].count}
+                className="from-amber-500 to-orange-400"
+              />
+            ))}
           </div>
         </Card>
       )}

@@ -30,13 +30,22 @@ function isValidEmail(email) {
  * mark mustChangePassword, ensure a Firestore profile, and email credentials.
  * Idempotent-ish: if the user already exists it is SKIPPED (not overwritten).
  */
-export async function inviteLeader(rawEmail) {
+const ROLE_META = {
+  participant: { defaultName: 'Team Leader' },
+  judge: { defaultName: 'Jury Member' },
+  mentor: { defaultName: 'Mentor' },
+}
+
+export async function inviteLeader(rawEmail, role = 'participant') {
   const db = getDb()
   const auth = getAuth()
   if (!db) return { email: rawEmail, status: 'failed', error: 'Database unavailable' }
 
   const email = String(rawEmail || '').trim().toLowerCase()
   if (!isValidEmail(email)) return { email: rawEmail, status: 'failed', error: 'Invalid email' }
+
+  const roleKey = ROLE_META[role] ? role : 'participant'
+  const roleName = ROLE_META[roleKey].defaultName
 
   // Skip if the user already exists (don't clobber real accounts/passwords)
   try {
@@ -59,19 +68,28 @@ export async function inviteLeader(rawEmail) {
     return { email, status: 'failed', error: e.message || 'create failed' }
   }
 
-  // Create the Firestore profile (Admin SDK — bypasses client rules)
+  // Create the Firestore profile (Admin SDK — bypasses client rules).
+  // Participant keeps its exact original shape (role + invitedAsLeader) so the
+  // existing leader flow and status view are unchanged. Judge/mentor get their
+  // role plus separate markers used by their own onboarding-status views.
+  const profile = {
+    email,
+    displayName: '',
+    role: roleKey,
+    teamId: '',
+    activeEventId: activeEvent?.id || '',
+    mustChangePassword: true,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }
+  if (roleKey === 'participant') {
+    profile.invitedAsLeader = true
+  } else {
+    profile.invitedAsStaff = true
+    profile.staffRole = roleKey
+  }
   try {
-    await db.doc(`users/${userRecord.uid}`).set({
-      email,
-      displayName: '',
-      role: 'participant',
-      teamId: '',
-      activeEventId: activeEvent?.id || '',
-      mustChangePassword: true,
-      invitedAsLeader: true,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: false })
+    await db.doc(`users/${userRecord.uid}`).set(profile, { merge: false })
   } catch (e) {
     // Roll back the auth user if the profile write fails, to avoid orphans
     try { await auth.deleteUser(userRecord.uid) } catch { /* ignore */ }
@@ -79,7 +97,7 @@ export async function inviteLeader(rawEmail) {
   }
 
   // Email credentials via Brevo (fire, but await so we can report send status)
-  const mail = await sendCredentialsEmail({ to: email, name: 'Team Leader', tempPassword, eventName })
+  const mail = await sendCredentialsEmail({ to: email, name: roleName, tempPassword, eventName, role: roleKey })
 
   // Record when credentials were emailed (for the admin onboarding-status view).
   if (mail?.success) {
@@ -98,7 +116,7 @@ export async function inviteLeader(rawEmail) {
  * Bulk invite. Accepts an array of emails, processes in small chunks to avoid
  * hammering Firebase/Brevo. Returns per-email results + summary counts.
  */
-export async function bulkInviteLeaders(emails) {
+export async function bulkInviteLeaders(emails, role = 'participant') {
   const list = Array.isArray(emails) ? emails : []
   const seen = new Set()
   const cleaned = []
@@ -107,14 +125,14 @@ export async function bulkInviteLeaders(emails) {
     if (!em || seen.has(em)) continue
     seen.add(em)
     cleaned.push(em)
-    if (cleaned.length >= 1000) break // hard cap
+    if (cleaned.length >= 1000) break 
   }
 
   const results = []
   const CHUNK = 10
   for (let i = 0; i < cleaned.length; i += CHUNK) {
     const chunk = cleaned.slice(i, i + CHUNK)
-    const settled = await Promise.allSettled(chunk.map((em) => inviteLeader(em)))
+    const settled = await Promise.allSettled(chunk.map((em) => inviteLeader(em, role)))
     for (const s of settled) {
       if (s.status === 'fulfilled') results.push(s.value)
       else results.push({ status: 'failed', error: s.reason?.message || 'unknown' })

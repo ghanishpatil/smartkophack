@@ -79,6 +79,45 @@ function assertStorageUrl(fieldName, value, teamId) {
   return s
 }
 
+// Allowed hosts for the demo video link. The video is now submitted as a
+// YouTube link (not an uploaded file), so restrict to YouTube domains — this
+// keeps it safe from arbitrary external URLs while allowing the common formats.
+const YOUTUBE_HOSTS = new Set([
+  'youtube.com', 'www.youtube.com', 'm.youtube.com',
+  'youtu.be', 'www.youtu.be',
+  'youtube-nocookie.com', 'www.youtube-nocookie.com',
+])
+
+function assertYouTubeUrl(fieldName, value) {
+  if (value == null || value === '') return ''
+  const s = String(value).trim().slice(0, MAX_URL_LEN)
+  if (!s) return ''
+  let u
+  try {
+    u = new URL(s)
+  } catch {
+    const e = new Error(`Invalid ${fieldName} URL`)
+    e.status = 400
+    throw e
+  }
+  if (u.protocol !== 'https:') {
+    const e = new Error(`${fieldName} must use https`)
+    e.status = 400
+    throw e
+  }
+  if (u.username || u.password) {
+    const e = new Error(`${fieldName} URL must not embed credentials`)
+    e.status = 400
+    throw e
+  }
+  if (!YOUTUBE_HOSTS.has(u.hostname.toLowerCase())) {
+    const e = new Error('Demo video must be a YouTube link (youtube.com or youtu.be)')
+    e.status = 400
+    throw e
+  }
+  return s
+}
+
 function assertHttpsUrl(fieldName, value) {
   if (value == null || value === '') return ''
   const s = String(value).trim().slice(0, MAX_URL_LEN)
@@ -121,7 +160,8 @@ export function normalizeSubmissionPatch(patch, teamId = null) {
   // File uploads — must be Firebase Storage URLs scoped to this team
   if ('pptUrl' in patch) safe.pptUrl = assertStorageUrl('pptUrl', patch.pptUrl, teamId)
   if ('pdfUrl' in patch) safe.pdfUrl = assertStorageUrl('pdfUrl', patch.pdfUrl, teamId)
-  if ('videoUrl' in patch) safe.videoUrl = assertStorageUrl('videoUrl', patch.videoUrl, teamId)
+  // Demo video is now a YouTube link (not an uploaded file).
+  if ('videoUrl' in patch) safe.videoUrl = assertYouTubeUrl('videoUrl', patch.videoUrl)
   // External links — any valid https URL is fine
   if ('githubUrl' in patch) safe.githubUrl = assertHttpsUrl('githubUrl', patch.githubUrl)
   if ('deployedUrl' in patch) safe.deployedUrl = assertHttpsUrl('deployedUrl', patch.deployedUrl)

@@ -43,6 +43,7 @@ export function SubmissionPage() {
   const api = useApi()
   const [sub, setSub] = useState(null)
   const [githubUrl, setGithubUrl] = useState('')
+  const [videoUrl, setVideoUrl] = useState('')
   const [status, setStatus] = useState('')
   const [pct, setPct] = useState(0)
 
@@ -92,6 +93,7 @@ export function SubmissionPage() {
         }
         setSub(subData)
         setGithubUrl(current.githubUrl || '')
+        setVideoUrl(current.videoUrl || '')
         setTeamLocked(Boolean(rosterData?.submissionLocked))
         setTeamData({
           submissionLocked: Boolean(rosterData?.submissionLocked),
@@ -205,6 +207,34 @@ export function SubmissionPage() {
       setStatus(`GitHub link saved (draft)${versionInfo}.`)
     } catch (e) {
       setStatus(e.message || 'Could not save links')
+    }
+  }
+
+  // Demo video is submitted as a YouTube link (not a file upload).
+  async function saveVideoLink() {
+    if (!teamId || !user) return
+    if (locked) { setStatus('Submission is locked.'); return }
+    if (activePhase && (!phaseSubmissionsOpen || phaseDeadlinePassed)) {
+      setStatus('Submissions are not open for the current phase.')
+      return
+    }
+    if (activePhase && !teamCanAccessActivePhase) {
+      setStatus('Your team is not shortlisted for this phase.')
+      return
+    }
+    const trimmed = videoUrl.trim()
+    if (trimmed && !/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)\//i.test(trimmed)) {
+      setStatus('Please enter a valid YouTube link (youtube.com or youtu.be).')
+      return
+    }
+    setStatus('')
+    try {
+      const result = await api.patchSubmissionMetadata({ videoUrl: trimmed, status: 'draft' })
+      setSub((prev) => ({ ...prev, videoUrl: trimmed, status: 'draft' }))
+      const versionInfo = result?.currentVersion ? ` (Version ${result.currentVersion})` : ''
+      setStatus(`Demo video link saved (draft)${versionInfo}.`)
+    } catch (e) {
+      setStatus(e.message || 'Could not save the video link')
     }
   }
 
@@ -439,7 +469,7 @@ export function SubmissionPage() {
           </div>
         )}
 
-        {/* Video */}
+        {/* Video — submitted as a YouTube link */}
         {phaseRequirements.videoRequired && (
           <div className={`group relative overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 transition-all ${uploadsDisabled ? 'pointer-events-none opacity-50' : 'hover:border-brand-500/30 hover:shadow-lg'}`}>
             <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-blue-500/10 blur-2xl transition-transform group-hover:scale-150" />
@@ -451,21 +481,21 @@ export function SubmissionPage() {
                   </div>
                   <div>
                     <h3 className="font-display text-sm font-bold text-ink-900">Demo Video</h3>
-                    <p className="text-[11px] text-ink-500">Max {Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB · MP4/WebM</p>
+                    <p className="text-[11px] text-ink-500">Paste your YouTube video link</p>
                   </div>
                 </div>
                 <Badge tone="danger" className="text-[9px]">Required</Badge>
               </div>
               {sub?.videoUrl ? (
                 <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
-                  <CheckCircle className="h-3.5 w-3.5" /> Uploaded
+                  <CheckCircle className="h-3.5 w-3.5" /> Saved
                 </div>
               ) : null}
-              <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[rgb(var(--border))] py-8 text-center transition-colors hover:border-brand-500/50 hover:bg-brand-500/5">
-                <Upload className="h-6 w-6 text-ink-400" />
-                <span className="text-xs font-medium text-ink-600">{sub?.videoUrl ? 'Replace video' : 'Click to upload'}</span>
-                <input type="file" accept="video/*" className="hidden" disabled={uploadsDisabled} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('video', f) }} />
-              </label>
+              <Input className="mt-4" value={videoUrl} disabled={uploadsDisabled} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+              <Button variant="secondary" className="mt-3 w-full gap-2" disabled={uploadsDisabled} onClick={saveVideoLink}>
+                <Video className="h-4 w-4" /> Save Video Link
+              </Button>
+              <p className="mt-2 text-[11px] text-ink-400">Upload your demo to YouTube (public or unlisted), then paste the link here.</p>
             </div>
           </div>
         )}

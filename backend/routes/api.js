@@ -2791,6 +2791,125 @@ export function adminRouter() {
   })
 
   /**
+   * Shared onboarding-status builder for invited staff (judges / mentors).
+   * Mirrors the /participants/status logic but filters by staffRole so it never
+   * touches the team-leader status view.
+   */
+  async function buildStaffInviteStatus(staffRole) {
+    const snap = await db()
+      .collection('users')
+      .where('staffRole', '==', staffRole)
+      .limit(1000)
+      .get()
+
+    const toIso = (v) => {
+      try {
+        if (!v) return null
+        if (typeof v === 'string') return v
+        if (typeof v.toDate === 'function') return v.toDate().toISOString()
+        return null
+      } catch { return null }
+    }
+
+    const rows = snap.docs.map((d) => {
+      const x = d.data()
+      return {
+        uid: d.id,
+        email: x.email || '',
+        displayName: x.displayName || '',
+        invitedAt: toIso(x.createdAt),
+        credentialsSentAt: toIso(x.credentialsSentAt) || toIso(x.createdAt),
+        passwordSet: x.mustChangePassword === false,
+        passwordChangedAt: toIso(x.passwordChangedAt),
+        lastSignInTime: null,
+        loggedIn: false,
+      }
+    })
+
+    try {
+      const { getAuth } = await import('firebase-admin/auth')
+      const auth = getAuth()
+      for (let i = 0; i < rows.length; i += 100) {
+        const chunk = rows.slice(i, i + 100)
+        const result = await auth.getUsers(chunk.map((r) => ({ uid: r.uid })))
+        const byUid = new Map(result.users.map((u) => [u.uid, u]))
+        for (const r of chunk) {
+          const u = byUid.get(r.uid)
+          const t = u?.metadata?.lastSignInTime || null
+          r.lastSignInTime = t ? new Date(t).toISOString() : null
+          r.loggedIn = Boolean(r.lastSignInTime)
+        }
+      }
+    } catch (e) {
+      console.warn(`[${staffRole}/status] auth enrich failed:`, e.message)
+    }
+
+    rows.sort((a, b) => (b.credentialsSentAt || '').localeCompare(a.credentialsSentAt || ''))
+
+    const summary = {
+      total: rows.length,
+      loggedIn: rows.filter((r) => r.loggedIn).length,
+      passwordSet: rows.filter((r) => r.passwordSet).length,
+      pending: rows.filter((r) => !r.passwordSet).length,
+    }
+    return { summary, participants: rows }
+  }
+
+  /** Admin: Bulk-invite jury members — creates accounts + emails credentials. */
+  router.post('/judges/bulk-invite', async (req, res, next) => {
+    try {
+      let emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      if (emails.length === 0 && typeof req.body?.emailsText === 'string') {
+        emails = req.body.emailsText.split(/[\s,;]+/).filter(Boolean)
+      }
+      if (emails.length === 0) return res.status(400).json({ error: 'Provide emails (array) or emailsText (string).' })
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'judge')
+      await appendAuditLog({ actorUid: req.user.uid, action: 'judges.bulk_invite', targetType: 'users', targetId: '', metadata: result.summary })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: Onboarding status of invited jury members — read-only. */
+  router.get('/judges/status', async (req, res, next) => {
+    try {
+      const data = await buildStaffInviteStatus('judge')
+      res.json({ ok: true, ...data })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: Bulk-invite mentors — creates accounts + emails credentials. */
+  router.post('/mentors/bulk-invite', async (req, res, next) => {
+    try {
+      let emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      if (emails.length === 0 && typeof req.body?.emailsText === 'string') {
+        emails = req.body.emailsText.split(/[\s,;]+/).filter(Boolean)
+      }
+      if (emails.length === 0) return res.status(400).json({ error: 'Provide emails (array) or emailsText (string).' })
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'mentor')
+      await appendAuditLog({ actorUid: req.user.uid, action: 'mentors.bulk_invite', targetType: 'users', targetId: '', metadata: result.summary })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: Onboarding status of invited mentors — read-only. */
+  router.get('/mentors/status', async (req, res, next) => {
+    try {
+      const data = await buildStaffInviteStatus('mentor')
+      res.json({ ok: true, ...data })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: Send a password-reset link to a user via Brevo (Fix 1 — better
    * deliverability than Firebase's default sender). Body: { email }
    */
@@ -3706,9 +3825,37 @@ export function mentorsRouter() {
         }
       }
 
+      // Return PS details for EVERY assigned team's problem statement (not just
+      // the ones the mentor is directly assigned to). This includes private
+      // Open Innovation entries so the mentor can see what their team is building.
+      const neededPsIds = new Set(assignedPS.map((ps) => ps.id))
+      for (const t of mergedTeams) if (t.problemStatementId) neededPsIds.add(t.problemStatementId)
+
+      const psDetails = []
+      for (const pid of neededPsIds) {
+        let ps = psById[pid]
+        if (!ps) {
+          try {
+            const d = await db().doc(`problemStatements/${pid}`).get()
+            if (d.exists) ps = { id: d.id, ...d.data() }
+          } catch { /* ignore missing */ }
+        }
+        if (!ps) continue
+        psDetails.push({
+          id: ps.id,
+          title: ps.title || ps.id,
+          category: ps.category || '',
+          theme: ps.theme || ps.domain || '',
+          description: ps.description || '',
+          origin: ps.origin || '',
+          selfDomain: ps.selfDomain || '',
+          isOpenInnovation: ps.origin === 'open_innovation',
+        })
+      }
+
       res.json({
         teams: mergedTeams,
-        problemStatements: assignedPS.map((ps) => ({ id: ps.id, title: ps.title || ps.id, category: ps.category || '', theme: ps.theme || ps.domain || '' })),
+        problemStatements: psDetails,
         mentorAssignments,
       })
     } catch (e) {
