@@ -39,7 +39,7 @@ export function Hero() {
   const role = profile?.role || ROLES.PARTICIPANT
   const dashboardLink = user && firebaseReady ? roleHome(role) : '/auth'
   const ctaText = user ? 'Access your dashboard' : 'Register your team'
-  
+
   return (
     <section className="relative w-full overflow-hidden border-b border-gray-200 min-h-[88vh] md:min-h-0 md:aspect-[16/9]">
       {/* ── Background image — mobile uses the portrait reel banner; desktop uses the 16:9 banner ── */}

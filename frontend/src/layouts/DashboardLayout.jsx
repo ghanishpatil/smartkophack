@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Target, Bell, Settings, Menu, X, ChevronLeft, ChevronRight,
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
-  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone,
+  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -61,6 +61,7 @@ const nav = {
     { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
     { to: '/admin/timeline', label: 'Timeline', icon: Clock },
     { to: '/admin/sponsors', label: 'Sponsors', icon: Building2 },
+    { to: '/admin/hero', label: 'Latest News', icon: Image },
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
     { to: '/admin/access', label: 'Access Control', icon: ShieldCheck },
     { to: '/admin/audit', label: 'Activity Logs', icon: ScrollText },

@@ -74,6 +74,8 @@ export const publicApi = {
     cachedRequest(
       `/api/timeline${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`,
     ),
+  // Home hero slideshow — public read of admin-managed banners + settings.
+  getHeroBanners: () => cachedRequest('/api/hero-banners'),
 }
 
 export function createApi(getToken, getEventId = () => '') {
@@ -320,6 +322,9 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/mentors/bulk-invite', { method: 'POST', body: { emails } }),
     mentorInviteStatus: () =>
       authReq('/api/admin/mentors/status'),
+    // Hero slideshow settings (banners are uploaded via multipart in the page)
+    updateHeroSettings: (body) =>
+      authReq('/api/hero-banners/settings', { method: 'PUT', body }),
     sendResetLink: (email) =>
       authReq('/api/admin/participants/send-reset-link', { method: 'POST', body: { email } }),
     // First-login password change (participant)

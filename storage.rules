@@ -93,6 +93,14 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Hero slideshow banners (admin upload only, public read)
+    match /heroBanners/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdminUser()
+        && request.resource.size < 12 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // ID card uploads have been removed from the registration flow.
     // The former /registrations and /member-registrations paths are no longer
     // writable; they fall through to the explicit catch-all deny below.
