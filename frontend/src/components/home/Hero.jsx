@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button.jsx'
 import { useAuth } from '@/context/AuthContext.jsx'
-import { REGISTRATION_URL } from '@/utils/constants.js'
 import { roleHome, ROLES } from '@/utils/roles.js'
 
 /* ── Subtle animated network nodes ─────────────────────────── */
@@ -124,17 +123,12 @@ export function Hero() {
                   </Button>
                 </Link>
               ) : (
-                <a
-                  href={REGISTRATION_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto"
-                >
+                <Link to="/timeline" className="w-full sm:w-auto">
                   <Button size="lg" className="w-full gap-2 shadow-glow-brand sm:w-auto">
-                    {ctaText}
+                    Check timeline
                     <ArrowRight className="h-4 w-4" />
                   </Button>
-                </a>
+                </Link>
               )}
               <Link to="/problems" className="w-full sm:w-auto">
                 <Button

@@ -3,7 +3,7 @@ import { X, Megaphone } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Marquee } from '@/components/ui/Marquee.jsx'
 
-export function TopBanner({ text = 'Registration for SKH 2026 is now open — Register your team today!' }) {
+export function TopBanner({ text = 'Registration is now closed — the rounds are live! Check the timeline for what\u2019s next.' }) {
   const [visible, setVisible] = useState(true)
 
   return (
