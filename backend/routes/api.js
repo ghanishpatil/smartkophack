@@ -1083,6 +1083,35 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * Admin: delete a single evaluation doc (evaluations/{judgeId}_{teamId}).
+   * Lets an admin remove a judge's evaluation so it can be redone.
+   */
+  router.delete('/evaluations/:id', async (req, res, next) => {
+    try {
+      const { id } = req.params
+      // Eval doc id is `{judgeId}_{teamId}` — allow letters/digits/_- only.
+      if (typeof id !== 'string' || id.length > 256 || /[/.#$[\]]/.test(id)) {
+        return res.status(400).json({ error: 'Invalid evaluation id.' })
+      }
+      const ref = db().doc(`evaluations/${id}`)
+      const snap = await ref.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Evaluation not found.' })
+      const data = snap.data()
+      await ref.delete()
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'evaluation.delete',
+        targetType: 'evaluation',
+        targetId: id,
+        metadata: { judgeId: data.judgeId || '', teamId: data.teamId || '' },
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   router.delete('/teams/:teamId/registration', async (req, res, next) => {
     try {
       const { teamId } = req.params
@@ -2181,6 +2210,66 @@ export function adminRouter() {
         targetType: 'user',
         targetId: judgeId,
         metadata: { domain: domain || null, track: track || null },
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Assign a judge directly to a specific team (adds to team.judgeIds). */
+  router.post('/judges/assign-team', async (req, res, next) => {
+    try {
+      const { judgeId, teamId } = req.body || {}
+      if (!judgeId || !teamId) return res.status(400).json({ error: 'judgeId and teamId required' })
+      if (!isValidDocId(judgeId) || !isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid id.' })
+
+      const userSnap = await db().doc(`users/${judgeId}`).get()
+      if (!userSnap.exists) return res.status(404).json({ error: 'User not found.' })
+      if (userSnap.data().role !== 'judge') return res.status(400).json({ error: 'User is not a judge.' })
+
+      const teamRef = db().doc(`teams/${teamId}`)
+      const teamSnap = await teamRef.get()
+      if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+
+      await teamRef.set(
+        { judgeIds: FieldValue.arrayUnion(judgeId), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      )
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'judge.assign_team',
+        targetType: 'team',
+        targetId: teamId,
+        metadata: { judgeId },
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Remove a judge's direct assignment to a team (clears team.judgeIds entry). */
+  router.post('/judges/unassign-team', async (req, res, next) => {
+    try {
+      const { judgeId, teamId } = req.body || {}
+      if (!judgeId || !teamId) return res.status(400).json({ error: 'judgeId and teamId required' })
+      if (!isValidDocId(judgeId) || !isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid id.' })
+
+      const teamRef = db().doc(`teams/${teamId}`)
+      const teamSnap = await teamRef.get()
+      if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+
+      await teamRef.set(
+        { judgeIds: FieldValue.arrayRemove(judgeId), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      )
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'judge.unassign_team',
+        targetType: 'team',
+        targetId: teamId,
+        metadata: { judgeId },
       })
       res.json({ ok: true })
     } catch (e) {
@@ -3392,6 +3481,7 @@ export function judgesRouter() {
     eventId: data.eventId || '',
     shortlisted: Boolean(data.shortlisted),
     submissionLocked: Boolean(data.submissionLocked),
+    juryStatus: data.juryStatus || '',
     myEvaluation,
   })
 
@@ -3493,6 +3583,8 @@ export function judgesRouter() {
       const teamsFiltered = teamsSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((t) => {
+          // Direct team assignment (team.judgeIds) — include regardless of PS.
+          if (Array.isArray(t.judgeIds) && t.judgeIds.includes(uid)) return true
           if (!t.problemStatementId) return false
           // Include if matched by direct PS assignment OR by domain+track assignment
           return judgeMayEvaluateTeam(profile, t) || domainTrackPsIds.has(t.problemStatementId)
@@ -3548,7 +3640,8 @@ export function judgesRouter() {
         return res.status(403).json({ error: 'Team is outside your active event edition.' })
       }
 
-      if (!judgeMayEvaluateTeam(req.profile, teamRaw)) {
+      const directTeamAssignedReview = Array.isArray(teamRaw.judgeIds) && teamRaw.judgeIds.includes(req.user.uid)
+      if (!directTeamAssignedReview && !judgeMayEvaluateTeam(req.profile, teamRaw)) {
         // Also check domain+track assignments
         const judgeAssignments = Array.isArray(req.profile?.judgeAssignments) ? req.profile.judgeAssignments : []
         const psId = teamRaw.problemStatementId || ''
@@ -3651,7 +3744,8 @@ export function judgesRouter() {
         return res.status(403).json({ error: 'Team is outside your active event edition.' })
       }
 
-      if (!judgeMayEvaluateTeam(req.profile, team)) {
+      const directTeamAssignedEval = Array.isArray(team.judgeIds) && team.judgeIds.includes(jid)
+      if (!directTeamAssignedEval && !judgeMayEvaluateTeam(req.profile, team)) {
         // Also check domain+track assignments
         const judgeAssignments = Array.isArray(req.profile?.judgeAssignments) ? req.profile.judgeAssignments : []
         let allowedByDomainTrack = false
@@ -3683,6 +3777,16 @@ export function judgesRouter() {
         normalizedScores = normalizeJudgeScores(scores, criteria)
       } catch (e) {
         return res.status(e.status || 400).json({ error: e.message })
+      }
+
+      // Team status is REQUIRED for a final submission. Accept it in the payload
+      // (Qualified / Waitlist / Not Qualified) or reuse an already-set status.
+      const VALID_STATUS = new Set(['qualified', 'waitlist', 'not_qualified'])
+      const rawStatus = String(req.body?.status || '').trim().toLowerCase()
+      const providedStatus = VALID_STATUS.has(rawStatus) ? rawStatus : ''
+      const existingStatus = VALID_STATUS.has(team.juryStatus) ? team.juryStatus : ''
+      if (!isDraft && !providedStatus && !existingStatus) {
+        return res.status(400).json({ error: 'Set the team status (Qualified / Waitlist / Not Qualified) before submitting.' })
       }
 
       const evalRef = db().doc(`evaluations/${jid}_${teamId}`)
@@ -3733,7 +3837,69 @@ export function judgesRouter() {
       if (alreadyLocked) return res.status(403).json({ error: 'This evaluation has been locked.' })
       if (alreadySubmitted) return res.status(409).json({ error: 'Evaluation already submitted.' })
 
+      // Persist the team status chosen at submit time (final submissions only).
+      if (!isDraft && providedStatus && providedStatus !== existingStatus) {
+        await db().doc(`teams/${teamId}`).set(
+          { juryStatus: providedStatus, updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        )
+      }
+
       res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Judge sets a team's qualification status: qualified | waitlist | not_qualified
+   * (or '' / 'none' to clear). Only judges assigned to the team may set it. The
+   * admin views these statuses read-only in Jury Management.
+   */
+  router.post('/team-status', async (req, res, next) => {
+    try {
+      const { teamId } = req.body || {}
+      const rawStatus = String(req.body?.status || '').trim().toLowerCase()
+      if (!teamId || typeof teamId !== 'string' || teamId.length > 128 || /[\/.\\#$[\]]/.test(teamId)) {
+        return res.status(400).json({ error: 'Invalid teamId.' })
+      }
+      const VALID = new Set(['qualified', 'waitlist', 'not_qualified'])
+      const clearing = rawStatus === '' || rawStatus === 'none'
+      if (!clearing && !VALID.has(rawStatus)) {
+        return res.status(400).json({ error: 'status must be qualified, waitlist, not_qualified, or none.' })
+      }
+
+      const teamSnap = await db().doc(`teams/${teamId}`).get()
+      if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found' })
+      const team = teamSnap.data()
+
+      if (req.eventId && team.eventId && team.eventId !== req.eventId) {
+        return res.status(403).json({ error: 'Team is outside your active event edition.' })
+      }
+
+      // Access: direct team assignment, direct PS, or domain+track match.
+      let allowed = (Array.isArray(team.judgeIds) && team.judgeIds.includes(req.user.uid))
+        || judgeMayEvaluateTeam(req.profile, team)
+      if (!allowed) {
+        const judgeAssignments = Array.isArray(req.profile?.judgeAssignments) ? req.profile.judgeAssignments : []
+        if (judgeAssignments.length > 0 && team.problemStatementId) {
+          const psSnap = await db().doc(`problemStatements/${team.problemStatementId}`).get()
+          if (psSnap.exists) {
+            const pd = psSnap.data()
+            const psDomain = pd.theme || pd.domain || ''
+            const psTrack = pd.category || ''
+            allowed = judgeAssignments.some((ja) => (!ja.domain || psDomain === ja.domain) && (!ja.track || psTrack === ja.track))
+          }
+        }
+      }
+      if (!allowed) return res.status(403).json({ error: 'You are not assigned to this team.' })
+
+      await db().doc(`teams/${teamId}`).set({
+        juryStatus: clearing ? FieldValue.delete() : rawStatus,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true })
+
+      res.json({ ok: true, juryStatus: clearing ? '' : rawStatus })
     } catch (e) {
       next(e)
     }

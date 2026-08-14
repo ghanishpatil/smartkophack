@@ -124,6 +124,10 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/judges/assign-domain-track', { method: 'POST', body }),
     unassignJudgeDomainTrack: (body) =>
       authReq('/api/admin/judges/unassign-domain-track', { method: 'POST', body }),
+    assignJudgeTeam: (body) =>
+      authReq('/api/admin/judges/assign-team', { method: 'POST', body }),
+    unassignJudgeTeam: (body) =>
+      authReq('/api/admin/judges/unassign-team', { method: 'POST', body }),
     getJudgeAssignmentsOverview: () =>
       authReq('/api/admin/judges/assignments-overview'),
     recordTeamPayment: (body) =>
@@ -159,6 +163,8 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>
       authReq(`/api/admin/evaluations${opts.all ? '?all=1' : ''}`),
+    deleteAdminEvaluation: (id) =>
+      authReq(`/api/admin/evaluations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     patchAdminTeam: (teamId, body) =>
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}`, { method: 'PATCH', body }),
     deleteAdminTeamRegistration: (teamId) =>
@@ -235,6 +241,8 @@ export function createApi(getToken, getEventId = () => '') {
     judgeTeamReview: (teamId) => authReq(`/api/judges/review/${encodeURIComponent(teamId)}`),
     submitEvaluation: (payload) =>
       authReq('/api/judges/evaluations', { method: 'POST', body: payload }),
+    judgeSetTeamStatus: (payload) =>
+      authReq('/api/judges/team-status', { method: 'POST', body: payload }),
     mentorAssignments: () => authReq('/api/mentors/assignments'),
     mentorNote: (payload) =>
       authReq('/api/mentors/notes', { method: 'POST', body: payload }),

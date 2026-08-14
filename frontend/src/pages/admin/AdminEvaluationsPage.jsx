@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createColumnHelper } from '@tanstack/react-table'
+import { Link } from 'react-router-dom'
+import { ChevronRight, Search } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useResolvedEventId } from '@/hooks/useResolvedEventId.js'
-import { DataTable } from '@/components/admin/DataTable.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Button } from '@/components/ui/Button.jsx'
 import { Card } from '@/components/ui/Card.jsx'
@@ -15,8 +15,6 @@ import {
   parseCriterionLines,
   splitPasteGrid,
 } from '@/utils/evaluationCriteriaCsv.js'
-
-const col = createColumnHelper()
 
 export function AdminEvaluationsPage() {
   usePageSeo({ title: 'Evaluations', description: 'Evaluation queue analytics.' })
@@ -41,6 +39,7 @@ export function AdminEvaluationsPage() {
 
   const [usersMap, setUsersMap] = useState(new Map())
   const [teamsMap, setTeamsMap] = useState(new Map())
+  const [judgeUsers, setJudgeUsers] = useState([])
 
   const loadEvaluations = useCallback(async () => {
     setLoading(true)
@@ -52,10 +51,15 @@ export function AdminEvaluationsPage() {
       ])
       setRows(Array.isArray(data) ? data : [])
       const uMap = new Map()
+      const judgeList = []
       for (const u of (Array.isArray(users) ? users : [])) {
-        uMap.set(u.id, u.displayName || u.email || u.id)
+        const name = u.displayName || u.email || u.id
+        uMap.set(u.id, name)
+        // Everyone with the judge role — listed even before they score anything.
+        if (u.role === 'judge') judgeList.push({ id: u.id, name })
       }
       setUsersMap(uMap)
+      setJudgeUsers(judgeList)
       const tMap = new Map()
       for (const t of (Array.isArray(teams) ? teams : [])) {
         tMap.set(t.id, t.name || t.id)
@@ -92,33 +96,6 @@ export function AdminEvaluationsPage() {
   useEffect(() => {
     void loadCriteria()
   }, [loadCriteria])
-
-  const columns = useMemo(
-    () => [
-      col.accessor('judgeId', {
-        header: 'Judge',
-        cell: (i) => <span className="text-sm font-medium text-ink-900">{usersMap.get(i.getValue()) || 'Unknown'}</span>,
-      }),
-      col.accessor('teamId', {
-        header: 'Team',
-        cell: (i) => <span className="text-sm text-ink-800">{teamsMap.get(i.getValue()) || i.getValue()}</span>,
-      }),
-      col.accessor('evaluationStatus', {
-        header: 'Status',
-        cell: (i) => {
-          const s = String(i.getValue() || '')
-          return <Badge tone={s === 'submitted' ? 'success' : s === 'draft' ? 'warn' : 'neutral'}>{s || 'pending'}</Badge>
-        },
-      }),
-      col.accessor('problemStatementId', {
-        header: 'Problem',
-        cell: (i) => <span className="text-xs text-ink-500">{String(i.getValue() || '—').slice(0, 20)}</span>,
-      }),
-    ],
-    // BUG-4 FIX: usersMap and teamsMap are used inside cell renderers — they must be
-    // in the dependency array. Without this, cells always show stale data after maps load.
-    [usersMap, teamsMap],
-  )
 
   const submitted = rows.filter((r) => r.evaluationStatus === 'submitted').length
   const draft = rows.filter((r) => r.evaluationStatus === 'draft').length
@@ -312,11 +289,96 @@ export function AdminEvaluationsPage() {
         </div>
       </Card>
 
-      <DataTable columns={columns} data={rows} globalFilter={globalFilter} onGlobalFilterChange={setGlobalFilter} />
+      {/* Judge-centric view: list judges → click to see their teams + marks */}
+      <JudgeEvaluations
+        rows={rows}
+        judgeUsers={judgeUsers}
+        usersMap={usersMap}
+        search={globalFilter}
+        onSearch={setGlobalFilter}
+      />
 
       {/* Score Distribution & Insights */}
       {submitted > 0 && <EvaluationInsights evaluations={rows} usersMap={usersMap} teamsMap={teamsMap} />}
     </div>
+  )
+}
+
+/**
+ * Judge list: every user with the judge role, by name. Clicking a judge opens a
+ * dedicated page showing all their evaluated teams with full marks + breakdown.
+ */
+function JudgeEvaluations({ rows, judgeUsers = [], usersMap = new Map(), search = '', onSearch }) {
+  const judges = useMemo(() => {
+    const evalsByJudge = new Map()
+    for (const ev of rows) {
+      const jid = ev.judgeId || 'unknown'
+      if (!evalsByJudge.has(jid)) evalsByJudge.set(jid, [])
+      evalsByJudge.get(jid).push(ev)
+    }
+    const base = new Map()
+    for (const j of judgeUsers) {
+      base.set(j.id, { judgeId: j.id, name: j.name, evals: evalsByJudge.get(j.id) || [] })
+    }
+    for (const [jid, evs] of evalsByJudge) {
+      if (!base.has(jid)) base.set(jid, { judgeId: jid, name: usersMap.get(jid) || 'Unknown judge', evals: evs })
+    }
+    let list = [...base.values()].map((g) => ({
+      judgeId: g.judgeId,
+      name: g.name,
+      count: g.evals.length,
+      submitted: g.evals.filter((e) => e.evaluationStatus === 'submitted').length,
+      drafts: g.evals.filter((e) => e.evaluationStatus === 'draft').length,
+    }))
+    const q = String(search || '').trim().toLowerCase()
+    if (q) list = list.filter((g) => g.name.toLowerCase().includes(q))
+    list.sort((a, b) => a.name.localeCompare(b.name))
+    return list
+  }, [rows, judgeUsers, usersMap, search])
+
+  return (
+    <Card className="space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-ink-900">Judges &amp; their evaluations</h2>
+        <p className="mt-1 text-sm text-ink-600">
+          Click a judge to open their page with all evaluated teams and the marks given.
+        </p>
+      </div>
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+        <input
+          value={search}
+          onChange={(e) => onSearch?.(e.target.value)}
+          placeholder="Search judge by name…"
+          className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        />
+      </div>
+
+      {judges.length === 0 ? (
+        <p className="rounded-lg bg-[rgb(var(--surface-muted))]/50 px-4 py-6 text-center text-sm text-ink-500">
+          No judges found. Assign the judge role to users in Access Control.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {judges.map((j) => (
+            <Link
+              key={j.judgeId}
+              to={`/admin/evaluations/judge/${j.judgeId}`}
+              className="flex items-center justify-between gap-3 rounded-xl border border-[rgb(var(--border))] px-4 py-3 transition-colors hover:border-brand-500/40 hover:bg-brand-500/5"
+            >
+              <span className="min-w-0 truncate text-sm font-semibold text-ink-900">{j.name}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <Badge tone="neutral">{j.count} team{j.count === 1 ? '' : 's'}</Badge>
+                {j.submitted > 0 ? <Badge tone="success">{j.submitted} submitted</Badge> : null}
+                {j.drafts > 0 ? <Badge tone="warn">{j.drafts} draft</Badge> : null}
+                <ChevronRight className="h-4 w-4 text-ink-400" />
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 

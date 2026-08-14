@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckSquare, Square, Tag, BookOpen } from 'lucide-react'
+import { CheckSquare, Square, Tag, BookOpen, Users, Search } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -32,6 +32,10 @@ const DOMAINS = [
 ]
 
 const TRACKS = ['Software', 'Hardware']
+
+// Team qualification statuses (set by judges, viewed by admin).
+const JURY_STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
+const JURY_STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not qualified' }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -153,24 +157,31 @@ export function AdminJuryPage() {
 
   const [users, setUsers] = useState([])
   const [problems, setProblems] = useState([])
+  const [teams, setTeams] = useState([])
   const [judgeId, setJudgeId] = useState('')
   const [selectedProblems, setSelectedProblems] = useState([])
+  const [teamSearch, setTeamSearch] = useState('')
+  const [statusSearch, setStatusSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all') // all | confirmed | qualified | waitlisted | unset
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('domain') // 'domain' | 'ps'
+  const [activeTab, setActiveTab] = useState('domain') // 'domain' | 'ps' | 'team'
 
   const refreshData = useCallback(async () => {
     try {
-      const [usersData, problemsData] = await Promise.all([
+      const [usersData, problemsData, teamsData] = await Promise.all([
         api.listUsers(),
         publicApi.listProblemStatements(eventId || undefined),
+        api.adminTeams().catch(() => []),
       ])
       setUsers(Array.isArray(usersData) ? usersData : [])
       setProblems(Array.isArray(problemsData) ? problemsData : [])
+      setTeams(Array.isArray(teamsData) ? teamsData : [])
     } catch {
       setUsers([])
       setProblems([])
+      setTeams([])
     } finally {
       setLoading(false)
     }
@@ -236,6 +247,66 @@ export function AdminJuryPage() {
     }
   }
 
+  // ── Direct team assignment ─────────────────────────────────────────────────
+
+  async function toggleTeamAssign(teamId) {
+    if (!judgeId) return
+    setMsg('')
+    setSaving(true)
+    const team = teams.find((t) => t.id === teamId)
+    const assigned = Array.isArray(team?.judgeIds) && team.judgeIds.includes(judgeId)
+    try {
+      if (assigned) {
+        await api.unassignJudgeTeam({ judgeId, teamId })
+        setMsg('Removed team assignment.')
+      } else {
+        await api.assignJudgeTeam({ judgeId, teamId })
+        setMsg('Assigned team.')
+      }
+      await refreshData()
+    } catch (e) {
+      setMsg(e.message || 'Failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const filteredTeams = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase()
+    const list = q
+      ? teams.filter((t) => `${t.name || ''} ${t.inviteCode || ''} ${t.id}`.toLowerCase().includes(q))
+      : teams
+    return [...list].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
+  }, [teams, teamSearch])
+
+  const assignedTeamsForJudge = useMemo(
+    () => (judgeId ? teams.filter((t) => Array.isArray(t.judgeIds) && t.judgeIds.includes(judgeId)) : []),
+    [teams, judgeId],
+  )
+
+  // ── Team status (confirmed / qualified / waitlisted) — read-only for admin;
+  //    set by judges during evaluation. ────────────────────────────────────────
+
+  const statusCounts = useMemo(() => {
+    const c = { qualified: 0, waitlist: 0, not_qualified: 0, unset: 0 }
+    for (const t of teams) {
+      if (t.juryStatus === 'qualified') c.qualified++
+      else if (t.juryStatus === 'waitlist') c.waitlist++
+      else if (t.juryStatus === 'not_qualified') c.not_qualified++
+      else c.unset++
+    }
+    return c
+  }, [teams])
+
+  const statusTeams = useMemo(() => {
+    const q = statusSearch.trim().toLowerCase()
+    let list = teams
+    if (statusFilter === 'unset') list = list.filter((t) => !t.juryStatus)
+    else if (statusFilter !== 'all') list = list.filter((t) => t.juryStatus === statusFilter)
+    if (q) list = list.filter((t) => `${t.name || ''} ${t.inviteCode || ''} ${t.id}`.toLowerCase().includes(q))
+    return [...list].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
+  }, [teams, statusFilter, statusSearch])
+
   if (loading) return <Skeleton className="h-80 w-full rounded-2xl" />
 
   return (
@@ -266,6 +337,83 @@ export function AdminJuryPage() {
           {msg}
         </div>
       ) : null}
+
+      {/* Team status management */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-ink-900">Team status</h2>
+            <p className="mt-1 text-sm text-ink-600">
+              Teams marked <strong>Confirmed</strong>, <strong>Qualified</strong>, or <strong>Waitlisted</strong> by the
+              judges. This view is read-only — statuses are set by judges during evaluation.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="success">{statusCounts.qualified} qualified</Badge>
+            <Badge tone="warn">{statusCounts.waitlist} waitlist</Badge>
+            <Badge tone="danger">{statusCounts.not_qualified} not qualified</Badge>
+            <Badge tone="neutral">{statusCounts.unset} unset</Badge>
+          </div>
+        </div>
+
+        {/* Filter chips */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'qualified', label: 'Qualified' },
+            { id: 'waitlist', label: 'Waitlist' },
+            { id: 'not_qualified', label: 'Not Qualified' },
+            { id: 'unset', label: 'Unset' },
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setStatusFilter(f.id)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                statusFilter === f.id ? 'bg-brand-500 text-white' : 'bg-[rgb(var(--surface-muted))] text-ink-600 hover:bg-[rgb(var(--border))]'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <input
+            value={statusSearch}
+            onChange={(e) => setStatusSearch(e.target.value)}
+            placeholder="Search team by name or code…"
+            className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+        </div>
+
+        {teams.length === 0 ? (
+          <p className="mt-4 text-sm text-ink-500">No teams found yet.</p>
+        ) : statusTeams.length === 0 ? (
+          <p className="mt-4 text-sm text-ink-500">No teams match this filter.</p>
+        ) : (
+          <div className="mt-4 max-h-[34rem] space-y-2 overflow-y-auto rounded-xl border border-[rgb(var(--border))] p-3">
+            {statusTeams.map((t) => (
+              <div key={t.id} className="flex flex-col gap-2 rounded-xl border border-[rgb(var(--border))] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <span className="truncate text-sm font-medium text-ink-900">{t.name || 'Unnamed team'}</span>
+                  <p className="text-xs text-ink-500">
+                    <span className="font-mono">{t.inviteCode || t.id.slice(0, 6)}</span>
+                    {t.problemStatementId ? <span> · PS <span className="font-mono">{t.problemStatementId}</span></span> : ''}
+                  </p>
+                </div>
+                {t.juryStatus ? (
+                  <Badge tone={JURY_STATUS_TONE[t.juryStatus] || 'neutral'} className="shrink-0 text-xs">{JURY_STATUS_LABEL[t.juryStatus] || t.juryStatus}</Badge>
+                ) : (
+                  <Badge tone="neutral" className="shrink-0 text-xs">Unset</Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* Judge selector */}
       <Card>
@@ -312,7 +460,10 @@ export function AdminJuryPage() {
               {(selectedJudge.assignedProblemStatementIds || []).map((psId) => (
                 <Badge key={psId} tone="neutral" className="font-mono text-[10px]">{psId}</Badge>
               ))}
-              {!selectedJudge.judgeAssignments?.length && !selectedJudge.assignedProblemStatementIds?.length ? (
+              {assignedTeamsForJudge.map((t) => (
+                <Badge key={t.id} tone="success" className="text-[10px]">Team: {t.name || t.id}</Badge>
+              ))}
+              {!selectedJudge.judgeAssignments?.length && !selectedJudge.assignedProblemStatementIds?.length && assignedTeamsForJudge.length === 0 ? (
                 <span className="text-xs text-ink-500">No assignments yet</span>
               ) : null}
             </div>
@@ -327,6 +478,7 @@ export function AdminJuryPage() {
             tabs={[
               { id: 'domain', label: 'By Domain + Track', icon: Tag },
               { id: 'ps', label: 'By Problem Statement', icon: BookOpen },
+              { id: 'team', label: 'By Team', icon: Users },
             ]}
             activeTab={activeTab}
             onChange={setActiveTab}
@@ -467,6 +619,61 @@ export function AdminJuryPage() {
               </div>
             </div>
           ) : null}
+
+          {/* ── Direct team assignment ── */}
+          {activeTab === 'team' ? (
+            <div className="mt-6 space-y-4">
+              <p className="text-sm text-ink-600">
+                Assign this judge directly to specific teams. The judge can then evaluate those teams
+                regardless of problem statement or domain/track. Changes save immediately.
+              </p>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                <input
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Search team by name or code…"
+                  className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+
+              {teams.length === 0 ? (
+                <p className="text-sm text-ink-500">No teams found yet.</p>
+              ) : (
+                <div className="max-h-[32rem] space-y-2 overflow-y-auto rounded-xl border border-[rgb(var(--border))] p-3">
+                  {filteredTeams.map((t) => {
+                    const assigned = Array.isArray(t.judgeIds) && t.judgeIds.includes(judgeId)
+                    return (
+                      <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-[rgb(var(--border))] p-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink-900">{t.name || 'Unnamed team'}</p>
+                          <p className="text-xs text-ink-500">
+                            <span className="font-mono">{t.inviteCode || t.id.slice(0, 6)}</span>
+                            {t.problemStatementId ? <span> · PS <span className="font-mono">{t.problemStatementId}</span></span> : ' · no PS selected'}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={assigned ? 'secondary' : 'primary'}
+                          disabled={saving}
+                          className="shrink-0"
+                          onClick={() => void toggleTeamAssign(t.id)}
+                        >
+                          {assigned ? 'Assigned ✓ — Remove' : 'Assign'}
+                        </Button>
+                      </div>
+                    )
+                  })}
+                  {filteredTeams.length === 0 ? (
+                    <p className="px-1 py-2 text-sm text-ink-500">No teams match your search.</p>
+                  ) : null}
+                </div>
+              )}
+              <p className="text-xs text-ink-400">{assignedTeamsForJudge.length} team(s) directly assigned to this judge.</p>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
@@ -479,6 +686,7 @@ export function AdminJuryPage() {
               const dtAssignments = judge.judgeAssignments || []
               const psAssignments = judge.assignedProblemStatementIds || []
               const assignedPs = problems.filter((p) => psAssignments.includes(p.id))
+              const assignedTeams = teams.filter((t) => Array.isArray(t.judgeIds) && t.judgeIds.includes(judge.id))
 
               return (
                 <div
@@ -519,7 +727,19 @@ export function AdminJuryPage() {
                         </div>
                       ) : null}
 
-                      {dtAssignments.length === 0 && assignedPs.length === 0 ? (
+                      {/* Directly assigned teams */}
+                      {assignedTeams.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 mb-1.5">Direct teams</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {assignedTeams.map((t) => (
+                              <Badge key={t.id} tone="success" className="text-[10px]">{t.name || t.id}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {dtAssignments.length === 0 && assignedPs.length === 0 && assignedTeams.length === 0 ? (
                         <p className="mt-1 text-xs text-ink-500">No assignments</p>
                       ) : null}
                     </div>

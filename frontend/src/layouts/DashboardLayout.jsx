@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Target, Bell, Settings, Menu, X, ChevronLeft, ChevronRight,
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
-  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image,
+  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image, Trophy,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -57,6 +57,7 @@ const nav = {
     { to: '/admin/mentors', label: 'Mentor Management', icon: Handshake },
     { to: '/admin/evaluations', label: 'Evaluations', icon: ClipboardCheck },
     { to: '/admin/shortlisting', label: 'Shortlisting', icon: Star },
+    { to: '/admin/results', label: 'Results', icon: Trophy },
     { group: 'Operations' },
     { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
     { to: '/admin/timeline', label: 'Timeline', icon: Clock },

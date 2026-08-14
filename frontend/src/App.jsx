@@ -91,6 +91,12 @@ const AdminMentorsPage = lazy(() =>
 const AdminEvaluationsPage = lazy(() =>
   import('@/pages/admin/AdminEvaluationsPage.jsx').then((m) => ({ default: m.AdminEvaluationsPage })),
 )
+const AdminJudgeEvaluationsPage = lazy(() =>
+  import('@/pages/admin/AdminJudgeEvaluationsPage.jsx').then((m) => ({ default: m.AdminJudgeEvaluationsPage })),
+)
+const AdminResultsPage = lazy(() =>
+  import('@/pages/admin/AdminResultsPage.jsx').then((m) => ({ default: m.AdminResultsPage })),
+)
 const AdminShortlistingPage = lazy(() =>
   import('@/pages/admin/AdminShortlistingPage.jsx').then((m) => ({ default: m.AdminShortlistingPage })),
 )
@@ -371,6 +377,8 @@ export default function App() {
             <Route path="/admin/jury" element={<AdminJuryPage />} />
             <Route path="/admin/mentors" element={<AdminMentorsPage />} />
             <Route path="/admin/evaluations" element={<AdminEvaluationsPage />} />
+            <Route path="/admin/evaluations/judge/:judgeId" element={<AdminJudgeEvaluationsPage />} />
+            <Route path="/admin/results" element={<AdminResultsPage />} />
             <Route path="/admin/shortlisting" element={<AdminShortlistingPage />} />
             <Route path="/admin/phases" element={<AdminPhasesPage />} />
             <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />

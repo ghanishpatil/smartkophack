@@ -75,6 +75,8 @@ export function JudgeTeamReviewPage() {
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [lastAutosave, setLastAutosave] = useState(null)
+  const [juryStatus, setJuryStatus] = useState('')
+  const [statusBusy, setStatusBusy] = useState(false)
 
   usePageSeo({ title: 'Team review', description: 'Scoped jury evaluation.' })
 
@@ -87,6 +89,7 @@ export function JudgeTeamReviewPage() {
     try {
       const data = await api.judgeTeamReview(teamId)
       setTeam(data.team)
+      setJuryStatus(data.team?.juryStatus || '')
       setProblemStatement(data.problemStatement)
       setSubmission(data.submission)
       setEvaluation(data.evaluation)
@@ -139,13 +142,31 @@ export function JudgeTeamReviewPage() {
   async function submitFinal() {
     if (!teamId || !canEdit) return
     setMsg('')
+    if (!juryStatus) {
+      setMsg('Please set the team status (Qualified / Waitlist / Not Qualified) before submitting.')
+      return
+    }
     try {
-      await api.submitEvaluation({ teamId, scores: buildScoresPayload(criteria, scores), feedback, draft: false })
+      await api.submitEvaluation({ teamId, scores: buildScoresPayload(criteria, scores), feedback, draft: false, status: juryStatus })
       dirty.current = false
       setMsg('Evaluation submitted. Thank you.')
       await load()
     } catch (e) {
       setMsg(e.message || 'Submit failed')
+    }
+  }
+
+  async function updateJuryStatus(next) {
+    if (!teamId) return
+    setStatusBusy(true)
+    setMsg('')
+    try {
+      const res = await api.judgeSetTeamStatus({ teamId, status: next || 'none' })
+      setJuryStatus(res?.juryStatus || '')
+    } catch (e) {
+      setMsg(e.message || 'Could not update team status')
+    } finally {
+      setStatusBusy(false)
     }
   }
 
@@ -208,6 +229,31 @@ export function JudgeTeamReviewPage() {
             </Badge>
             <Badge tone={uiStatus === 'submitted' ? 'success' : uiStatus === 'locked' ? 'warn' : 'brand'}>{uiStatus}</Badge>
             {!edition?.evaluationOpen ? <Badge tone="warn">Evaluations closed</Badge> : null}
+          </div>
+
+          {/* Team status — required before submitting (Qualified / Waitlist / Not Qualified). */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+              Team status <span className="text-red-500">*</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
+                const active = juryStatus === val
+                return (
+                  <Button
+                    key={val}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'primary' : 'secondary'}
+                    disabled={statusBusy || !canEdit}
+                    onClick={() => updateJuryStatus(active ? '' : val)}
+                  >
+                    {label}{active ? ' ✓' : ''}
+                  </Button>
+                )
+              })}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">Required before you can submit your evaluation.</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
@@ -426,11 +472,14 @@ export function JudgeTeamReviewPage() {
                 <Save className="h-4 w-4" />
                 Save draft now
               </Button>
-              <Button variant="primary" type="button" disabled={!canEdit} className="gap-2" onClick={submitFinal}>
+              <Button variant="primary" type="button" disabled={!canEdit || !juryStatus} className="gap-2" onClick={submitFinal}>
                 <Send className="h-4 w-4" />
                 Submit final
               </Button>
             </div>
+            {canEdit && !juryStatus ? (
+              <p className="mt-2 text-xs text-amber-600">Set the team status above (Qualified / Waitlist / Not Qualified) to enable submission.</p>
+            ) : null}
           </Card>
         </div>
       </div>
