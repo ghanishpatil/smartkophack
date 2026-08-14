@@ -237,6 +237,39 @@ export function AdminReportsPage() {
     ])
   }
 
+  // Download the whole report as PDF. Clones the report into a clean print
+  // window (with the app's stylesheets + already-rendered SVG charts) so it
+  // paginates across multiple pages — avoids the app layout's fixed-height /
+  // overflow containers that would otherwise clip printing to a single page.
+  function downloadReportPdf() {
+    const node = document.getElementById('report-root')
+    if (!node) { window.print(); return }
+    const win = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900')
+    if (!win) { window.print(); return } // popup blocked — fall back
+
+    const head = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((el) => el.outerHTML)
+      .join('\n')
+
+    win.document.open()
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8" />
+      <title>SKH — Analytics Report</title>
+      ${head}
+      <style>
+        html,body{background:#fff!important;margin:0;padding:0}
+        #report-root{padding:20px!important}
+        .no-print{display:none!important}
+        @page{size:A4;margin:12mm}
+      </style>
+    </head><body>${node.outerHTML}</body></html>`)
+    win.document.close()
+
+    // Give the cloned stylesheets/fonts a moment to load before printing.
+    const trigger = () => { try { win.focus(); win.print() } catch { /* ignore */ } }
+    if (win.document.readyState === 'complete') setTimeout(trigger, 600)
+    else win.onload = () => setTimeout(trigger, 300)
+  }
+
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
 
   const funnel = stats?.registrationFunnel
@@ -244,18 +277,6 @@ export function AdminReportsPage() {
 
   return (
     <div id="report-root" className="w-full space-y-8">
-      {/* Print styles — when printing, show ONLY the report and hide app chrome.
-          The "Download PDF" button triggers the browser's print-to-PDF. */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          #report-root, #report-root * { visibility: visible !important; }
-          #report-root { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
-          .no-print { display: none !important; }
-          @page { size: A4; margin: 12mm; }
-        }
-      `}</style>
-
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -266,7 +287,7 @@ export function AdminReportsPage() {
         </div>
         <div className="no-print flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={load}>Refresh</Button>
-          <Button size="sm" className="gap-1.5" onClick={() => window.print()}>
+          <Button size="sm" className="gap-1.5" onClick={downloadReportPdf}>
             <Download className="h-4 w-4" /> Download PDF
           </Button>
         </div>
