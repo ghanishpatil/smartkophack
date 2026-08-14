@@ -237,37 +237,117 @@ export function AdminReportsPage() {
     ])
   }
 
-  // Download the whole report as PDF. Clones the report into a clean print
-  // window (with the app's stylesheets + already-rendered SVG charts) so it
-  // paginates across multiple pages — avoids the app layout's fixed-height /
-  // overflow containers that would otherwise clip printing to a single page.
+  // Download a professional, page-aligned PDF of the report. Clones the report
+  // (with the app stylesheets + already-rendered SVG charts) into a clean print
+  // window, adds a branded header, keeps each card/chart from splitting across
+  // pages, and appends an Overall Summary at the end.
   function downloadReportPdf() {
     const node = document.getElementById('report-root')
     if (!node) { window.print(); return }
-    const win = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900')
-    if (!win) { window.print(); return } // popup blocked — fall back
 
     const head = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
       .map((el) => el.outerHTML)
       .join('\n')
 
-    win.document.open()
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8" />
-      <title>SKH — Analytics Report</title>
+    const origin = window.location.origin
+    const generated = new Date().toLocaleString('en-IN')
+    const num = (v) => (v == null ? '0' : String(v))
+    const topDomain = domainDistribution.rows[0]
+    const topTrack = trackDistribution.rows[0]
+    const eligible = stats?.submissionsEligibleTeams || 0
+    const completionPct = eligible > 0 ? Math.round((submissionStats.finalized / eligible) * 100) : 0
+
+    const row = (label, value) => `<tr><td>${label}</td><td>${value}</td></tr>`
+    const summaryHtml = `
+      <section class="pdf-summary">
+        <h2>Overall Summary</h2>
+        <table>
+          ${row('Total teams', num(stats?.teamsTotal))}
+          ${row('Registered', num(stats?.teamsRegistered))}
+          ${row('Payments pending', num(stats?.paymentsPending))}
+          ${row('Shortlisted teams', num(stats?.shortlistedTeams))}
+          ${row('Jury members', num(stats?.judgeCount))}
+          ${row('Submissions — finalized', num(submissionStats.finalized))}
+          ${row('Submissions — in progress', num(submissionStats.inProgress))}
+          ${row('Submissions — not started', num(submissionStats.notStarted))}
+          ${row('Submission completion rate', `${completionPct}%`)}
+          ${row('Evaluation coverage', stats?.evaluationCompletionPct != null ? `${stats.evaluationCompletionPct}%` : '—')}
+          ${row('Teams that selected a problem statement', num(domainDistribution.totalWithPs))}
+          ${topDomain ? row('Most popular domain', `${topDomain.domain} (${topDomain.count})`) : ''}
+          ${topTrack ? row('Most popular track', `${topTrack.track} (${topTrack.count})`) : ''}
+        </table>
+      </section>`
+
+    const docHtml = `<!doctype html><html><head><meta charset="utf-8" />
+      <title>SKH Analytics Report</title>
       ${head}
       <style>
-        html,body{background:#fff!important;margin:0;padding:0}
-        #report-root{padding:20px!important}
-        .no-print{display:none!important}
-        @page{size:A4;margin:12mm}
+        *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; box-shadow:none !important; }
+        html,body{ background:#fff !important; margin:0; padding:0; color:#0f172a; font-family:'Inter',Arial,sans-serif; }
+        .pdf-wrap{ padding:24px; }
+        .pdf-header{ display:flex; align-items:center; gap:14px; border-bottom:3px solid #185983; padding-bottom:14px; margin-bottom:22px; }
+        .pdf-header img{ height:46px; width:46px; object-fit:contain; }
+        .pdf-h1{ font-size:22px; font-weight:800; margin:0; }
+        .pdf-sub{ font-size:12px; color:#64748b; margin:2px 0 0; }
+        .no-print{ display:none !important; }
+        /* Drop the in-app page header (title row + buttons) — replaced by pdf-header */
+        #report-root > div:first-child{ display:none !important; }
+        #report-root{ padding:0 !important; }
+        /* Keep each card & chart on a single page */
+        #report-root .rounded-2xl, #report-root .rounded-xl,
+        .recharts-wrapper, .recharts-responsive-container{
+          break-inside:avoid !important; page-break-inside:avoid !important;
+        }
+        .pdf-summary{ margin-top:26px; break-inside:avoid; page-break-inside:avoid; }
+        .pdf-summary h2{ font-size:18px; font-weight:800; border-left:5px solid #185983; padding-left:10px; margin:0 0 12px; }
+        .pdf-summary table{ width:100%; border-collapse:collapse; font-size:13px; }
+        .pdf-summary td{ border:1px solid #e2e8f0; padding:8px 12px; }
+        .pdf-summary td:first-child{ color:#475569; width:60%; }
+        .pdf-summary td:last-child{ font-weight:700; text-align:right; }
+        .pdf-foot{ margin-top:22px; text-align:center; font-size:11px; color:#94a3b8; }
+        @page{ size:A4; margin:12mm; }
       </style>
-    </head><body>${node.outerHTML}</body></html>`)
-    win.document.close()
+    </head><body>
+      <div class="pdf-wrap">
+        <div class="pdf-header">
+          <img src="${origin}/logo.png" alt="SKH" />
+          <div>
+            <p class="pdf-h1">Smart Kopargaon Hackathon — Analytics Report</p>
+            <p class="pdf-sub">Generated ${generated}</p>
+          </div>
+        </div>
+        ${node.outerHTML}
+        ${summaryHtml}
+        <p class="pdf-foot">Confidential — generated from the SKH admin dashboard.</p>
+      </div>
+    </body></html>`
 
-    // Give the cloned stylesheets/fonts a moment to load before printing.
-    const trigger = () => { try { win.focus(); win.print() } catch { /* ignore */ } }
-    if (win.document.readyState === 'complete') setTimeout(trigger, 600)
-    else win.onload = () => setTimeout(trigger, 300)
+    // Use a hidden iframe (NOT a popup — popups get blocked, which caused the
+    // whole app page to print instead). The iframe prints only the report.
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+    document.body.appendChild(iframe)
+
+    const cleanup = () => { try { iframe.remove() } catch { /* ignore */ } }
+    const trigger = () => {
+      try {
+        const w = iframe.contentWindow
+        w.focus()
+        w.print()
+      } catch { /* ignore */ }
+      // Remove after the print dialog is handled.
+      setTimeout(cleanup, 1500)
+    }
+
+    const idoc = iframe.contentWindow.document
+    idoc.open()
+    idoc.write(docHtml)
+    idoc.close()
+
+    // Wait for the cloned stylesheets/fonts/images to load, then print.
+    if (iframe.contentWindow.document.readyState === 'complete') setTimeout(trigger, 800)
+    else iframe.onload = () => setTimeout(trigger, 500)
   }
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
