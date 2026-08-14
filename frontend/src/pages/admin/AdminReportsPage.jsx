@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { Download } from 'lucide-react'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
@@ -242,7 +243,19 @@ export function AdminReportsPage() {
   const maxFunnel = funnel?.teamsTotal || stats?.teamsTotal || 1
 
   return (
-    <div className="w-full space-y-8">
+    <div id="report-root" className="w-full space-y-8">
+      {/* Print styles — when printing, show ONLY the report and hide app chrome.
+          The "Download PDF" button triggers the browser's print-to-PDF. */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #report-root, #report-root * { visibility: visible !important; }
+          #report-root { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
+          .no-print { display: none !important; }
+          @page { size: A4; margin: 12mm; }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -251,7 +264,12 @@ export function AdminReportsPage() {
             Real-time insights across registration, payments, submissions, and evaluations.
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={load}>Refresh</Button>
+        <div className="no-print flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={load}>Refresh</Button>
+          <Button size="sm" className="gap-1.5" onClick={() => window.print()}>
+            <Download className="h-4 w-4" /> Download PDF
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics Row */}

@@ -74,7 +74,21 @@ export function AdminSubmissionsPage() {
     const teamMap = new Map(teams.map((t) => [t.id, t]))
     return subs.map((s) => {
       const team = teamMap.get(s.teamId)
-      return { ...s, teamName: team?.name || '', problemStatementId: team?.problemStatementId || s.problemStatementId || '' }
+      // Current lock state is the source of truth: an admin unlock (e.g. for
+      // the next round) reopens editing even though status/finalizedAt persist.
+      const submissionLocked = Boolean(team?.submissionLocked)
+      // Effective status: locked => submitted; unlocked => draft (reopened),
+      // even if the stored status is still 'submitted' from a prior finalize.
+      const effectiveStatus = submissionLocked
+        ? 'submitted'
+        : (s.status === 'submitted' ? 'draft' : (s.status || 'draft'))
+      return {
+        ...s,
+        teamName: team?.name || '',
+        problemStatementId: team?.problemStatementId || s.problemStatementId || '',
+        submissionLocked,
+        effectiveStatus,
+      }
     })
   }, [subs, teams])
 
@@ -88,7 +102,7 @@ export function AdminSubmissionsPage() {
         header: 'ID',
         cell: (i) => <span className="font-mono text-[11px] text-ink-500">{String(i.getValue()).slice(0, 8)}…</span>,
       }),
-      col.accessor('status', {
+      col.accessor('effectiveStatus', {
         header: 'Status',
         cell: (i) => {
           const s = String(i.getValue() || 'draft')
@@ -119,9 +133,12 @@ export function AdminSubmissionsPage() {
           )
         },
       }),
-      col.accessor('finalizedAt', {
+      col.display({
+        id: 'finalized',
         header: 'Finalized',
-        cell: (i) => (i.getValue() ? <Badge tone="success">Yes</Badge> : <Badge tone="neutral">No</Badge>),
+        cell: ({ row }) => (row.original.submissionLocked
+          ? <Badge tone="success">Yes</Badge>
+          : <Badge tone="neutral">No</Badge>),
       }),
       col.display({
         id: 'actions',
@@ -138,7 +155,7 @@ export function AdminSubmissionsPage() {
 
   // Stats
   const totalSubs = enrichedSubs.length
-  const finalized = enrichedSubs.filter((s) => s.status === 'submitted' || s.finalizedAt).length
+  const finalized = enrichedSubs.filter((s) => s.submissionLocked).length
   const drafts = totalSubs - finalized
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -157,12 +174,12 @@ export function AdminSubmissionsPage() {
           `submissions-${Date.now()}.csv`, enrichedSubs, [
             { header: 'Team Name', accessor: (r) => r.teamName },
             { header: 'Team ID', accessor: (r) => r.teamId },
-            { header: 'Status', accessor: (r) => r.status || 'draft' },
+            { header: 'Status', accessor: (r) => r.effectiveStatus || r.status || 'draft' },
             { header: 'PPT', accessor: (r) => r.pptUrl || '' },
             { header: 'PDF', accessor: (r) => r.pdfUrl || '' },
             { header: 'Video', accessor: (r) => r.videoUrl || '' },
             { header: 'GitHub', accessor: (r) => r.githubUrl || '' },
-            { header: 'Finalized', accessor: (r) => r.finalizedAt ? 'Yes' : 'No' },
+            { header: 'Finalized', accessor: (r) => r.submissionLocked ? 'Yes' : 'No' },
             { header: 'Version', accessor: (r) => r.currentVersion || 1 },
           ]
         )}>
@@ -213,11 +230,15 @@ function SubmissionDetail({ sub }) {
     <div className="space-y-5">
       {/* Status */}
       <div className="flex items-center gap-3">
-        <Badge tone={sub.status === 'submitted' ? 'success' : 'warn'} className="gap-1">
-          {sub.status === 'submitted' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-          {sub.status || 'draft'}
+        <Badge tone={(sub.effectiveStatus || sub.status) === 'submitted' ? 'success' : 'warn'} className="gap-1">
+          {(sub.effectiveStatus || sub.status) === 'submitted' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+          {sub.effectiveStatus || sub.status || 'draft'}
         </Badge>
-        {sub.finalizedAt && <span className="text-xs text-ink-500">Finalized</span>}
+        {sub.submissionLocked
+          ? <span className="text-xs font-medium text-emerald-600">Finalized &amp; locked</span>
+          : sub.finalizedAt
+            ? <span className="text-xs text-amber-600">Reopened (unlocked)</span>
+            : null}
         {sub.currentVersion && <Badge tone="neutral">v{sub.currentVersion}</Badge>}
       </div>
 

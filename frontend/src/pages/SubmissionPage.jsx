@@ -110,7 +110,10 @@ export function SubmissionPage() {
     return () => { cancelled = true }
   }, [teamId, api])
 
-  const locked = teamLocked || Boolean(sub?.finalizedAt)
+  // Locked strictly reflects the team's current lock flag. Finalizing sets
+  // submissionLocked=true; when an admin unlocks (e.g. for the next round) it
+  // becomes false again — so we must NOT also lock on the stale finalizedAt.
+  const locked = teamLocked
   const progress = submissionCompleteness(sub)
 
   // Phase-aware logic
@@ -210,7 +213,7 @@ export function SubmissionPage() {
     }
   }
 
-  // Demo video is submitted as a YouTube link (not a file upload).
+  // Demo video is submitted as a link (YouTube or Google Drive), not a file.
   async function saveVideoLink() {
     if (!teamId || !user) return
     if (locked) { setStatus('Submission is locked.'); return }
@@ -223,8 +226,8 @@ export function SubmissionPage() {
       return
     }
     const trimmed = videoUrl.trim()
-    if (trimmed && !/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)\//i.test(trimmed)) {
-      setStatus('Please enter a valid YouTube link (youtube.com or youtu.be).')
+    if (trimmed && !/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com|drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com)\//i.test(trimmed)) {
+      setStatus('Please enter a valid YouTube or Google Drive link.')
       return
     }
     setStatus('')
@@ -481,7 +484,7 @@ export function SubmissionPage() {
                   </div>
                   <div>
                     <h3 className="font-display text-sm font-bold text-ink-900">Demo Video</h3>
-                    <p className="text-[11px] text-ink-500">Paste your YouTube video link</p>
+                    <p className="text-[11px] text-ink-500">Paste a YouTube or Google Drive link</p>
                   </div>
                 </div>
                 <Badge tone="danger" className="text-[9px]">Required</Badge>
@@ -491,11 +494,11 @@ export function SubmissionPage() {
                   <CheckCircle className="h-3.5 w-3.5" /> Saved
                 </div>
               ) : null}
-              <Input className="mt-4" value={videoUrl} disabled={uploadsDisabled} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+              <Input className="mt-4" value={videoUrl} disabled={uploadsDisabled} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=…  or  https://drive.google.com/…" />
               <Button variant="secondary" className="mt-3 w-full gap-2" disabled={uploadsDisabled} onClick={saveVideoLink}>
                 <Video className="h-4 w-4" /> Save Video Link
               </Button>
-              <p className="mt-2 text-[11px] text-ink-400">Upload your demo to YouTube (public or unlisted), then paste the link here.</p>
+              <p className="mt-2 text-[11px] text-ink-400">Upload your demo to YouTube (public/unlisted) or Google Drive (set sharing to “Anyone with the link”), then paste the link here.</p>
             </div>
           </div>
         )}

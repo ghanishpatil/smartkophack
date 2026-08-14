@@ -50,7 +50,7 @@ const TRANSITIONS = {
 const REQUIREMENT_KEYS = [
   { key: 'pptRequired', label: 'PPT Slides' },
   { key: 'pdfRequired', label: 'PDF Document' },
-  { key: 'videoRequired', label: 'Demo Video (YouTube link)' },
+  { key: 'videoRequired', label: 'Demo Video (YouTube / Drive link)' },
   { key: 'githubRequired', label: 'GitHub Repository' },
   { key: 'deployedUrlRequired', label: 'Deployed URL' },
 ]

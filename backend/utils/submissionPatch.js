@@ -79,16 +79,19 @@ function assertStorageUrl(fieldName, value, teamId) {
   return s
 }
 
-// Allowed hosts for the demo video link. The video is now submitted as a
-// YouTube link (not an uploaded file), so restrict to YouTube domains — this
+// Allowed hosts for the demo video link. The video is submitted as a link
+// (not an uploaded file) — either a YouTube link or a Google Drive link. This
 // keeps it safe from arbitrary external URLs while allowing the common formats.
-const YOUTUBE_HOSTS = new Set([
+const VIDEO_LINK_HOSTS = new Set([
+  // YouTube
   'youtube.com', 'www.youtube.com', 'm.youtube.com',
   'youtu.be', 'www.youtu.be',
   'youtube-nocookie.com', 'www.youtube-nocookie.com',
+  // Google Drive
+  'drive.google.com', 'docs.google.com', 'drive.usercontent.google.com',
 ])
 
-function assertYouTubeUrl(fieldName, value) {
+function assertVideoUrl(fieldName, value) {
   if (value == null || value === '') return ''
   const s = String(value).trim().slice(0, MAX_URL_LEN)
   if (!s) return ''
@@ -110,8 +113,8 @@ function assertYouTubeUrl(fieldName, value) {
     e.status = 400
     throw e
   }
-  if (!YOUTUBE_HOSTS.has(u.hostname.toLowerCase())) {
-    const e = new Error('Demo video must be a YouTube link (youtube.com or youtu.be)')
+  if (!VIDEO_LINK_HOSTS.has(u.hostname.toLowerCase())) {
+    const e = new Error('Demo video must be a YouTube or Google Drive link')
     e.status = 400
     throw e
   }
@@ -160,8 +163,8 @@ export function normalizeSubmissionPatch(patch, teamId = null) {
   // File uploads — must be Firebase Storage URLs scoped to this team
   if ('pptUrl' in patch) safe.pptUrl = assertStorageUrl('pptUrl', patch.pptUrl, teamId)
   if ('pdfUrl' in patch) safe.pdfUrl = assertStorageUrl('pdfUrl', patch.pdfUrl, teamId)
-  // Demo video is now a YouTube link (not an uploaded file).
-  if ('videoUrl' in patch) safe.videoUrl = assertYouTubeUrl('videoUrl', patch.videoUrl)
+  // Demo video is a link (not an uploaded file) — YouTube or Google Drive.
+  if ('videoUrl' in patch) safe.videoUrl = assertVideoUrl('videoUrl', patch.videoUrl)
   // External links — any valid https URL is fine
   if ('githubUrl' in patch) safe.githubUrl = assertHttpsUrl('githubUrl', patch.githubUrl)
   if ('deployedUrl' in patch) safe.deployedUrl = assertHttpsUrl('deployedUrl', patch.deployedUrl)
