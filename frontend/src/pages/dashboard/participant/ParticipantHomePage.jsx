@@ -89,7 +89,11 @@ export function ParticipantHomePage() {
     loading, error, eventId, paymentLabel, reload,
   } = useParticipantWorkspace()
 
-  const { items: announcements, loading: annLoading } = useAnnouncements(4, { eventId, participantFeed: true })
+  const isRegisteredLeader = Boolean(
+    team && user && team.leaderId === user.uid &&
+    (team.eventRegistered === true || team.registrationStatus === 'registered'),
+  )
+  const { items: announcements, loading: annLoading } = useAnnouncements(4, { eventId, participantFeed: true, isRegisteredLeader })
 
   const [copiedId, setCopiedId] = useState(false)
   async function copyTeamId() {

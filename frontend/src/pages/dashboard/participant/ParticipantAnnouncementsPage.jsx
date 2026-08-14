@@ -2,6 +2,7 @@ import { formatDate } from '@/utils/format.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useEvent } from '@/context/EventContext.jsx'
 import { useAnnouncements } from '@/hooks/useAnnouncements.js'
+import { useParticipantWorkspace } from '@/hooks/useParticipantWorkspace.js'
 import { SectionHeading } from '@/components/ui/SectionHeading.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
@@ -9,7 +10,12 @@ import { Badge } from '@/components/ui/Badge.jsx'
 export function ParticipantAnnouncementsPage() {
   usePageSeo({ title: 'Announcements', description: 'Official updates for your edition.' })
   const { eventId } = useEvent()
-  const { items, loading } = useAnnouncements(80, { eventId, participantFeed: true })
+  const { team, user } = useParticipantWorkspace()
+  const isRegisteredLeader = Boolean(
+    team && user && team.leaderId === user.uid &&
+    (team.eventRegistered === true || team.registrationStatus === 'registered'),
+  )
+  const { items, loading } = useAnnouncements(80, { eventId, participantFeed: true, isRegisteredLeader })
 
   const pinned = items.filter((a) => a.pinned)
   const rest = items.filter((a) => !a.pinned)

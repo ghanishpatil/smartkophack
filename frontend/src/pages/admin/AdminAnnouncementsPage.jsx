@@ -11,7 +11,15 @@ import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { ConfirmModal } from '@/components/admin/ConfirmModal.jsx'
 import { formatDate } from '@/utils/format.js'
 
-const AUDIENCES = ['all', 'participants', 'mentors', 'judges', 'admins']
+const AUDIENCES = ['all', 'participants', 'team_leaders', 'mentors', 'judges', 'admins']
+const AUDIENCE_LABELS = {
+  all: 'Everyone',
+  participants: 'Participants',
+  team_leaders: 'Registered Team Leaders',
+  mentors: 'Mentors',
+  judges: 'Judges',
+  admins: 'Admins',
+}
 
 export function AdminAnnouncementsPage() {
   usePageSeo({ title: 'Announcements', description: 'Create and manage announcements.' })
@@ -125,7 +133,7 @@ export function AdminAnnouncementsPage() {
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
             >
-              {AUDIENCES.map((a) => <option key={a} value={a}>{a}</option>)}
+              {AUDIENCES.map((a) => <option key={a} value={a}>{AUDIENCE_LABELS[a] || a}</option>)}
             </select>
           </div>
           <Button className="w-full gap-2" onClick={publish} disabled={busy || !title.trim() || !body.trim()} loading={busy}>
@@ -162,7 +170,7 @@ export function AdminAnnouncementsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-sm font-semibold text-ink-900">{a.title}</h3>
                       {a.pinned && <Badge tone="brand" className="text-[9px]"><Pin className="h-2.5 w-2.5" /> Pinned</Badge>}
-                      <Badge tone="neutral" className="text-[9px]">{a.audience || 'all'}</Badge>
+                      <Badge tone="neutral" className="text-[9px]">{AUDIENCE_LABELS[a.audience] || a.audience || 'all'}</Badge>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-ink-600">{a.body}</p>
                     <p className="mt-2 text-[10px] text-ink-400">{formatDate(a.createdAt)}</p>

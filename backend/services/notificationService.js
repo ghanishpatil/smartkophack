@@ -354,21 +354,50 @@ export async function notifySubmissionDeadlineReminders({ eventConfig, hoursLeft
 export async function notifyBroadcast({ title, message, link, eventId, audience = 'all' }) {
   try {
     const db = getDb()
-    let usersQuery = db.collection('users').limit(1000)
-    if (audience !== 'all') {
-      usersQuery = usersQuery.where('role', '==', audience === 'participants' ? 'participant' : audience)
-    }
-    const usersSnap = await usersQuery.get()
+    let eligible
 
-    // Filter eligible recipients
-    const eligible = usersSnap.docs
-      .map((doc) => doc.data())
-      .filter((user) => {
-        if (!user.email) return false
-        // If event-scoped, only notify users in that event
-        if (eventId && user.activeEventId && user.activeEventId !== eventId) return false
-        return true
-      })
+    if (audience === 'team_leaders') {
+      // Registered team leaders only: collect the leaderId of every registered
+      // team (optionally scoped to the event), then fetch those user docs for
+      // their emails. Leaders have the normal 'participant' role, so a role
+      // query cannot target them — we must go through the teams collection.
+      let teamsQuery = db.collection('teams').limit(2000)
+      if (eventId) teamsQuery = teamsQuery.where('eventId', '==', eventId)
+      const teamsSnap = await teamsQuery.get()
+      const leaderIds = new Set()
+      for (const d of teamsSnap.docs) {
+        const t = d.data()
+        const registered = t.eventRegistered === true || t.registrationStatus === 'registered'
+        if (registered && t.leaderId) leaderIds.add(t.leaderId)
+      }
+      const ids = [...leaderIds]
+      const leaders = []
+      for (let i = 0; i < ids.length; i += 300) {
+        const refs = ids.slice(i, i + 300).map((id) => db.doc(`users/${id}`))
+        if (refs.length === 0) continue
+        const snaps = await db.getAll(...refs)
+        for (const s of snaps) {
+          if (s.exists) leaders.push(s.data())
+        }
+      }
+      eligible = leaders.filter((u) => u && u.email)
+    } else {
+      let usersQuery = db.collection('users').limit(1000)
+      if (audience !== 'all') {
+        usersQuery = usersQuery.where('role', '==', audience === 'participants' ? 'participant' : audience)
+      }
+      const usersSnap = await usersQuery.get()
+
+      // Filter eligible recipients
+      eligible = usersSnap.docs
+        .map((doc) => doc.data())
+        .filter((user) => {
+          if (!user.email) return false
+          // If event-scoped, only notify users in that event
+          if (eventId && user.activeEventId && user.activeEventId !== eventId) return false
+          return true
+        })
+    }
 
     const tasks = eligible.map((user) =>
       sendAnnouncementEmail({

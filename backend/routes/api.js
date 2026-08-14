@@ -2728,7 +2728,7 @@ export function adminRouter() {
       title = String(title).trim().slice(0, 200)
       body = String(body).trim().slice(0, 50000)
       if (!title || !body) return res.status(400).json({ error: 'title and body required' })
-      const audAllowed = ['all', 'participants', 'mentors', 'judges', 'admins']
+      const audAllowed = ['all', 'participants', 'team_leaders', 'mentors', 'judges', 'admins']
       const aud = audAllowed.includes(String(audience)) ? audience : 'all'
       const evId = String(req.body?.eventId || req.eventId || '').trim()
       await db().collection('announcements').add({

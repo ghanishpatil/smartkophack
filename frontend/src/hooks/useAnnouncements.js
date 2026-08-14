@@ -7,6 +7,8 @@ export function useAnnouncements(max = 12, opts = null) {
   const eventId = opts && typeof opts === 'object' ? opts.eventId ?? null : null
   const participantFeed = opts && typeof opts === 'object' ? Boolean(opts.participantFeed) : false
   const juryFeed = opts && typeof opts === 'object' ? Boolean(opts.juryFeed) : false
+  // Only registered team leaders should see 'team_leaders'-scoped posts.
+  const isRegisteredLeader = opts && typeof opts === 'object' ? Boolean(opts.isRegisteredLeader) : false
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,7 +30,10 @@ export function useAnnouncements(max = 12, opts = null) {
         if (participantFeed) {
           rows = rows.filter((a) => {
             const aud = a.audience || 'all'
-            return aud === 'all' || aud === 'participants'
+            if (aud === 'all' || aud === 'participants') return true
+            // Registered-team-leader-only posts are visible only to leaders.
+            if (aud === 'team_leaders') return isRegisteredLeader
+            return false
           })
         }
         if (juryFeed) {
@@ -43,7 +48,7 @@ export function useAnnouncements(max = 12, opts = null) {
       () => setLoading(false),
     )
     return () => unsub()
-  }, [max, eventId, participantFeed, juryFeed])
+  }, [max, eventId, participantFeed, juryFeed, isRegisteredLeader])
 
   return { items, loading }
 }
