@@ -14,6 +14,21 @@ import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { ConfirmModal } from '@/components/admin/ConfirmModal.jsx'
 
+/**
+ * Convert a stored UTC ISO string into the local wall-clock `YYYY-MM-DDTHH:mm`
+ * value a <input type="datetime-local"> expects. Slicing the raw ISO string
+ * would show UTC time in a local-time field, shifting the displayed time by the
+ * browser's timezone offset and (on re-save) drifting the real deadline. This
+ * keeps the round-trip stable: UTC -> local for display, local -> UTC on change.
+ */
+function toLocalInputValue(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
 const PHASE_STATES = {
   DRAFT: 'DRAFT',
   UPCOMING: 'UPCOMING',
@@ -418,7 +433,7 @@ export function AdminPhasesPage() {
                       <input
                         type="datetime-local"
                         className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-3 py-2 text-sm"
-                        value={phase.startDate ? phase.startDate.slice(0, 16) : ''}
+                        value={toLocalInputValue(phase.startDate)}
                         onChange={(e) => updatePhase(idx, { startDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
                       />
                       <p className="mt-1 text-[10px] text-ink-400">Phase auto-activates on this date (local time)</p>
@@ -428,7 +443,7 @@ export function AdminPhasesPage() {
                       <input
                         type="datetime-local"
                         className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-3 py-2 text-sm"
-                        value={phase.deadline ? phase.deadline.slice(0, 16) : ''}
+                        value={toLocalInputValue(phase.deadline)}
                         onChange={(e) => updatePhase(idx, { deadline: e.target.value ? new Date(e.target.value).toISOString() : null })}
                       />
                       <p className="mt-1 text-[10px] text-ink-400">Submissions blocked after this time (local time)</p>
