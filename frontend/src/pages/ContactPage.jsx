@@ -134,8 +134,8 @@ export function ContactPage() {
               <div className="mt-4 space-y-3">
                 {COORDINATORS.coordinators.map((c, i) => (
                   <motion.a
-                    key={c.phone}
-                    href={`tel:+91${c.phone}`}
+                    key={c.email}
+                    href={`mailto:${c.email}`}
                     initial={{ opacity: 0, x: -12 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
@@ -143,11 +143,11 @@ export function ContactPage() {
                     className="flex items-center gap-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
-                      <Phone className="h-5 w-5" />
+                      <Mail className="h-5 w-5" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-ink-900">{c.name}</p>
-                      <p className="mt-0.5 text-sm text-ink-600">{c.role} · {c.phone}</p>
+                      <p className="mt-0.5 truncate text-sm text-ink-600">{c.role} · {c.email}</p>
                     </div>
                   </motion.a>
                 ))}

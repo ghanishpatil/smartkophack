@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage'
 import { Link } from 'react-router-dom'
-import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle, CheckCircle, ChevronDown } from 'lucide-react'
 import { storage } from '@/firebase/client.js'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -371,6 +371,106 @@ export function SubmissionPage() {
           )}
         </div>
       </div>
+
+      {/* ━━ Round 2 — Submission Guide (collapsible) ━━━━━━━━━━ */}
+      <details className="group rounded-2xl border border-brand-500/25 bg-brand-500/5 [&_summary::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none items-center gap-3 p-4">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-600">
+            <Upload className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="success" className="text-[10px]">Round 2 Open</Badge>
+              <h2 className="font-display text-sm font-bold text-ink-900">Round 2 — Submission Guide</h2>
+            </div>
+            <p className="mt-0.5 text-[11px] text-ink-500">What to submit &amp; how — tap to view details.</p>
+          </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
+        </summary>
+
+        <div className="space-y-3 px-4 pb-4">
+          <p className="text-xs text-ink-600">
+            Round 2 submission is open for all <strong>shortlisted teams</strong>. You may edit or replace your PPT,
+            and all other options below are open. Each team must submit these items before the deadline:
+          </p>
+
+          {/* Demo Video */}
+          <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+            <div className="flex items-center gap-2">
+              <Video className="h-3.5 w-3.5 text-blue-600" />
+              <p className="text-xs font-semibold text-ink-900">1. Prototype Demo Video</p>
+              <Badge tone="danger" className="text-[8px]">Required</Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-600">
+              Record a short video showing your working prototype. Upload it to <strong>YouTube</strong>
+              (Public/Unlisted) <strong>or Google Drive</strong> (share as &ldquo;Anyone with the link&rdquo;), then
+              paste the link in the <strong>Demo Video</strong> card below and Save.
+            </p>
+          </div>
+
+          {/* PDF */}
+          <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+            <div className="flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 text-red-600" />
+              <p className="text-xs font-semibold text-ink-900">2. Project Documentation</p>
+              <Badge tone="danger" className="text-[8px]">Required</Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-600">
+              Document your problem, solution, tech stack, implementation, results and future scope. Export as
+              <strong> PDF</strong> (max {Math.round(MAX_PDF_BYTES / (1024 * 1024))} MB) and upload it in the
+              <strong> PDF Document</strong> card below.
+            </p>
+          </div>
+
+          {/* GitHub */}
+          <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+            <div className="flex items-center gap-2">
+              <Github className="h-3.5 w-3.5 text-ink-700" />
+              <p className="text-xs font-semibold text-ink-900">3. GitHub Repository</p>
+              <Badge tone="danger" className="text-[8px]">Required</Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-600">
+              Push your complete source code to a GitHub repo. This is where <strong>judges review your code, commit
+              history and setup</strong> to verify your work is original and functional. Keep it <strong>public</strong>,
+              then paste the repo URL in the <strong>GitHub Repository</strong> card below and Save.
+            </p>
+          </div>
+
+          {/* PPT */}
+          <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+            <div className="flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 text-orange-600" />
+              <p className="text-xs font-semibold text-ink-900">Presentation (PPT)</p>
+              <Badge tone="warn" className="text-[8px]">Editable</Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-600">
+              Your Round 1 PPT carries forward. Edit or replace it before the deadline via the PPT card below.
+            </p>
+          </div>
+
+          {/* Window + outcome */}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-brand-500/20 bg-[rgb(var(--surface))] px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600">Submission Window</p>
+              <p className="mt-0.5 text-xs font-semibold text-ink-900">12 Aug 2026, 7:30 PM &rarr; 14 Aug 2026, 11:59 PM</p>
+              <p className="text-[10px] text-ink-500">Late submissions will not be accepted.</p>
+            </div>
+            <div className="rounded-lg border border-brand-500/20 bg-[rgb(var(--surface))] px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600">What&rsquo;s Next</p>
+              <p className="mt-0.5 text-xs font-semibold text-ink-900">Top 100 teams &rarr; offline Grand Finale</p>
+              <p className="text-[10px] text-ink-500">Selected from Round 2 submissions.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="text-[11px] text-amber-900">
+              <strong>Important:</strong> Cross-check all details and files, then click <strong>&ldquo;Finalize &amp;
+              Lock&rdquo;</strong>. Once locked, only an organizer can reopen it.
+            </p>
+          </div>
+        </div>
+      </details>
 
       {/* Alerts */}
       {locked && (

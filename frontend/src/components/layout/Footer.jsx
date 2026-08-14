@@ -141,16 +141,16 @@ export function Footer() {
                 </a>
               </li>
               {COORDINATORS.coordinators.map((c) => (
-                <li key={c.phone} className="flex gap-2.5 text-sm text-ink-400">
-                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                  <div>
+                <li key={c.email} className="flex gap-2.5 text-sm text-ink-400">
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
+                  <div className="min-w-0">
                     <a
                       className="font-medium text-ink-300 transition-colors hover:text-brand-400"
-                      href={`tel:+91${c.phone}`}
+                      href={`mailto:${c.email}`}
                     >
                       {c.name}
                     </a>
-                    <span className="block text-xs text-ink-500">{c.role} · {c.phone}</span>
+                    <span className="block break-all text-xs text-ink-500">{c.role} · {c.email}</span>
                   </div>
                 </li>
               ))}

@@ -11,8 +11,8 @@ export const APP = {
 // Student coordinators & team leaders — shown in the footer and Contact page.
 export const COORDINATORS = {
   coordinators: [
-    { name: 'Ashish Pardeshi', phone: '7498311334', role: 'Student Coordinator' },
-    { name: 'Avani Kulkarni', phone: '9356138851', role: 'Student Coordinator' },
+    { name: 'Ashish Pardeshi', email: 'ashish.pardeshi24@sanjivani.edu.in', role: 'Student Coordinator' },
+    { name: 'Avani Kulkarni', email: 'avani.kulkarni24@sanjivani.edu.in', role: 'Student Coordinator' },
   ],
   leaders: [
     { name: 'Atharva Deshmukh', phone: '7517647277' },
