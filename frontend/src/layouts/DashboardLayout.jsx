@@ -44,6 +44,7 @@ const nav = {
   ],
   admin: [
     { to: '/admin/overview', label: 'Overview', icon: LayoutDashboard, end: true },
+    { to: '/admin/search', label: 'Search Pro', icon: Search },
     { group: 'Management' },
     { to: '/admin/registrations', label: 'Registrations', icon: UserPlus },
     { to: '/admin/teams', label: 'Teams', icon: Users },

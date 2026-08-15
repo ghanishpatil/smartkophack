@@ -159,6 +159,9 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/mentors/assignments-overview'),
     adminTeams: (opts = {}) =>
       authReq(`/api/admin/teams${opts.all ? '?all=1' : ''}`),
+    // Search Pro: find any person (member/leader/judge/mentor) by name/email/phone.
+    adminSearch: (q) =>
+      authReq(`/api/admin/search?q=${encodeURIComponent(q)}`),
     adminSubmissions: (opts = {}) =>
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>

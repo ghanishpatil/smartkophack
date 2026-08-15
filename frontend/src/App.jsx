@@ -97,6 +97,9 @@ const AdminJudgeEvaluationsPage = lazy(() =>
 const AdminResultsPage = lazy(() =>
   import('@/pages/admin/AdminResultsPage.jsx').then((m) => ({ default: m.AdminResultsPage })),
 )
+const AdminSearchPage = lazy(() =>
+  import('@/pages/admin/AdminSearchPage.jsx').then((m) => ({ default: m.AdminSearchPage })),
+)
 const AdminChatsPage = lazy(() =>
   import('@/pages/admin/AdminChatsPage.jsx').then((m) => ({ default: m.AdminChatsPage })),
 )
@@ -369,6 +372,7 @@ export default function App() {
           <Route element={<DashboardLayout variant="admin" />}>
             <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
             <Route path="/admin/overview" element={<AdminOverviewPage />} />
+            <Route path="/admin/search" element={<AdminSearchPage />} />
             <Route path="/admin/events" element={<Navigate to="/admin/problems" replace />} />
             <Route path="/admin/registrations" element={<AdminTeamRegistrationsPage />} />
             <Route path="/admin/registrations-old" element={<AdminRegistrationsPage />} />

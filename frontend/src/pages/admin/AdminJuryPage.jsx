@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckSquare, Square, Tag, BookOpen, Users, Search } from 'lucide-react'
+import { CheckSquare, Square, Tag, BookOpen, Users, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -168,6 +168,9 @@ export function AdminJuryPage() {
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('domain') // 'domain' | 'ps' | 'team'
   const [hideAssignedElsewhere, setHideAssignedElsewhere] = useState(true) // By Team tab: hide teams already taken by another judge
+  // Expandable team-status rows: show full member details on click.
+  const [expandedTeamId, setExpandedTeamId] = useState('')
+  const [teamMembers, setTeamMembers] = useState({}) // teamId → { loading, members }
 
   const refreshData = useCallback(async () => {
     try {
@@ -324,6 +327,22 @@ export function AdminJuryPage() {
     return [...list].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
   }, [teams, statusFilter, statusSearch])
 
+  // Toggle a team row open and lazily load its member details (leader-entered,
+  // stored separately from account UIDs) — same source used by the Teams page.
+  const toggleTeamDetails = useCallback(async (teamId) => {
+    if (expandedTeamId === teamId) { setExpandedTeamId(''); return }
+    setExpandedTeamId(teamId)
+    if (teamMembers[teamId]) return // already cached
+    setTeamMembers((prev) => ({ ...prev, [teamId]: { loading: true, members: [] } }))
+    try {
+      const res = await api.teamMemberRegistrations(teamId)
+      const members = Array.isArray(res?.registrations) ? res.registrations : []
+      setTeamMembers((prev) => ({ ...prev, [teamId]: { loading: false, members } }))
+    } catch {
+      setTeamMembers((prev) => ({ ...prev, [teamId]: { loading: false, members: [] } }))
+    }
+  }, [api, expandedTeamId, teamMembers])
+
   if (loading) return <Skeleton className="h-80 w-full rounded-2xl" />
 
   return (
@@ -412,22 +431,70 @@ export function AdminJuryPage() {
           <p className="mt-4 text-sm text-ink-500">No teams match this filter.</p>
         ) : (
           <div className="mt-4 max-h-[34rem] space-y-2 overflow-y-auto rounded-xl border border-[rgb(var(--border))] p-3">
-            {statusTeams.map((t) => (
-              <div key={t.id} className="flex flex-col gap-2 rounded-xl border border-[rgb(var(--border))] p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <span className="truncate text-sm font-medium text-ink-900">{t.name || 'Unnamed team'}</span>
-                  <p className="text-xs text-ink-500">
-                    <span className="font-mono">{t.inviteCode || t.id.slice(0, 6)}</span>
-                    {t.problemStatementId ? <span> · PS <span className="font-mono">{t.problemStatementId}</span></span> : ''}
-                  </p>
+            {statusTeams.map((t) => {
+              const isOpen = expandedTeamId === t.id
+              const detail = teamMembers[t.id]
+              return (
+                <div key={t.id} className="rounded-xl border border-[rgb(var(--border))]">
+                  <button
+                    type="button"
+                    onClick={() => toggleTeamDetails(t.id)}
+                    className="flex w-full items-center gap-2 p-3 text-left transition-colors hover:bg-[rgb(var(--surface-muted))]/40"
+                  >
+                    {isOpen
+                      ? <ChevronDown className="h-4 w-4 shrink-0 text-brand-600" />
+                      : <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />}
+                    <div className="min-w-0 flex-1">
+                      <span className="truncate text-sm font-medium text-ink-900">{t.name || 'Unnamed team'}</span>
+                      <p className="text-xs text-ink-500">
+                        <span className="font-mono">{t.inviteCode || t.id.slice(0, 6)}</span>
+                        {t.problemStatementId ? <span> · PS <span className="font-mono">{t.problemStatementId}</span></span> : ''}
+                      </p>
+                    </div>
+                    {t.juryStatus ? (
+                      <Badge tone={JURY_STATUS_TONE[t.juryStatus] || 'neutral'} className="shrink-0 text-xs">{JURY_STATUS_LABEL[t.juryStatus] || t.juryStatus}</Badge>
+                    ) : (
+                      <Badge tone="neutral" className="shrink-0 text-xs">Unset</Badge>
+                    )}
+                  </button>
+
+                  {isOpen ? (
+                    <div className="border-t border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/30 p-3">
+                      {detail?.loading ? (
+                        <p className="text-xs text-ink-400">Loading team members…</p>
+                      ) : detail && detail.members.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                            Team members ({detail.members.length})
+                          </p>
+                          {detail.members
+                            .slice()
+                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                            .map((m) => (
+                              <div key={m.id} className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold text-ink-900">{m.name || '—'}</span>
+                                  {m.isLeader ? <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">Leader</span> : null}
+                                </div>
+                                <div className="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-ink-600 sm:grid-cols-2">
+                                  {m.email ? <span className="truncate">✉ {m.email}</span> : null}
+                                  {m.phone ? <span>☎ {m.phone}</span> : null}
+                                  {m.institute ? <span className="truncate">🏫 {m.institute}</span> : null}
+                                  {m.collegeLocation ? <span className="truncate">📍 {m.collegeLocation}</span> : null}
+                                  {m.yearOfStudy ? <span>🎓 {m.yearOfStudy}</span> : null}
+                                  {m.department ? <span className="truncate">🏷 {m.department}</span> : null}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-ink-400">No member details recorded for this team.</p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
-                {t.juryStatus ? (
-                  <Badge tone={JURY_STATUS_TONE[t.juryStatus] || 'neutral'} className="shrink-0 text-xs">{JURY_STATUS_LABEL[t.juryStatus] || t.juryStatus}</Badge>
-                ) : (
-                  <Badge tone="neutral" className="shrink-0 text-xs">Unset</Badge>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Card>

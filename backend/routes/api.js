@@ -1084,6 +1084,145 @@ export function adminRouter() {
   })
 
   /**
+   * Admin: Search Pro — find any person (team member, leader, judge, mentor,
+   * admin) by name / email / phone and return their full team details.
+   *
+   * Team members are stored in the `memberRegistrations` collection (entered by
+   * the team leader during registration) — most of them do NOT have auth
+   * accounts, so a users-only search misses them. This endpoint searches both
+   * memberRegistrations AND users, then attaches the matched person's team
+   * details + full roster. Read-only; admin-gated.
+   */
+  router.get('/search', async (req, res, next) => {
+    try {
+      const q = String(req.query.q || '').trim().toLowerCase()
+      if (q.length < 2) {
+        return res.status(400).json({ error: 'Enter at least 2 characters to search.' })
+      }
+
+      const [memberSnap, usersSnap] = await Promise.all([
+        db().collection('memberRegistrations').limit(8000).get(),
+        db().collection('users').limit(5000).get(),
+      ])
+
+      const norm = (v) => String(v || '').toLowerCase()
+      const hit = (rec, ...fields) => fields.some((f) => norm(rec[f]).includes(q))
+
+      // Index every member registration by team so we can build full rosters.
+      const membersByTeam = new Map()
+      for (const d of memberSnap.docs) {
+        const m = { id: d.id, ...d.data() }
+        const tid = m.teamId || ''
+        if (!tid) continue
+        if (!membersByTeam.has(tid)) membersByTeam.set(tid, [])
+        membersByTeam.get(tid).push(m)
+      }
+
+      const matchedTeamIds = new Set()
+      const personMatches = []
+      for (const d of memberSnap.docs) {
+        const m = d.data()
+        if (hit(m, 'name', 'email', 'phone')) {
+          personMatches.push({
+            name: m.name || '', email: m.email || '', phone: m.phone || '',
+            // College details captured at registration time (stored on memberRegistrations).
+            college: m.institute || m.college || '',
+            collegeLocation: m.collegeLocation || '',
+            yearOfStudy: m.yearOfStudy || '',
+            department: m.department || '',
+            isLeader: Boolean(m.isLeader), teamId: m.teamId || '', source: 'member',
+          })
+          if (m.teamId) matchedTeamIds.add(m.teamId)
+        }
+      }
+
+      const userMatches = []
+      for (const d of usersSnap.docs) {
+        const u = d.data()
+        if (norm(u.displayName).includes(q) || norm(u.email).includes(q) || norm(u.phone).includes(q)) {
+          userMatches.push({
+            uid: d.id, name: u.displayName || '', email: u.email || '', phone: u.phone || '',
+            role: u.role || 'participant', teamId: u.teamId || '', source: 'user',
+          })
+          if (u.teamId) matchedTeamIds.add(u.teamId)
+        }
+      }
+
+      // Fetch matched team docs (chunked getAll).
+      const teamIds = [...matchedTeamIds]
+      const teamDocs = new Map()
+      for (let i = 0; i < teamIds.length; i += 300) {
+        const refs = teamIds.slice(i, i + 300).map((id) => db().doc(`teams/${id}`))
+        if (refs.length === 0) continue
+        const snaps = await db().getAll(...refs)
+        for (const s of snaps) if (s.exists) teamDocs.set(s.id, s.data())
+      }
+
+      // Resolve problem statement titles.
+      const psIds = [...new Set([...teamDocs.values()].map((t) => t.problemStatementId).filter(Boolean))]
+      const psTitles = new Map()
+      for (let i = 0; i < psIds.length; i += 300) {
+        const refs = psIds.slice(i, i + 300).map((id) => db().doc(`problemStatements/${id}`))
+        if (refs.length === 0) continue
+        const snaps = await db().getAll(...refs)
+        for (const s of snaps) if (s.exists) psTitles.set(s.id, s.data().title || s.id)
+      }
+
+      const teamDetail = (teamId) => {
+        const t = teamDocs.get(teamId)
+        if (!t) return null
+        const roster = (membersByTeam.get(teamId) || [])
+          .slice()
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((m) => ({
+            name: m.name || '', email: m.email || '', phone: m.phone || '',
+            college: m.institute || m.college || '', collegeLocation: m.collegeLocation || '',
+            yearOfStudy: m.yearOfStudy || '', department: m.department || '',
+            isLeader: Boolean(m.isLeader),
+          }))
+        return {
+          teamId,
+          name: t.name || '',
+          inviteCode: t.inviteCode || '',
+          eventId: t.eventId || '',
+          leaderId: t.leaderId || '',
+          problemStatementId: t.problemStatementId || '',
+          problemStatementTitle: t.problemStatementId ? (psTitles.get(t.problemStatementId) || t.problemStatementId) : '',
+          registrationStatus: t.registrationStatus || (t.eventRegistered ? 'registered' : ''),
+          eventRegistered: Boolean(t.eventRegistered),
+          paymentStatus: t.paymentStatus || '',
+          submissionLocked: Boolean(t.submissionLocked),
+          shortlisted: Boolean(t.shortlisted),
+          juryStatus: t.juryStatus || '',
+          memberCount: (membersByTeam.get(teamId) || []).length,
+        }
+      }
+
+      const results = []
+      for (const p of personMatches) {
+        results.push({ match: p, team: p.teamId ? teamDetail(p.teamId) : null })
+      }
+      for (const u of userMatches) {
+        results.push({ match: u, team: u.teamId ? teamDetail(u.teamId) : null })
+      }
+
+      // De-duplicate by email+team (a leader appears both as member and user).
+      const seen = new Set()
+      const deduped = []
+      for (const r of results) {
+        const key = `${norm(r.match.email)}|${r.match.teamId}|${r.match.name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        deduped.push(r)
+      }
+
+      res.json({ query: q, count: deduped.length, results: deduped.slice(0, 100) })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: delete a single evaluation doc (evaluations/{judgeId}_{teamId}).
    * Lets an admin remove a judge's evaluation so it can be redone.
    */
