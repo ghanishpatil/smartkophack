@@ -13,6 +13,7 @@ import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { submissionCompleteness } from '@/pages/dashboard/participant/progressUtils.js'
 import { isPhaseSubmissionOpen, phaseAcceptsSubmissions } from '@/utils/phaseStatus.js'
+import { JudgeRemarks } from '@/components/participant/JudgeRemarks.jsx'
 
 const MAX_PPT_BYTES = 35 * 1024 * 1024
 const MAX_PDF_BYTES = 35 * 1024 * 1024
@@ -701,6 +702,9 @@ export function SubmissionPage() {
           {sub?.deployedUrl && <SubmittedFile label="Deployed URL" url={sub?.deployedUrl} icon="github" />}
         </div>
       </div>
+
+      {/* ━━ Judge feedback (remarks only — never marks) ━━━━━━━━━━━ */}
+      <JudgeRemarks />
 
       {/* Floating Toast */}
       {status && (

@@ -2166,4 +2166,38 @@ r.post('/mentor-chat/send', async (req, res, next) => {
   }
 })
 
+/**
+ * Judges' remarks for the participant's own team — FEEDBACK ONLY.
+ *
+ * Teams may read the qualitative remarks judges left on their submission, but
+ * NEVER the numeric marks/scores. Judges are anonymized (Judge 1, Judge 2, …).
+ * Only submitted evaluations with non-empty remarks are returned.
+ */
+r.get('/evaluation-remarks', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const teamId = req.profile?.teamId
+    if (!teamId) return res.json({ remarks: [] })
+
+    // Single-field filter (teamId) needs no composite index; filter status in code.
+    const snap = await db.collection('evaluations').where('teamId', '==', teamId).limit(50).get()
+
+    const remarks = []
+    let n = 0
+    snap.docs.forEach((d) => {
+      const e = d.data()
+      if (e.evaluationStatus !== 'submitted') return
+      const fb = typeof e.feedback === 'string' ? e.feedback.trim() : ''
+      if (!fb) return
+      n += 1
+      remarks.push({ id: `judge-${n}`, judgeLabel: `Judge ${n}`, feedback: fb.slice(0, 8000) })
+    })
+
+    // Deliberately NO scores/marks are included in this response.
+    res.json({ remarks })
+  } catch (e) {
+    next(e)
+  }
+})
+
 export { r as participantRouter }

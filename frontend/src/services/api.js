@@ -237,6 +237,8 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/participant/finalize-submission', { method: 'POST' }),
     getSubmissionVersions: () =>
       authReq('/api/participant/submission-versions'),
+    // Judges' qualitative remarks for the team — FEEDBACK ONLY, never marks.
+    evaluationRemarks: () => authReq('/api/participant/evaluation-remarks'),
     judgeAssignments: () => authReq('/api/judges/assignments'),
     judgeTeamReview: (teamId) => authReq(`/api/judges/review/${encodeURIComponent(teamId)}`),
     submitEvaluation: (payload) =>

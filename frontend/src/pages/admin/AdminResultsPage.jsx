@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Trophy, Search, Download } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { Card } from '@/components/ui/Card.jsx'
@@ -11,17 +11,36 @@ import { downloadCsv } from '@/utils/csvExport.js'
 const STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
 const STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not qualified' }
 
-/** Normalized 0–100% score for one evaluation, using its stored criteria snapshot. */
-function normalizedPct(ev) {
-  if (!ev?.scores || typeof ev.scores !== 'object') return null
-  const vals = Object.values(ev.scores).map(Number).filter(Number.isFinite)
-  if (vals.length === 0) return null
-  const rawTotal = vals.reduce((a, b) => a + b, 0)
-  const crit = Array.isArray(ev.evaluationCriteria) && ev.evaluationCriteria.length > 0 ? ev.evaluationCriteria : null
-  const maxPossible = crit
-    ? crit.reduce((s, c) => s + (Number(c.maxScore) > 0 ? Number(c.maxScore) : 10), 0)
-    : vals.length * 10
-  return maxPossible > 0 ? (rawTotal / maxPossible) * 100 : 0
+/**
+ * Per-criterion breakdown for one evaluation, using its stored criteria snapshot.
+ * Returns items [{label, score, max}], total, maxTotal, and normalized pct (0–100).
+ */
+function evalBreakdown(ev) {
+  const crit = Array.isArray(ev?.evaluationCriteria) && ev.evaluationCriteria.length > 0 ? ev.evaluationCriteria : null
+  const scores = ev?.scores && typeof ev.scores === 'object' ? ev.scores : {}
+  const items = []
+  let total = 0
+  let maxTotal = 0
+  if (crit) {
+    for (const c of crit) {
+      const max = Number(c.maxScore) > 0 ? Number(c.maxScore) : 10
+      const raw = Number(scores[c.key])
+      const val = Number.isFinite(raw) ? raw : 0
+      items.push({ key: c.key, label: c.label || c.key, score: val, max })
+      total += val
+      maxTotal += max
+    }
+  } else {
+    for (const [k, v] of Object.entries(scores)) {
+      const val = Number(v)
+      if (!Number.isFinite(val)) continue
+      items.push({ key: k, label: k, score: val, max: 10 })
+      total += val
+      maxTotal += 10
+    }
+  }
+  const pct = maxTotal > 0 ? Math.round((total / maxTotal) * 1000) / 10 : 0
+  return { items, total: Math.round(total * 10) / 10, maxTotal, pct }
 }
 
 export function AdminResultsPage() {
@@ -30,26 +49,31 @@ export function AdminResultsPage() {
   const [loading, setLoading] = useState(true)
   const [evals, setEvals] = useState([])
   const [teams, setTeams] = useState([])
+  const [users, setUsers] = useState([])
   const [psMap, setPsMap] = useState(new Map())
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [expanded, setExpanded] = useState(null) // teamId whose breakdown is open
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ev, tm, ps] = await Promise.all([
+      const [ev, tm, ps, us] = await Promise.all([
         api.adminEvaluations().catch(() => []),
         api.adminTeams().catch(() => []),
         api.listAdminProblemStatements().catch(() => []),
+        api.listUsers().catch(() => []),
       ])
       setEvals(Array.isArray(ev) ? ev : [])
       setTeams(Array.isArray(tm) ? tm : [])
+      setUsers(Array.isArray(us) ? us : [])
       const m = new Map()
       for (const p of (Array.isArray(ps) ? ps : [])) m.set(p.id, p)
       setPsMap(m)
     } catch {
       setEvals([])
       setTeams([])
+      setUsers([])
     } finally {
       setLoading(false)
     }
@@ -57,21 +81,35 @@ export function AdminResultsPage() {
 
   useEffect(() => { void load() }, [load])
 
-  // Aggregate: per team, average of each judge's normalized % (submitted only).
+  // uid → readable judge label (email preferred, then displayName, then uid).
+  const judgeById = useMemo(() => {
+    const m = new Map()
+    for (const u of users) m.set(u.id, u.email || u.displayName || u.id)
+    return m
+  }, [users])
+
+  // Aggregate: per team, each submitted judge evaluation with full breakdown.
   const rows = useMemo(() => {
     const byTeam = new Map()
     for (const e of evals) {
       if (e.evaluationStatus !== 'submitted') continue
-      const pct = normalizedPct(e)
-      if (pct == null) continue
+      if (!e.teamId) continue
       if (!byTeam.has(e.teamId)) byTeam.set(e.teamId, [])
-      byTeam.get(e.teamId).push(pct)
+      byTeam.get(e.teamId).push(e)
     }
     const list = teams
       .filter((t) => t.problemStatementId) // teams that picked a PS
       .map((t) => {
-        const pcts = byTeam.get(t.id) || []
-        const avg = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0
+        const teamEvals = byTeam.get(t.id) || []
+        const evaluations = teamEvals.map((e) => ({
+          judgeId: e.judgeId || '',
+          judgeLabel: judgeById.get(e.judgeId) || e.judgeId || 'Judge',
+          feedback: typeof e.feedback === 'string' ? e.feedback : '',
+          ...evalBreakdown(e),
+        }))
+        const avg = evaluations.length
+          ? evaluations.reduce((s, x) => s + x.pct, 0) / evaluations.length
+          : 0
         const ps = psMap.get(t.problemStatementId)
         return {
           teamId: t.id,
@@ -80,7 +118,9 @@ export function AdminResultsPage() {
           psTitle: ps?.title || t.problemStatementId,
           domain: ps?.theme || ps?.domain || '',
           track: ps?.category || '',
-          judges: pcts.length,
+          judges: evaluations.length,
+          judgeNames: evaluations.map((x) => x.judgeLabel).join(', '),
+          evaluations,
           avg: Math.round(avg * 10) / 10,
           juryStatus: t.juryStatus || '',
         }
@@ -88,7 +128,7 @@ export function AdminResultsPage() {
     list.sort((a, b) => b.avg - a.avg || a.name.localeCompare(b.name))
     list.forEach((r, i) => { r.rank = i + 1 })
     return list
-  }, [evals, teams, psMap])
+  }, [evals, teams, psMap, judgeById])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -96,7 +136,7 @@ export function AdminResultsPage() {
       if (statusFilter === 'unset' && r.juryStatus) return false
       if (statusFilter !== 'all' && statusFilter !== 'unset' && r.juryStatus !== statusFilter) return false
       if (!q) return true
-      return `${r.name} ${r.code} ${r.psTitle}`.toLowerCase().includes(q)
+      return `${r.name} ${r.code} ${r.psTitle} ${r.judgeNames}`.toLowerCase().includes(q)
     })
   }, [rows, search, statusFilter])
 
@@ -117,8 +157,13 @@ export function AdminResultsPage() {
       { header: 'Track', accessor: (r) => r.track },
       { header: 'Avg %', accessor: (r) => r.avg },
       { header: 'Judges', accessor: (r) => r.judges },
+      { header: 'Judge(s)', accessor: (r) => r.judgeNames },
       { header: 'Status', accessor: (r) => STATUS_LABEL[r.juryStatus] || '' },
     ])
+  }
+
+  function toggle(teamId) {
+    setExpanded((cur) => (cur === teamId ? null : teamId))
   }
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -132,6 +177,7 @@ export function AdminResultsPage() {
           </h1>
           <p className="mt-2 text-sm text-ink-600">
             Team rankings by average judge score (normalized across rubrics), with the jury status set by judges.
+            Click a row to see which judge evaluated it and the full marks breakdown.
           </p>
         </div>
         <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportCsv}>
@@ -155,7 +201,7 @@ export function AdminResultsPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search team or problem…"
+              placeholder="Search team, problem, or judge…"
               className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
@@ -189,7 +235,7 @@ export function AdminResultsPage() {
                 <th className="px-3 py-2 font-medium">Team</th>
                 <th className="px-3 py-2 font-medium">Problem</th>
                 <th className="px-3 py-2 font-medium text-right">Avg %</th>
-                <th className="px-3 py-2 font-medium text-center">Judges</th>
+                <th className="px-3 py-2 font-medium">Evaluated by</th>
                 <th className="px-3 py-2 font-medium">Status</th>
               </tr>
             </thead>
@@ -197,40 +243,107 @@ export function AdminResultsPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={6} className="px-3 py-8 text-center text-ink-500">No results to show.</td></tr>
               ) : (
-                filtered.map((r) => (
-                  <tr key={r.teamId} className="hover:bg-[rgb(var(--surface-muted))]/40">
-                    <td className="px-3 py-2 font-mono text-ink-500">{r.rank}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-ink-900">{r.name}</div>
-                      <div className="font-mono text-[10px] text-ink-400">{r.code}</div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="text-ink-800">{r.psTitle}</div>
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {r.domain ? <Badge tone="neutral" className="text-[10px]">{r.domain}</Badge> : null}
-                        {r.track ? <Badge tone="brand" className="text-[10px]">{r.track}</Badge> : null}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-ink-900">
-                      {r.judges > 0 ? `${r.avg}%` : <span className="text-ink-400">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center text-ink-700">{r.judges}</td>
-                    <td className="px-3 py-2">
-                      {r.juryStatus ? (
-                        <Badge tone={STATUS_TONE[r.juryStatus] || 'neutral'}>{STATUS_LABEL[r.juryStatus] || r.juryStatus}</Badge>
-                      ) : (
-                        <Badge tone="neutral">Unset</Badge>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                filtered.map((r) => {
+                  const isOpen = expanded === r.teamId
+                  const canExpand = r.judges > 0
+                  return (
+                    <Fragment key={r.teamId}>
+                      <tr
+                        className={`hover:bg-[rgb(var(--surface-muted))]/40 ${canExpand ? 'cursor-pointer' : ''}`}
+                        onClick={canExpand ? () => toggle(r.teamId) : undefined}
+                      >
+                        <td className="px-3 py-2 font-mono text-ink-500">{r.rank}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-ink-900">{r.name}</div>
+                          <div className="font-mono text-[10px] text-ink-400">{r.code}</div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="text-ink-800">{r.psTitle}</div>
+                          <div className="flex flex-wrap gap-1 pt-0.5">
+                            {r.domain ? <Badge tone="neutral" className="text-[10px]">{r.domain}</Badge> : null}
+                            {r.track ? <Badge tone="brand" className="text-[10px]">{r.track}</Badge> : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-ink-900">
+                          {r.judges > 0 ? `${r.avg}%` : <span className="text-ink-400">—</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.judges > 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              {isOpen
+                                ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-brand-600" />
+                                : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />}
+                              <span className="max-w-[11rem] truncate text-xs text-ink-700" title={r.judgeNames}>
+                                {r.judgeNames}
+                              </span>
+                              <Badge tone="neutral" className="text-[10px]">{r.judges}</Badge>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-ink-400">Not evaluated</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.juryStatus ? (
+                            <Badge tone={STATUS_TONE[r.juryStatus] || 'neutral'}>{STATUS_LABEL[r.juryStatus] || r.juryStatus}</Badge>
+                          ) : (
+                            <Badge tone="neutral">Unset</Badge>
+                          )}
+                        </td>
+                      </tr>
+
+                      {isOpen && canExpand ? (
+                        <tr className="bg-[rgb(var(--surface-muted))]/30">
+                          <td colSpan={6} className="px-3 py-3">
+                            <div className="space-y-3">
+                              {r.evaluations.map((ev, idx) => (
+                                <div
+                                  key={ev.judgeId || idx}
+                                  className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Gavel className="h-3.5 w-3.5 text-brand-600" />
+                                      <span className="text-sm font-medium text-ink-900">{ev.judgeLabel}</span>
+                                    </div>
+                                    <span className="font-mono text-xs font-semibold text-ink-900">
+                                      {ev.total} / {ev.maxTotal} <span className="text-brand-600">({ev.pct}%)</span>
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                                    {ev.items.map((it) => (
+                                      <div
+                                        key={it.key}
+                                        className="flex items-center justify-between gap-2 rounded-lg bg-[rgb(var(--surface-muted))]/50 px-2.5 py-1.5"
+                                      >
+                                        <span className="text-xs text-ink-600">{it.label}</span>
+                                        <span className="font-mono text-xs font-semibold text-ink-900">{it.score} / {it.max}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  <div className="mt-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Remarks</p>
+                                    <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-700">
+                                      {ev.feedback?.trim() ? ev.feedback : '—'}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
         <p className="text-xs text-ink-400">
           Avg % is the mean of each judge&apos;s normalized score (their total ÷ rubric max), so it stays fair even if
-          rubrics differ. Only submitted evaluations are counted.
+          rubrics differ. Only submitted evaluations are counted. Click any evaluated row to expand the per-judge marks.
         </p>
       </Card>
     </div>
