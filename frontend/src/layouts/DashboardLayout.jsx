@@ -59,6 +59,7 @@ const nav = {
     { to: '/admin/shortlisting', label: 'Shortlisting', icon: Star },
     { to: '/admin/results', label: 'Results', icon: Trophy },
     { group: 'Operations' },
+    { to: '/admin/chats', label: 'Chat Monitor', icon: MessageCircle },
     { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
     { to: '/admin/timeline', label: 'Timeline', icon: Clock },
     { to: '/admin/sponsors', label: 'Sponsors', icon: Building2 },

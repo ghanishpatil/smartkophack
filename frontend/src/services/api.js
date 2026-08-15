@@ -163,6 +163,10 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>
       authReq(`/api/admin/evaluations${opts.all ? '?all=1' : ''}`),
+    // Admin chat monitor (read-only): all team + mentor conversations, and one thread's messages.
+    adminChats: () => authReq('/api/admin/chats'),
+    adminChatMessages: (type, teamId, limit = 300) =>
+      authReq(`/api/admin/chats/${type}/${encodeURIComponent(teamId)}/messages?limit=${limit}`),
     deleteAdminEvaluation: (id) =>
       authReq(`/api/admin/evaluations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     patchAdminTeam: (teamId, body) =>

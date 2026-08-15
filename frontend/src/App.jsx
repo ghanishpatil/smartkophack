@@ -97,6 +97,9 @@ const AdminJudgeEvaluationsPage = lazy(() =>
 const AdminResultsPage = lazy(() =>
   import('@/pages/admin/AdminResultsPage.jsx').then((m) => ({ default: m.AdminResultsPage })),
 )
+const AdminChatsPage = lazy(() =>
+  import('@/pages/admin/AdminChatsPage.jsx').then((m) => ({ default: m.AdminChatsPage })),
+)
 const AdminShortlistingPage = lazy(() =>
   import('@/pages/admin/AdminShortlistingPage.jsx').then((m) => ({ default: m.AdminShortlistingPage })),
 )
@@ -379,6 +382,7 @@ export default function App() {
             <Route path="/admin/evaluations" element={<AdminEvaluationsPage />} />
             <Route path="/admin/evaluations/judge/:judgeId" element={<AdminJudgeEvaluationsPage />} />
             <Route path="/admin/results" element={<AdminResultsPage />} />
+            <Route path="/admin/chats" element={<AdminChatsPage />} />
             <Route path="/admin/shortlisting" element={<AdminShortlistingPage />} />
             <Route path="/admin/phases" element={<AdminPhasesPage />} />
             <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />

@@ -3492,6 +3492,87 @@ export function adminRouter() {
     }
   })
 
+  // ─── Chat monitor (read-only) ────────────────────────────────────
+  // Admins can view every team chat and mentor↔team chat. Conversations are
+  // returned newest-activity-first so the latest ones surface at the top.
+
+  /** GET /admin/chats — all conversations (team + mentor), latest activity first. */
+  router.get('/chats', async (req, res, next) => {
+    try {
+      const database = db()
+      const [teamsSnap, teamChatsSnap, mentorChatsSnap] = await Promise.all([
+        database.collection('teams').limit(2000).get(),
+        database.collection('chats').limit(2000).get(),
+        database.collection('mentorChats').limit(2000).get(),
+      ])
+
+      const teamName = new Map()
+      const teamEvent = new Map()
+      teamsSnap.forEach((d) => {
+        const t = d.data() || {}
+        teamName.set(d.id, t.name || 'Team')
+        teamEvent.set(d.id, t.eventId || '')
+      })
+
+      const conversations = []
+      const pushConv = (type, d) => {
+        const c = d.data() || {}
+        conversations.push({
+          key: `${type}:${d.id}`,
+          type,
+          teamId: d.id,
+          teamName: teamName.get(d.id) || c.teamId || d.id,
+          eventId: teamEvent.get(d.id) || '',
+          lastMessage: typeof c.lastMessage === 'string' ? c.lastMessage : '',
+          lastSenderName: typeof c.lastSenderName === 'string' ? c.lastSenderName : '',
+          lastMessageAt: tsIso(c.lastMessageAt),
+        })
+      }
+      teamChatsSnap.forEach((d) => pushConv('team', d))
+      mentorChatsSnap.forEach((d) => pushConv('mentor', d))
+
+      // Newest activity first; conversations with no message (null time) sort last.
+      conversations.sort((a, b) => (b.lastMessageAt || '').localeCompare(a.lastMessageAt || ''))
+
+      res.json({ conversations })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** GET /admin/chats/:type/:teamId/messages — full history for one conversation. */
+  router.get('/chats/:type/:teamId/messages', async (req, res, next) => {
+    try {
+      const { type, teamId } = req.params
+      if (type !== 'team' && type !== 'mentor') {
+        return res.status(400).json({ error: 'type must be "team" or "mentor".' })
+      }
+      if (!isValidDocId(teamId)) return res.status(400).json({ error: 'Invalid team ID.' })
+
+      const base = type === 'team' ? `chats/${teamId}/messages` : `mentorChats/${teamId}/messages`
+      const limit = Math.min(Number(req.query.limit) || 300, 500)
+      const snap = await db().collection(base).orderBy('createdAt', 'desc').limit(limit).get()
+
+      const messages = snap.docs.map((d) => {
+        const data = d.data() || {}
+        return {
+          id: d.id,
+          text: data.text || '',
+          senderId: data.senderId || '',
+          senderName: data.senderName || '',
+          senderRole: data.senderRole || '',
+          type: data.type || 'text',
+          file: data.file || null,
+          createdAt: tsIso(data.createdAt),
+        }
+      }).reverse() // chronological (oldest first); the UI scrolls to the latest
+
+      res.json({ type, teamId, messages })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   return router
 }
 
