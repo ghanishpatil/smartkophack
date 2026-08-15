@@ -368,7 +368,7 @@ export default function App() {
           </Route>
         </Route>
 
-        <Route element={<ProtectedRoute roles={[ROLES.ADMIN]} />}>
+        <Route element={<ProtectedRoute roles={[ROLES.ADMIN, ROLES.VIEWER]} />}>
           <Route element={<DashboardLayout variant="admin" />}>
             <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
             <Route path="/admin/overview" element={<AdminOverviewPage />} />

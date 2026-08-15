@@ -339,6 +339,11 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/mentors/bulk-invite', { method: 'POST', body: { emails } }),
     mentorInviteStatus: () =>
       authReq('/api/admin/mentors/status'),
+    // Observer (read-only viewer) credential invites (admin)
+    bulkInviteViewers: (emails) =>
+      authReq('/api/admin/viewers/bulk-invite', { method: 'POST', body: { emails } }),
+    viewerInviteStatus: () =>
+      authReq('/api/admin/viewers/status'),
     // Hero slideshow settings (banners are uploaded via multipart in the page)
     updateHeroSettings: (body) =>
       authReq('/api/hero-banners/settings', { method: 'PUT', body }),

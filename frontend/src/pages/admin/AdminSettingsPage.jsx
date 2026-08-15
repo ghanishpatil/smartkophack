@@ -631,6 +631,19 @@ export function AdminSettingsPage() {
         statusFn={api.mentorInviteStatus}
       />
 
+      {/* Invite Observers (read-only viewer role) */}
+      <InviteStaff
+        icon={Eye}
+        title="Invite Observers (Read-only)"
+        description="Observers can view the admin dashboard — overview, teams, submissions, jury status, shortlisting, results and reports — but cannot make any changes. Each gets an account with a temporary password emailed to them, and sets a new password (OTP-verified) on first login."
+        placeholder={'observer1@example.com\nobserver2@example.com'}
+        templateName="observer-emails-template.csv"
+        statusHeading="Invited Observers — Onboarding Status"
+        emptyLabel="No invited observers yet."
+        inviteFn={api.bulkInviteViewers}
+        statusFn={api.viewerInviteStatus}
+      />
+
       {/* Results Preview — shown when admin is about to publish */}
       {eventForm.resultsPublished || eventForm.evaluationsOpen ? (
         <ResultsPreview api={api} eventId={eventId} isPublished={eventForm.resultsPublished} />

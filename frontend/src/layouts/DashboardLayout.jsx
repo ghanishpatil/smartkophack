@@ -89,6 +89,20 @@ const nav = {
     { to: '/mentor', label: 'Dashboard', icon: Home, end: true },
     { to: '/mentor/chat', label: 'Teams Chat', icon: MessageCircle },
   ],
+  // Observer (read-only) — a curated, view-only subset of the admin nav.
+  // Only pages that are fully read-only for Observers are exposed here.
+  viewer: [
+    { to: '/admin/overview', label: 'Overview', icon: LayoutDashboard, end: true },
+    { to: '/admin/search', label: 'Search Pro', icon: Search },
+    { group: 'Teams' },
+    { to: '/admin/teams', label: 'Teams', icon: Users },
+    { to: '/admin/submissions', label: 'Submissions', icon: FileUp },
+    { group: 'Evaluation' },
+    { to: '/admin/shortlisting', label: 'Shortlisting', icon: Star },
+    { to: '/admin/results', label: 'Results', icon: Trophy },
+    { group: 'Insights' },
+    { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
+  ],
 }
 
 const COLLAPSED_KEY = 'sk_participant_sidebar_collapsed'
@@ -98,6 +112,7 @@ const roleLabels = {
   [ROLES.ADMIN]: 'Administrator',
   [ROLES.JUDGE]: 'Jury Member',
   [ROLES.MENTOR]: 'Mentor',
+  [ROLES.VIEWER]: 'Observer (Read-only)',
 }
 
 const roleBadgeColors = {
@@ -105,6 +120,7 @@ const roleBadgeColors = {
   [ROLES.ADMIN]: 'bg-red-500/15 text-red-600',
   [ROLES.JUDGE]: 'bg-amber-500/15 text-amber-600',
   [ROLES.MENTOR]: 'bg-emerald-500/15 text-emerald-600',
+  [ROLES.VIEWER]: 'bg-slate-500/15 text-slate-600',
 }
 
 export function DashboardLayout({ variant = 'default' }) {
@@ -112,13 +128,31 @@ export function DashboardLayout({ variant = 'default' }) {
   const { eventCfg } = useEvent()
   const navigate = useNavigate()
   const location = useLocation()
-  const baseItems = nav[variant] || nav.default
+  // Observers share the admin shell but get a curated, view-only nav.
+  const currentRole = profile?.role || ROLES.PARTICIPANT
+  const navKey = (variant === 'admin' && currentRole === ROLES.VIEWER) ? 'viewer' : variant
+  const baseItems = nav[navKey] || nav.default
   // Feature 1: Hide "Find Teammates" unless admin enabled matchmaking for the event.
   const matchmakingEnabled = Boolean(eventCfg?.matchmakingEnabled)
   const items = (variant === 'participant' && !matchmakingEnabled)
     ? baseItems.filter((it) => it.to !== '/dashboard/matchmaking')
     : baseItems
   const role = profile?.role || ROLES.PARTICIPANT
+
+  // Observer route guard: Observers may only reach a fixed set of read-only
+  // admin pages. Any other /admin/* path (typed directly) bounces to Overview,
+  // so edit-heavy pages are never exposed to them.
+  useEffect(() => {
+    if (variant !== 'admin' || role !== ROLES.VIEWER) return
+    const allowedPrefixes = [
+      '/admin/overview', '/admin/search', '/admin/teams',
+      '/admin/submissions', '/admin/shortlisting', '/admin/results', '/admin/reports',
+    ]
+    const ok = allowedPrefixes.some((p) => location.pathname === p || location.pathname.startsWith(p + '/'))
+    if (!ok && location.pathname.startsWith('/admin')) {
+      navigate('/admin/overview', { replace: true })
+    }
+  }, [variant, role, location.pathname, navigate])
   const isParticipantShell = variant === 'participant'
   const isAdminShell = variant === 'admin'
   const isJudgeShell = variant === 'judge'
@@ -160,12 +194,12 @@ export function DashboardLayout({ variant = 'default' }) {
     function handler(e) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        if (isAdminShell) setPaletteOpen((v) => !v)
+        if (isAdminShell && role !== ROLES.VIEWER) setPaletteOpen((v) => !v)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isAdminShell])
+  }, [isAdminShell, role])
   const securityAlertCount = useSecurityAlertCount()
   const { showWarning, secondsLeft, stayLoggedIn, doLogout } = useAdminSessionTimeout()
 
@@ -421,12 +455,18 @@ export function DashboardLayout({ variant = 'default' }) {
           variant === 'participant' ? 'pb-[max(6rem,env(safe-area-inset-bottom,0px)+4rem)] lg:pb-14' : '',
         ].join(' ')}>
           {isAdminShell ? <AdminScopeBanner /> : null}
+          {isAdminShell && role === ROLES.VIEWER ? (
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-800">
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span><strong>Observer mode (read-only).</strong> You can view everything here, but changes are disabled for your account.</span>
+            </div>
+          ) : null}
           {isParticipantShell ? <EmailVerificationBanner /> : null}
           <Outlet />
         </div>
       </div>
-      {/* Command palette — only shown in admin shell */}
-      {isAdminShell ? <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} /> : null}
+      {/* Command palette — only shown in admin shell (not for read-only Observers) */}
+      {isAdminShell && role !== ROLES.VIEWER ? <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} /> : null}
 
       {/* Admin session timeout warning modal */}
       {isAdminShell && showWarning ? (

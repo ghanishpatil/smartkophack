@@ -34,6 +34,7 @@ const ROLE_META = {
   participant: { defaultName: 'Team Leader' },
   judge: { defaultName: 'Jury Member' },
   mentor: { defaultName: 'Mentor' },
+  viewer: { defaultName: 'Observer' },
 }
 
 export async function inviteLeader(rawEmail, role = 'participant') {

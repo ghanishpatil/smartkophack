@@ -418,7 +418,18 @@ export function adminRouter() {
   const router = Router()
   const db = () => getDb()
 
-  router.use(verifyFirebaseToken, loadUserRole, attachEventContext, requireRole('admin'))
+  router.use(verifyFirebaseToken, loadUserRole, attachEventContext, requireRole('admin', 'viewer'))
+
+  // Observer (viewer) role is STRICTLY READ-ONLY. Allow only safe GET requests;
+  // reject every state-changing method so an Observer can never modify platform
+  // data no matter which admin endpoint is hit. This is the authoritative
+  // data-safety guard (the UI edit-hiding is only cosmetic on top of this).
+  router.use((req, res, next) => {
+    if (req.profile?.role === 'viewer' && req.method !== 'GET') {
+      return res.status(403).json({ error: 'Read-only access — Observer accounts cannot make changes.' })
+    }
+    next()
+  })
 
   /** Get competition phases for the active event */
   router.get('/phases', async (req, res, next) => {
@@ -1943,9 +1954,9 @@ export function adminRouter() {
   router.patch('/users/:uid/role', async (req, res, next) => {
     try {
       const { role } = req.body || {}
-      const allowedRoles = ['participant', 'admin', 'judge', 'mentor']
+      const allowedRoles = ['participant', 'admin', 'judge', 'mentor', 'viewer']
       if (!role || !allowedRoles.includes(role)) {
-        return res.status(400).json({ error: 'role must be one of participant, admin, judge, mentor' })
+        return res.status(400).json({ error: 'role must be one of participant, admin, judge, mentor, viewer' })
       }
 
       // Protect super admin accounts
@@ -3156,6 +3167,37 @@ export function adminRouter() {
   router.get('/mentors/status', async (req, res, next) => {
     try {
       const data = await buildStaffInviteStatus('mentor')
+      res.json({ ok: true, ...data })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: Bulk-invite Observers (read-only viewer role) — creates accounts +
+   * emails credentials. Observers can view the admin dashboard but cannot make
+   * any changes (enforced by the read-only guard on this router).
+   */
+  router.post('/viewers/bulk-invite', async (req, res, next) => {
+    try {
+      let emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      if (emails.length === 0 && typeof req.body?.emailsText === 'string') {
+        emails = req.body.emailsText.split(/[\s,;]+/).filter(Boolean)
+      }
+      if (emails.length === 0) return res.status(400).json({ error: 'Provide emails (array) or emailsText (string).' })
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'viewer')
+      await appendAuditLog({ actorUid: req.user.uid, action: 'viewers.bulk_invite', targetType: 'users', targetId: '', metadata: result.summary })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: Onboarding status of invited Observers — read-only. */
+  router.get('/viewers/status', async (req, res, next) => {
+    try {
+      const data = await buildStaffInviteStatus('viewer')
       res.json({ ok: true, ...data })
     } catch (e) {
       next(e)

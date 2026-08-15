@@ -3,6 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { Star, ArrowRight, Layers } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { Card } from '@/components/ui/Card.jsx'
@@ -16,6 +17,7 @@ const col = createColumnHelper()
 export function AdminShortlistingPage() {
   usePageSeo({ title: 'Shortlisting', description: 'Phase-based team shortlisting.' })
   const api = useApi()
+  const readOnly = useIsReadOnly()
   const [teams, setTeams] = useState([])
   const [phases, setPhases] = useState([])
   const [selectedPhaseId, setSelectedPhaseId] = useState('')
@@ -209,7 +211,7 @@ export function AdminShortlistingPage() {
       )}
 
       {/* Bulk Actions */}
-      {selectedIds.length > 0 && selectedPhaseId && (
+      {selectedIds.length > 0 && selectedPhaseId && !readOnly && (
         <div className="sticky top-14 z-[5] flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/25 bg-brand-500/10 px-4 py-3">
           <span className="text-sm font-medium text-ink-800">{selectedIds.length} selected</span>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRowSelection({})}>Clear</Button>
@@ -227,7 +229,7 @@ export function AdminShortlistingPage() {
         data={teams}
         globalFilter={globalFilter}
         onGlobalFilterChange={setGlobalFilter}
-        enableRowSelection
+        enableRowSelection={!readOnly}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
         getRowId={(row) => row.id}

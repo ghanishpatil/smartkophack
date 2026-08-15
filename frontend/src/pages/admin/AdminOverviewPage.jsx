@@ -13,6 +13,7 @@ import {
 import { formatDate } from '@/utils/format.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Button } from '@/components/ui/Button.jsx'
@@ -43,6 +44,7 @@ function StatCard({ title, value, hint, icon: Icon, tone = 'brand' }) {
 export function AdminOverviewPage() {
   usePageSeo({ title: 'Admin Overview', description: 'Operational control center.' })
   const api = useApi()
+  const readOnly = useIsReadOnly()
   const [stats, setStats] = useState(null)
   const [audit, setAudit] = useState([])
   const [loading, setLoading] = useState(true)
@@ -193,19 +195,21 @@ export function AdminOverviewPage() {
             </Card>
           </div>
 
-          <Card>
-            <h2 className="font-display text-lg font-semibold text-ink-900">Quick actions</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {quick.map((q) => (
-                <Link key={q.to} to={q.to}>
-                  <Button variant="secondary" size="sm" className="gap-2">
-                    {q.label}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              ))}
-            </div>
-          </Card>
+          {!readOnly ? (
+            <Card>
+              <h2 className="font-display text-lg font-semibold text-ink-900">Quick actions</h2>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {quick.map((q) => (
+                  <Link key={q.to} to={q.to}>
+                    <Button variant="secondary" size="sm" className="gap-2">
+                      {q.label}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+          ) : null}
 
           <Card>
             <div className="flex items-center gap-2">

@@ -68,12 +68,13 @@ router.get(
 
       const teamData = teamDoc.data()
 
-      // Check authorization: must be admin or team member (schema: leaderId + memberIds)
+      // Check authorization: must be admin/observer or team member (schema: leaderId + memberIds)
       const memberIds = Array.isArray(teamData.memberIds) ? teamData.memberIds : []
       const isMember = teamData.leaderId === req.user.uid || memberIds.includes(req.user.uid)
       // Role is resolved by loadUserRole into req.profile.role (req.user has no role).
-      const isAdmin = req.profile?.role === 'admin'
-      if (!isAdmin && !isMember) {
+      // Observers (read-only viewers) get the same read access as admins here.
+      const isPrivileged = req.profile?.role === 'admin' || req.profile?.role === 'viewer'
+      if (!isPrivileged && !isMember) {
         return res.status(403).json({ error: 'Access denied' })
       }
 

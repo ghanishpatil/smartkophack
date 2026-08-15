@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh.js'
 import { DataTable } from '@/components/admin/DataTable.jsx'
 import { AdminDrawer } from '@/components/admin/AdminDrawer.jsx'
@@ -34,6 +35,7 @@ function toneForRegStatus(s) {
 export function AdminTeamsPage() {
   usePageSeo({ title: 'Teams', description: 'Team explorer.' })
   const api = useApi()
+  const readOnly = useIsReadOnly()
   const [teams, setTeams] = useState([])
   const [loading, setLoading] = useState(true)
   const [rowSelection, setRowSelection] = useState({})
@@ -243,7 +245,7 @@ export function AdminTeamsPage() {
         header: 'Shortlist',
         cell: (i) => (i.getValue() ? <Badge tone="brand">yes</Badge> : <Badge tone="neutral">no</Badge>),
       }),
-      col.display({
+      ...(readOnly ? [] : [col.display({
         id: 'actions',
         header: 'Actions',
         cell: ({ row }) => (
@@ -251,9 +253,9 @@ export function AdminTeamsPage() {
             Unlock
           </Button>
         ),
-      }),
+      })]),
     ],
-    [unlockSubmission],
+    [unlockSubmission, readOnly],
   )
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -272,7 +274,7 @@ export function AdminTeamsPage() {
         </Button>
       </div>
 
-      {selectedIds.length > 0 ? (
+      {selectedIds.length > 0 && !readOnly ? (
         <div className="sticky top-14 z-[5] flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/25 bg-brand-500/10 px-4 py-3">
           <span className="text-sm font-medium text-ink-800">{selectedIds.length} selected</span>
           <Button size="sm" variant="secondary" type="button" disabled={bulkBusy} onClick={() => setRowSelection({})}>
@@ -454,7 +456,7 @@ export function AdminTeamsPage() {
         data={sortedTeams}
         globalFilter={globalFilter}
         onGlobalFilterChange={setGlobalFilter}
-        enableRowSelection
+        enableRowSelection={!readOnly}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
         getRowId={(row) => row.id}
@@ -466,7 +468,7 @@ export function AdminTeamsPage() {
         title={drawerTeam?.name || 'Team'}
         onClose={() => setDrawerTeam(null)}
         footer={
-          drawerTeam ? (
+          drawerTeam && !readOnly ? (
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"

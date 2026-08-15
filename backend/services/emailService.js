@@ -535,6 +535,13 @@ const CREDENTIALS_ROLE_COPY = {
     fallbackIntro: 'as a mentor',
     attachPdf: false,
   },
+  viewer: {
+    defaultName: 'Observer',
+    introLine: 'You have been given Observer (read-only) access',
+    subtitleLine: 'to view teams, submissions, results &amp; reports (read-only).',
+    fallbackIntro: 'as an observer (read-only)',
+    attachPdf: false,
+  },
 }
 
 export async function sendCredentialsEmail({ to, name, tempPassword, eventName, role = 'participant' }) {
