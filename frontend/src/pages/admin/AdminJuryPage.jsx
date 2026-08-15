@@ -167,6 +167,7 @@ export function AdminJuryPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('domain') // 'domain' | 'ps' | 'team'
+  const [hideAssignedElsewhere, setHideAssignedElsewhere] = useState(true) // By Team tab: hide teams already taken by another judge
 
   const refreshData = useCallback(async () => {
     try {
@@ -201,6 +202,13 @@ export function AdminJuryPage() {
 
   const selectedJudge = useMemo(() => users.find((u) => u.id === judgeId), [judgeId, users])
   const judges = useMemo(() => users.filter((u) => u.role === ROLES.JUDGE), [users])
+
+  // Map judge uid → display label (for showing which judge a team is already assigned to)
+  const judgeLabelById = useMemo(() => {
+    const m = {}
+    for (const u of users) m[u.id] = u.email || u.displayName || u.id
+    return m
+  }, [users])
 
   // ── PS assignment ──────────────────────────────────────────────────────────
 
@@ -273,11 +281,20 @@ export function AdminJuryPage() {
 
   const filteredTeams = useMemo(() => {
     const q = teamSearch.trim().toLowerCase()
-    const list = q
+    let list = q
       ? teams.filter((t) => `${t.name || ''} ${t.inviteCode || ''} ${t.id}`.toLowerCase().includes(q))
       : teams
+    // Hide teams already assigned to a DIFFERENT judge (keep unassigned teams and this judge's own).
+    if (hideAssignedElsewhere) {
+      list = list.filter((t) => {
+        const ids = Array.isArray(t.judgeIds) ? t.judgeIds : []
+        const assignedToOther = ids.some((id) => id !== judgeId)
+        const assignedToCurrent = ids.includes(judgeId)
+        return assignedToCurrent || !assignedToOther
+      })
+    }
     return [...list].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
-  }, [teams, teamSearch])
+  }, [teams, teamSearch, hideAssignedElsewhere, judgeId])
 
   const assignedTeamsForJudge = useMemo(
     () => (judgeId ? teams.filter((t) => Array.isArray(t.judgeIds) && t.judgeIds.includes(judgeId)) : []),
@@ -628,6 +645,16 @@ export function AdminJuryPage() {
                 regardless of problem statement or domain/track. Changes save immediately.
               </p>
 
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={hideAssignedElsewhere}
+                  onChange={(e) => setHideAssignedElsewhere(e.target.checked)}
+                  className="rounded border-[rgb(var(--border))]"
+                />
+                Hide teams already assigned to other judges
+              </label>
+
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <input
@@ -643,7 +670,10 @@ export function AdminJuryPage() {
               ) : (
                 <div className="max-h-[32rem] space-y-2 overflow-y-auto rounded-xl border border-[rgb(var(--border))] p-3">
                   {filteredTeams.map((t) => {
-                    const assigned = Array.isArray(t.judgeIds) && t.judgeIds.includes(judgeId)
+                    const ids = Array.isArray(t.judgeIds) ? t.judgeIds : []
+                    const assignedToCurrent = ids.includes(judgeId)
+                    const otherJudges = ids.filter((id) => id !== judgeId).map((id) => judgeLabelById[id] || id)
+                    const assignedToOther = otherJudges.length > 0
                     return (
                       <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-[rgb(var(--border))] p-3">
                         <div className="min-w-0">
@@ -652,22 +682,48 @@ export function AdminJuryPage() {
                             <span className="font-mono">{t.inviteCode || t.id.slice(0, 6)}</span>
                             {t.problemStatementId ? <span> · PS <span className="font-mono">{t.problemStatementId}</span></span> : ' · no PS selected'}
                           </p>
+                          {assignedToOther ? (
+                            <p className="mt-1 truncate text-[11px] font-medium text-amber-700">
+                              Assigned to {otherJudges.join(', ')}
+                            </p>
+                          ) : null}
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={assigned ? 'secondary' : 'primary'}
-                          disabled={saving}
-                          className="shrink-0"
-                          onClick={() => void toggleTeamAssign(t.id)}
-                        >
-                          {assigned ? 'Assigned ✓ — Remove' : 'Assign'}
-                        </Button>
+                        {assignedToCurrent ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={saving}
+                            className="shrink-0"
+                            onClick={() => void toggleTeamAssign(t.id)}
+                          >
+                            Assigned ✓ — Remove
+                          </Button>
+                        ) : assignedToOther ? (
+                          <Badge tone="warn" className="shrink-0 text-xs">Assigned</Badge>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="primary"
+                            disabled={saving}
+                            className="shrink-0"
+                            onClick={() => void toggleTeamAssign(t.id)}
+                          >
+                            Assign
+                          </Button>
+                        )}
                       </div>
                     )
                   })}
                   {filteredTeams.length === 0 ? (
-                    <p className="px-1 py-2 text-sm text-ink-500">No teams match your search.</p>
+                    <p className="px-1 py-2 text-sm text-ink-500">
+                      {teamSearch.trim()
+                        ? 'No teams match your search.'
+                        : hideAssignedElsewhere
+                          ? 'No unassigned teams left. Uncheck the filter above to see teams assigned to other judges.'
+                          : 'No teams found yet.'}
+                    </p>
                   ) : null}
                 </div>
               )}

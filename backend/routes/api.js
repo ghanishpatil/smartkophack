@@ -2232,10 +2232,35 @@ export function adminRouter() {
       const teamSnap = await teamRef.get()
       if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found.' })
 
-      await teamRef.set(
-        { judgeIds: FieldValue.arrayUnion(judgeId), updatedAt: FieldValue.serverTimestamp() },
-        { merge: true },
-      )
+      // Single-judge lock: a team may be directly assigned to only ONE judge.
+      // Run inside a transaction so two concurrent assigns can't both slip through.
+      let conflictJudgeId = null
+      let alreadyAssigned = false
+      await db().runTransaction(async (tx) => {
+        const snap = await tx.get(teamRef)
+        if (!snap.exists) return // team deleted mid-request; treat as no-op
+        const ids = Array.isArray(snap.data().judgeIds) ? snap.data().judgeIds : []
+        if (ids.includes(judgeId)) { alreadyAssigned = true; return }
+        const other = ids.find((id) => id && id !== judgeId)
+        if (other) { conflictJudgeId = other; return }
+        tx.set(
+          teamRef,
+          { judgeIds: FieldValue.arrayUnion(judgeId), updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        )
+      })
+
+      if (conflictJudgeId) {
+        let who = conflictJudgeId
+        try {
+          const oSnap = await db().doc(`users/${conflictJudgeId}`).get()
+          if (oSnap.exists) who = oSnap.data().email || oSnap.data().displayName || conflictJudgeId
+        } catch { /* ignore lookup failure — fall back to uid */ }
+        return res.status(409).json({ error: `Team is already assigned to another judge (${who}). Unassign it first.` })
+      }
+
+      if (alreadyAssigned) return res.json({ ok: true, alreadyAssigned: true })
+
       await appendAuditLog({
         actorUid: req.user.uid,
         action: 'judge.assign_team',

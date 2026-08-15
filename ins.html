@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SKH Evaluator Guide</title>
+<style>
+  :root{
+    --brand:#1d4ed8;
+    --brand-dark:#1e3a8a;
+    --brand-soft:#eff6ff;
+    --accent:#f59e0b;
+    --ink:#0f172a;
+    --ink-soft:#334155;
+    --ink-mute:#64748b;
+    --line:#e2e8f0;
+    --bg-soft:#f8fafc;
+    --green:#16a34a;
+    --amber:#d97706;
+    --red:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    font-size:10.2pt;
+    line-height:1.5;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  .page{
+    position:relative;
+    padding:17mm 20mm 15mm 20mm;
+    page-break-after:always;
+  }
+  .page:last-child{page-break-after:auto;}
+  /* keep blocks from splitting across sheets */
+  .note,.warn,.tip,table,.grid2,.node,.choice,.pill,.steps>li{page-break-inside:avoid;}
+
+  /* ---------- Typography ---------- */
+  h1,h2,h3,h4{color:var(--brand-dark);line-height:1.25;margin:0;}
+  .sec-title{display:flex;align-items:center;gap:11px;margin:0 0 11px;padding-bottom:8px;border-bottom:2px solid var(--brand);}
+  .sec-title .no{flex:none;width:31px;height:31px;border-radius:8px;background:var(--brand);color:#fff;font-weight:700;
+    font-size:13pt;display:flex;align-items:center;justify-content:center;}
+  .sec-title h2{font-size:16pt;}
+  h2.plain{font-size:16pt;margin:0 0 10px;padding-bottom:8px;border-bottom:2px solid var(--brand);}
+  h3{font-size:11.5pt;margin:14px 0 3px;color:var(--brand);}
+  h4{font-size:10.5pt;}
+  p{margin:6px 0;color:var(--ink-soft);}
+  ul,ol{margin:6px 0;padding-left:20px;color:var(--ink-soft);}
+  li{margin:4px 0;padding-left:2px;}
+  strong{color:var(--ink);}
+  code{background:var(--bg-soft);border:1px solid var(--line);border-radius:4px;padding:1px 6px;
+    font-family:"Consolas",monospace;font-size:9.3pt;color:var(--brand-dark);}
+  .lead{font-size:12pt;color:var(--ink-mute);margin:2px 0 16px;}
+
+  /* ---------- Cover ---------- */
+  .cover{
+    display:flex;flex-direction:column;
+    background:linear-gradient(150deg,var(--brand-dark) 0%,var(--brand) 58%,#2563eb 100%);
+    color:#fff;padding:30mm 24mm 24mm;min-height:292mm;
+  }
+  .cover .top-rule{width:60px;height:5px;background:var(--accent);border-radius:3px;margin-bottom:22px;}
+  .cover .kicker{letter-spacing:3.5px;text-transform:uppercase;font-size:10.5pt;opacity:.9;font-weight:600;}
+  .cover h1{color:#fff;font-size:42pt;margin:16px 0 12px;line-height:1.03;letter-spacing:-.5px;}
+  .cover .sub{font-size:14.5pt;opacity:.92;max-width:150mm;line-height:1.45;}
+  .cover .badge{display:inline-block;margin-top:30px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.4);
+    padding:9px 18px;border-radius:999px;font-size:11pt;font-weight:600;align-self:flex-start;}
+  .cover .foot{margin-top:auto;padding-top:26px;border-top:1px solid rgba(255,255,255,.28);font-size:10pt;opacity:.92;line-height:1.7;}
+  .cover .foot strong{color:#fff;}
+
+  /* ---------- Running header ---------- */
+  .runhead{display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:var(--ink-mute);
+    text-transform:uppercase;letter-spacing:1.8px;margin-bottom:13px;padding-bottom:7px;border-bottom:1px solid var(--line);}
+  .runhead .dot{color:var(--brand);font-weight:700;}
+
+  /* ---------- Callouts ---------- */
+  .note,.warn,.tip{border-radius:9px;padding:10px 15px;margin:11px 0;font-size:9.8pt;line-height:1.45;}
+  .note{background:var(--brand-soft);border-left:4px solid var(--brand);}
+  .warn{background:#fef2f2;border-left:4px solid var(--red);}
+  .tip{background:#f0fdf4;border-left:4px solid var(--green);}
+  .note b,.warn b,.tip b{display:block;margin-bottom:2px;color:var(--ink);}
+
+  /* ---------- Step list ---------- */
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:step;}
+  .steps>li{position:relative;padding:8px 0 8px 42px;border-bottom:1px solid var(--line);counter-increment:step;}
+  .steps>li:last-child{border-bottom:none;}
+  .steps>li::before{content:counter(step);position:absolute;left:0;top:7px;width:26px;height:26px;border-radius:50%;
+    background:var(--brand);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:10.5pt;}
+  .steps>li .st{font-weight:700;color:var(--ink);display:block;margin-bottom:1px;}
+
+  /* ---------- Tables ---------- */
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:9.8pt;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  th{background:var(--brand-dark);color:#fff;text-align:left;padding:9px 13px;font-size:9.3pt;letter-spacing:.4px;font-weight:600;}
+  td{padding:9px 13px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft);}
+  tr:last-child td{border-bottom:none;}
+  tr:nth-child(even) td{background:var(--bg-soft);}
+  td b{color:var(--ink);}
+
+  /* ---------- Status chips ---------- */
+  .chip{display:inline-block;padding:2px 11px;border-radius:999px;font-size:9pt;font-weight:700;white-space:nowrap;}
+  .chip.q{background:#dcfce7;color:var(--green);}
+  .chip.w{background:#fef3c7;color:var(--amber);}
+  .chip.n{background:#fee2e2;color:var(--red);}
+
+  /* ---------- TOC ---------- */
+  .toc{margin-top:16px;list-style:none;padding:0;}
+  .toc li{display:flex;align-items:baseline;border-bottom:1px dotted var(--line);padding:4.5px 0;color:var(--ink-soft);}
+  .toc .num{color:var(--brand);font-weight:700;width:26px;flex:none;}
+  .toc .lbl{font-weight:600;color:var(--ink);}
+  .toc .dots{flex:1;border-bottom:1px dotted var(--line);margin:0 8px;transform:translateY(-3px);}
+  .toc .pg{color:var(--ink-mute);font-weight:600;}
+
+  /* ---------- Two columns ---------- */
+  .grid2{display:flex;gap:16px;margin:12px 0;}
+  .grid2>div{flex:1;background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .grid2 h4{margin:0 0 6px;color:var(--brand-dark);}
+  .grid2 ul{margin:0;}
+
+  /* ---------- Flowchart ---------- */
+  .flow{max-width:150mm;margin:4px auto 0;}
+  .pill{max-width:78mm;margin:0 auto;text-align:center;border-radius:999px;padding:8px 22px;font-weight:700;color:#fff;font-size:10.5pt;letter-spacing:.3px;}
+  .pill.start{background:var(--accent);}
+  .pill.end{background:var(--green);}
+  .arrow{width:2.5px;height:12px;background:var(--brand);margin:3px auto;position:relative;}
+  .arrow::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+    border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--brand);}
+  .node{max-width:150mm;margin:0 auto;background:#fff;border:1.5px solid var(--brand);border-radius:10px;
+    padding:8px 15px;display:flex;align-items:center;gap:13px;}
+  .node .n{flex:none;width:25px;height:25px;border-radius:50%;background:var(--brand-soft);color:var(--brand);
+    font-weight:700;display:flex;align-items:center;justify-content:center;font-size:10pt;border:1.5px solid var(--brand);}
+  .node .tx{line-height:1.3;font-size:10pt;}
+  .node .tx b{color:var(--ink);}
+  .node .tx small{color:var(--ink-mute);font-size:8.8pt;}
+  .choice{background:#fffbeb;border:1.5px dashed var(--accent);border-radius:10px;padding:9px 15px;max-width:150mm;margin:0 auto;}
+  .choice .lab{display:flex;align-items:center;gap:13px;}
+  .choice .lab .n{flex:none;width:25px;height:25px;border-radius:50%;background:#fef3c7;color:var(--amber);
+    font-weight:700;display:flex;align-items:center;justify-content:center;font-size:10pt;border:1.5px solid var(--accent);}
+  .choice .lab .tx{font-size:10pt;}
+  .choice .opts{display:flex;gap:10px;justify-content:center;margin-top:8px;}
+  .choice .opts .chip{font-size:9.5pt;padding:4px 14px;}
+
+  /* ---------- High-visibility selection quota banner ---------- */
+  .quota{border:2px solid var(--brand);border-radius:12px;overflow:hidden;margin:0 0 12px;}
+  .quota-head{background:var(--brand);color:#fff;font-weight:700;font-size:11.5pt;padding:9px 16px;letter-spacing:.4px;text-transform:uppercase;display:flex;align-items:center;gap:9px;}
+  .quota-head .star{color:var(--accent);font-size:13pt;}
+  .quota-body{display:flex;align-items:stretch;gap:8px;padding:13px 14px;background:var(--brand-soft);}
+  .qstat{flex:1;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 4px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .qstat .qn{font-size:25pt;font-weight:800;line-height:1;color:var(--brand-dark);}
+  .qstat .ql{font-size:8pt;color:var(--ink-soft);margin-top:5px;line-height:1.25;}
+  .qstat.q-final{border-color:var(--green);background:#f0fdf4;}
+  .qstat.q-final .qn{color:var(--green);}
+  .qstat.q-wait{border-color:var(--amber);background:#fffbeb;}
+  .qstat.q-wait .qn{color:var(--amber);}
+  .qop{flex:none;display:flex;align-items:center;font-size:17pt;font-weight:800;color:var(--brand);}
+  .quota-note{padding:9px 16px;font-size:9.4pt;color:var(--ink);background:#fff;border-top:1px solid var(--line);}
+  .quota-note b{color:var(--brand-dark);}
+
+  @page{size:A4;margin:0;}
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<section class="page cover">
+  <div class="top-rule"></div>
+  <div class="kicker">Smart Kopargaon Hackathon</div>
+  <h1>Evaluator<br/>Handbook</h1>
+  <div class="sub">A complete guide to the jury platform &mdash; navigation, evaluation workflow, scoring, and finalizing results.</div>
+  <div class="badge">For Jury Members &amp; Evaluators</div>
+  <div class="foot">
+    <strong>Smart Kopargaon Hackathon (SKH)</strong><br/>
+    Hosted on the SKH digital platform &middot; Sanjivani University<br/>
+    Prepared for the evaluation panel
+  </div>
+</section>
+
+<!-- ============ WELCOME + TOC ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Overview</span></div>
+
+  <div class="quota">
+    <div class="quota-head"><span class="star">&#9733;</span> Read First &mdash; Your Selection Quota</div>
+    <div class="quota-body">
+      <div class="qstat"><span class="qn">14</span><span class="ql">teams assigned to you</span></div>
+      <div class="qop">&rarr;</div>
+      <div class="qstat"><span class="qn">7</span><span class="ql">you select to advance</span></div>
+      <div class="qop">=</div>
+      <div class="qstat q-final"><span class="qn">5</span><span class="ql">Finalized<br/>(Qualified)</span></div>
+      <div class="qop">+</div>
+      <div class="qstat q-wait"><span class="qn">2</span><span class="ql">Waiting List<br/>(Waitlist)</span></div>
+    </div>
+    <div class="quota-note"><b>From your 14 assigned teams, select exactly 7 to advance</b> &mdash; mark <b>5 as Qualified</b> (finalized) and <b>2 as Waitlist</b>. The remaining 7 are <b>Not Qualified</b>.</div>
+  </div>
+
+  <h2 class="plain">Welcome, Evaluator</h2>
+  <p class="lead">Thank you for lending your expertise to Smart Kopargaon Hackathon.</p>
+  <p>
+    Smart Kopargaon Hackathon (SKH) is an innovation movement that brings together students, government,
+    MSMEs, mentors, and industry experts to co-create solutions for real civic and industrial challenges.
+    As a member of the jury, you assess the teams assigned to you, score them against a structured rubric,
+    record your remarks, and set each team&rsquo;s qualification outcome.
+  </p>
+  <p>
+    This handbook covers everything you need: signing in, understanding your dashboard, reviewing team
+    submissions, scoring fairly, and submitting your final evaluation. No technical background is required
+    &mdash; the platform guides you at each step.
+  </p>
+
+  <h3>Contents</h3>
+  <ul class="toc">
+    <li><span class="num">&mdash;</span><span class="lbl">The evaluation flow at a glance</span><span class="dots"></span><span class="pg">3</span></li>
+    <li><span class="num">&mdash;</span><span class="lbl">Round 2 evaluation criteria (scoring rubric)</span><span class="dots"></span><span class="pg">4</span></li>
+    <li><span class="num">1</span><span class="lbl">Your role &amp; how evaluation works</span><span class="dots"></span><span class="pg">5</span></li>
+    <li><span class="num">2</span><span class="lbl">Getting started &mdash; signing in</span><span class="dots"></span><span class="pg">5</span></li>
+    <li><span class="num">3</span><span class="lbl">The Jury Dashboard at a glance</span><span class="dots"></span><span class="pg">6</span></li>
+    <li><span class="num">4</span><span class="lbl">Your assignments &amp; scope</span><span class="dots"></span><span class="pg">6</span></li>
+    <li><span class="num">5</span><span class="lbl">The evaluation process, step by step</span><span class="dots"></span><span class="pg">7</span></li>
+    <li><span class="num">6</span><span class="lbl">Inside the team review screen</span><span class="dots"></span><span class="pg">7</span></li>
+    <li><span class="num">7</span><span class="lbl">Scoring, remarks &amp; team status</span><span class="dots"></span><span class="pg">8</span></li>
+    <li><span class="num">8</span><span class="lbl">Drafts, final submit &amp; locking</span><span class="dots"></span><span class="pg">8</span></li>
+    <li><span class="num">9</span><span class="lbl">Tracking your progress</span><span class="dots"></span><span class="pg">9</span></li>
+    <li><span class="num">10</span><span class="lbl">Frequently asked questions</span><span class="dots"></span><span class="pg">9</span></li>
+  </ul>
+</section>
+
+<!-- ============ FLOWCHART PAGE ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Quick Reference</span></div>
+  <h2 class="plain">The Evaluation Flow &mdash; At a Glance</h2>
+  <p style="text-align:center;margin:2px 0 10px;">Follow these steps for every team assigned to you &mdash; your scores autosave as drafts along the way.</p>
+
+  <div class="flow">
+    <div class="pill start">START &mdash; You&rsquo;re signed in</div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">1</span><span class="tx"><b>Open &ldquo;Evaluate Teams&rdquo;</b><br/><small>Left menu &rarr; your queue of assigned teams.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">2</span><span class="tx"><b>Open a team&rsquo;s review</b><br/><small>Click &ldquo;Open review&rdquo; on any team.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">3</span><span class="tx"><b>Study the problem &amp; submission</b><br/><small>Read the problem statement; open the Deck, PDF, Video &amp; Repository.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">4</span><span class="tx"><b>Score each rubric criterion</b><br/><small>Move the sliders &mdash; drafts autosave automatically.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">5</span><span class="tx"><b>Write your remarks</b><br/><small>Notes for organizers and finalists.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="choice">
+      <div class="lab"><span class="n">6</span><span class="tx"><b>Set the team status</b> &mdash; <small>required before you can submit</small></span></div>
+      <div class="opts"><span class="chip q">Qualified</span><span class="chip w">Waitlist</span><span class="chip n">Not Qualified</span></div>
+    </div>
+    <div class="arrow"></div>
+
+    <div class="node"><span class="n">7</span><span class="tx"><b>Submit final</b><br/><small>Records your evaluation for this team.</small></span></div>
+    <div class="arrow"></div>
+
+    <div class="pill end">DONE &mdash; Sheet locked &#10003;</div>
+  </div>
+
+  <div class="note" style="margin-top:16px;"><b>Repeat for each team</b>
+    Return to your queue and pick the next team. Your <b>Progress</b> page tracks how many remain. You can save a
+    draft and come back anytime &mdash; nothing is final until you click <b>Submit final</b>.
+  </div>
+</section>
+
+<!-- ============ EVALUATION CRITERIA ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Scoring Rubric</span></div>
+  <h2 class="plain">Round 2 Evaluation Criteria</h2>
+  <p style="margin:2px 0 12px;">
+    Every submission is scored out of <strong>100 marks</strong> across the seven criteria below. Assess each
+    criterion independently on its own merits, using the descriptions as your guide. On the review screen each
+    criterion has its own slider and maximum.
+  </p>
+
+  <table>
+    <tr>
+      <th style="width:6%;">#</th>
+      <th style="width:33%;">Criterion</th>
+      <th style="width:11%;">Marks</th>
+      <th>What to look for</th>
+    </tr>
+    <tr><td>1</td><td><b>Problem Understanding &amp; Relevance</b></td><td><b>15</b></td><td>Clarity of the problem, target users and relevance to the given problem statement.</td></tr>
+    <tr><td>2</td><td><b>Innovation &amp; Uniqueness</b></td><td><b>15</b></td><td>Originality, novelty and differentiation of the proposed solution.</td></tr>
+    <tr><td>3</td><td><b>Technical Feasibility &amp; Prototype</b></td><td><b>20</b></td><td>Technical soundness, appropriate technology and functionality / progress of the prototype.</td></tr>
+    <tr><td>4</td><td><b>Impact &amp; Effectiveness</b></td><td><b>15</b></td><td>Potential to create measurable social, economic, environmental or industrial impact.</td></tr>
+    <tr><td>5</td><td><b>Scalability &amp; Sustainability</b></td><td><b>15</b></td><td>Potential for wider adoption, scalability and long-term sustainability.</td></tr>
+    <tr><td>6</td><td><b>User-Centricity &amp; Usability</b></td><td><b>10</b></td><td>Ease of use, accessibility and alignment with the needs of intended users.</td></tr>
+    <tr><td>7</td><td><b>Completeness &amp; Quality of Submission</b></td><td><b>10</b></td><td>Quality, clarity and completeness of documentation, supporting evidence and overall presentation.</td></tr>
+    <tr>
+      <td style="background:var(--brand-dark);"></td>
+      <td style="background:var(--brand-dark);color:#fff;font-weight:700;">TOTAL</td>
+      <td style="background:var(--brand-dark);color:#fff;font-weight:700;">100</td>
+      <td style="background:var(--brand-dark);color:#fff;">Sum of all seven criteria</td>
+    </tr>
+  </table>
+
+  <div class="tip"><b>Highest weight &mdash; Technical Feasibility &amp; Prototype (20 marks)</b>
+    Give the working prototype and its demonstrated progress proportionate attention &mdash; it carries the most
+    marks of any single criterion.
+  </div>
+
+  <div class="note"><b>How the marks are applied</b>
+    On the review screen you simply move each criterion&rsquo;s slider to the marks it deserves; the platform totals
+    and normalizes the scores, so results stay fair across different problem statements.
+  </div>
+</section>
+
+<!-- ============ ROLE + SIGN IN ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Getting Started</span></div>
+
+  <div class="sec-title"><span class="no">1</span><h2>Your Role &amp; How Evaluation Works</h2></div>
+  <p>
+    Every jury member gets a <strong>scoped workspace</strong>. You only ever see the problem statements and
+    teams that organizers assigned to you &mdash; there is no global directory, and nothing outside your scope
+    is visible. This keeps evaluation focused and confidential.
+  </p>
+  <p>Your responsibilities are simple:</p>
+  <ul>
+    <li>Review each assigned team&rsquo;s problem statement and submitted materials.</li>
+    <li>Score the team against the official rubric using the on-screen sliders.</li>
+    <li>Write remarks for the organizers and finalists.</li>
+    <li>Set the team&rsquo;s outcome &mdash; <span class="chip q">Qualified</span> <span class="chip w">Waitlist</span> <span class="chip n">Not Qualified</span></li>
+    <li>Submit your final evaluation.</li>
+  </ul>
+  <div class="note"><b>Fair scoring across rubrics</b>
+    Scores are automatically normalized (your total &divide; the rubric&rsquo;s maximum), so results stay fair even if
+    different problem statements use slightly different rubrics. You just move the sliders &mdash; the platform
+    handles the maths.
+  </div>
+
+  <div class="sec-title" style="margin-top:26px;"><span class="no">2</span><h2>Getting Started &mdash; Signing In</h2></div>
+  <ol class="steps">
+    <li><span class="st">Open your invitation email</span>Organizers send your login credentials (email + a temporary password) to your registered address. Keep this email handy.</li>
+    <li><span class="st">Go to the SKH platform</span>Open the platform link from your invitation in any modern browser (Chrome, Edge, Safari), on desktop or mobile.</li>
+    <li><span class="st">Log in with your credentials</span>Enter your email and the temporary password provided.</li>
+    <li><span class="st">Set your own password</span>On first login you&rsquo;ll be asked to create a new password. Choose something secure and private to you.</li>
+    <li><span class="st">You land on the Jury Home</span>Once signed in you arrive at your jury dashboard and can begin evaluating.</li>
+  </ol>
+  <div class="tip"><b>Trouble logging in?</b>
+    If the temporary password doesn&rsquo;t work or the invitation hasn&rsquo;t arrived, contact the organizing team &mdash;
+    they can re-send credentials to your registered email.
+  </div>
+</section>
+
+<!-- ============ DASHBOARD + ASSIGNMENTS ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>The Dashboard</span></div>
+
+  <div class="sec-title"><span class="no">3</span><h2>The Jury Dashboard at a Glance</h2></div>
+  <p>
+    After signing in you&rsquo;ll see the <strong>Jury Panel</strong>. A navigation menu runs down the left side
+    (on mobile, tap the menu icon at the top). Here&rsquo;s what each item does:
+  </p>
+  <table>
+    <tr><th style="width:30%;">Menu item</th><th>What you&rsquo;ll find there</th></tr>
+    <tr><td><b>Home</b></td><td>Your overview: counts of Pending, In progress and Submitted evaluations, upcoming deadlines, recent activity and announcements.</td></tr>
+    <tr><td><b>Assignments</b></td><td>The problem statements assigned to you, each with its teams grouped underneath. Filter by problem statement and open any team to review.</td></tr>
+    <tr><td><b>Evaluate Teams</b></td><td>Your working queue &mdash; a flat list of every team you must evaluate. Filter by status and open a team&rsquo;s review screen.</td></tr>
+    <tr><td><b>Progress</b></td><td>A completion bar and status breakdown showing how far along you are across all assigned teams.</td></tr>
+    <tr><td><b>Announcements</b></td><td>Official messages from organizers relevant to the jury.</td></tr>
+    <tr><td><b>Notifications</b></td><td>Personal alerts and updates tied to your account.</td></tr>
+    <tr><td><b>Account</b></td><td>Your profile and password settings.</td></tr>
+  </table>
+  <div class="note"><b>Evaluation window</b>
+    At the top of Home and the evaluate queue you&rsquo;ll see whether evaluations are <strong>open</strong> or
+    <strong>closed</strong>. You can only enter or change scores while the window is open.
+  </div>
+
+  <div class="sec-title" style="margin-top:26px;"><span class="no">4</span><h2>Your Assignments &amp; Scope</h2></div>
+  <p>
+    Open <strong>Assignments</strong> to see the problem statements you&rsquo;re responsible for. Each card shows the
+    problem&rsquo;s organization, department, category (track) and theme (domain), followed by the teams that chose
+    that problem. Use the <strong>problem filter</strong> at the top to focus on one statement at a time.
+  </p>
+  <p>Every team row shows its current evaluation status and a <strong>Review</strong> button that opens the full evaluation screen.</p>
+  <div class="warn"><b>No assignments showing?</b>
+    If you don&rsquo;t see any problem statements or teams, organizers may not have attached them to your profile yet.
+    Reach out to the organizing team and they&rsquo;ll assign you.
+  </div>
+</section>
+
+<!-- ============ PROCESS + REVIEW SCREEN ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Evaluation Workflow</span></div>
+
+  <div class="sec-title"><span class="no">5</span><h2>The Evaluation Process, Step by Step</h2></div>
+  <ol class="steps">
+    <li><span class="st">Open the Evaluate Teams queue</span>From the left menu select <b>Evaluate Teams</b> to see every team assigned to you.</li>
+    <li><span class="st">Pick a team and open its review</span>Click <b>Open review</b> on any team to load its full evaluation screen.</li>
+    <li><span class="st">Study the problem &amp; submission</span>Read the problem statement and review the team&rsquo;s deck, PDF, demo video and repository links.</li>
+    <li><span class="st">Score against the rubric</span>Move each slider to the score you feel the team earned on that criterion.</li>
+    <li><span class="st">Write your remarks</span>Add comments for organizers and finalists in the remarks box.</li>
+    <li><span class="st">Set the team status</span>Choose <b>Qualified</b>, <b>Waitlist</b> or <b>Not Qualified</b>. This is required.</li>
+    <li><span class="st">Submit your final evaluation</span>Click <b>Submit final</b>. Your sheet is then locked for that team.</li>
+  </ol>
+
+  <div class="sec-title" style="margin-top:24px;"><span class="no">6</span><h2>Inside the Team Review Screen</h2></div>
+  <p>The review screen is split into two parts:</p>
+  <div class="grid2">
+    <div>
+      <h4>Left &mdash; The team&rsquo;s work</h4>
+      <ul>
+        <li><b>Problem statement</b> &mdash; full details and description.</li>
+        <li><b>Submission</b> &mdash; buttons and previews for the Deck, PDF, Demo/Video and Repository.</li>
+        <li><b>Submission timeline</b> &mdash; status, whether the team locked it, and last-updated time.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Right &mdash; Your evaluation</h4>
+      <ul>
+        <li><b>Rubric sliders</b> &mdash; one per criterion, each with its score range.</li>
+        <li><b>Remarks</b> &mdash; free-text notes for organizers / finalists.</li>
+        <li><b>Save draft</b> and <b>Submit final</b> buttons.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="tip"><b>Your work is saved as you go</b>
+    Drafts autosave while you score, and you&rsquo;ll see an &ldquo;Autosaved&rdquo; time stamp. You can safely leave and
+    return &mdash; nothing is lost until you submit.
+  </div>
+</section>
+
+<!-- ============ SCORING + FINAL ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Scoring &amp; Finalizing</span></div>
+
+  <div class="sec-title"><span class="no">7</span><h2>Scoring, Remarks &amp; Team Status</h2></div>
+  <h3>Rubric scoring</h3>
+  <p>
+    Each criterion has its own slider and maximum. Drag the slider to set your score &mdash; the current value shows
+    beside the criterion name (for example <code>7.5 / 10</code>). Read the short hint under each criterion to
+    calibrate your judgement. The full Round 2 rubric &mdash; seven criteria totalling <strong>100 marks</strong>
+    &mdash; is on the <strong>Round 2 Evaluation Criteria</strong> page near the front of this handbook.
+  </p>
+  <h3>Remarks</h3>
+  <p>Use the <strong>Remarks</strong> box to justify your scores and give constructive feedback. These notes help organizers and are valuable to finalists.</p>
+  <h3>Team status &mdash; required</h3>
+  <p>Before you can submit, you must set the team&rsquo;s outcome:</p>
+  <table>
+    <tr><th style="width:28%;">Status</th><th>Meaning</th></tr>
+    <tr><td><span class="chip q">Qualified</span></td><td>The team advances / meets the bar to proceed.</td></tr>
+    <tr><td><span class="chip w">Waitlist</span></td><td>Borderline &mdash; held for consideration depending on capacity.</td></tr>
+    <tr><td><span class="chip n">Not Qualified</span></td><td>The team does not advance at this stage.</td></tr>
+  </table>
+  <div class="warn"><b>Status is mandatory</b>
+    The <b>Submit final</b> button stays disabled until you pick a status. This ensures every evaluated team
+    receives a clear outcome.
+  </div>
+
+  <div class="sec-title" style="margin-top:24px;"><span class="no">8</span><h2>Drafts, Final Submit &amp; Locking</h2></div>
+  <ul>
+    <li><b>Save draft</b> keeps your scores and remarks without finalizing &mdash; you can come back and edit anytime.</li>
+    <li><b>Submit final</b> records your evaluation and <strong>locks your sheet</strong> for that team.</li>
+    <li>After submitting you cannot edit unless an organizer reopens your sheet.</li>
+  </ul>
+  <div class="note"><b>Before you finalize</b>
+    Double-check your slider values, remarks and chosen status. Submit only when you&rsquo;re confident &mdash; it&rsquo;s
+    your final word on that team.
+  </div>
+</section>
+
+<!-- ============ PROGRESS + FAQ ============ -->
+<section class="page">
+  <div class="runhead"><span><span class="dot">SKH</span>&nbsp;&nbsp;Evaluator Handbook</span><span>Progress &amp; Support</span></div>
+
+  <div class="sec-title"><span class="no">9</span><h2>Tracking Your Progress</h2></div>
+  <p>
+    Open <strong>Progress</strong> to see a completion percentage and a breakdown of your teams by status
+    (Pending, In progress, Submitted, Locked). Both submitted and locked evaluations count as complete. The
+    <strong>Home</strong> page mirrors these counts so you always know how many teams remain.
+  </p>
+
+  <div class="sec-title" style="margin-top:22px;"><span class="no">10</span><h2>Frequently Asked Questions</h2></div>
+
+  <h3>I can&rsquo;t edit a team&rsquo;s scores &mdash; why?</h3>
+  <p>Either you&rsquo;ve already submitted (your sheet is locked), or the evaluation window is closed. Ask organizers to reopen if you need to make a change.</p>
+
+  <h3>The Submit button is greyed out.</h3>
+  <p>You haven&rsquo;t set the team status yet. Choose Qualified, Waitlist or Not Qualified at the top of the review screen and the button will enable.</p>
+
+  <h3>A submission link or preview won&rsquo;t open.</h3>
+  <p>Some teams share Google Drive or external links. Use the labelled buttons (Deck, PDF, Video, Repository) to open them in a new tab. If a preview fails to embed, use the direct link button instead.</p>
+
+  <h3>I opened a team link and got &ldquo;Access denied&rdquo;.</h3>
+  <p>Only open teams from your own dashboard. Links to teams outside your assigned scope are intentionally blocked.</p>
+
+  <h3>Can I change a team&rsquo;s status after submitting?</h3>
+  <p>Not once your sheet is locked. Contact an organizer if a correction is genuinely needed &mdash; they can reopen it.</p>
+
+  <h3>Do I need to evaluate teams in any particular order?</h3>
+  <p>No. Work through your queue in whatever order suits you; the platform tracks each team independently.</p>
+
+  <div class="note" style="margin-top:24px;"><b>Need help?</b>
+    For anything not covered here &mdash; credentials, assignments, reopening a sheet or technical issues &mdash;
+    contact the SKH organizing team. They&rsquo;re on hand throughout the evaluation window.
+  </div>
+
+  <p style="margin-top:30px;text-align:center;color:var(--ink-mute);font-size:9.3pt;">
+    Smart Kopargaon Hackathon &middot; Evaluator Handbook &middot; Thank you for being part of the jury.
+  </p>
+</section>
+
+</body>
+</html>
