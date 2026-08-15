@@ -341,34 +341,9 @@ export function JudgeTeamReviewPage() {
               ) : null}
             </div>
 
-            <div className="mt-6 space-y-4">
-              {pdf ? (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase text-ink-500">PDF preview</p>
-                  {/* BUG-5 FIX: sandbox attribute prevents participant-submitted URLs from
-                      running scripts or navigating the parent frame (clickjacking/XSS). */}
-                  <iframe
-                    title="PDF preview"
-                    src={pdf}
-                    sandbox="allow-same-origin allow-scripts"
-                    className="h-[420px] w-full rounded-xl border border-[rgb(var(--border))]"
-                  />
-                </div>
-              ) : null}
-              {ppt ? (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase text-ink-500">Deck</p>
-                  {/* BUG-5 FIX: sandbox attribute on PPT embed via Office Online viewer. */}
-                  <iframe
-                    title="Presentation preview"
-                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(ppt)}`}
-                    sandbox="allow-same-origin allow-scripts allow-popups"
-                    className="h-[420px] w-full rounded-xl border border-[rgb(var(--border))]"
-                  />
-                  <p className="mt-1 text-[11px] text-ink-500">If embedding fails, use the Deck link above.</p>
-                </div>
-              ) : null}
-            </div>
+            <p className="mt-4 text-xs text-ink-500">
+              Open each artifact in a new tab using the links above.
+            </p>
           </Card>
 
           <Card>
