@@ -525,13 +525,13 @@ export async function sendQualifiedEmail({ to, name, teamName, eventName }) {
         <p style="margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#185983;">Grand Finale Details</p>
         <p style="margin:0 0 6px;color:#0f172a;"><strong>📅 Dates:</strong> 29th &amp; 30th August 2026</p>
         <p style="margin:0 0 6px;color:#0f172a;"><strong>📍 Venue:</strong> Sanjivani University, Kopargaon</p>
-        <p style="margin:0;color:#334155;font-size:14px;">Please <strong>plan your travel and accommodation in advance</strong> for both days.
-          Accommodation assistance and any applicable details will be shared with you soon.</p>
+        <p style="margin:0;color:#334155;font-size:14px;">Kindly <strong>plan your travel and stay in advance</strong> for both days.
+          Details regarding accommodation will be shared with you soon.</p>
       </td></tr>
     </table>
 
-    <p style="margin:0 0 16px;">All other details &mdash; reporting time, schedule, accommodation and travel guidance &mdash;
-      will be shared with you soon over <strong>email</strong> and <strong>WhatsApp</strong>. Please keep an eye on both.</p>
+    <p style="margin:0 0 16px;">All other details, including the reporting time, event schedule, and travel guidance,
+      will be shared with you shortly via <strong>email</strong> and <strong>WhatsApp</strong>. Please keep an eye on both.</p>
     ${ctaButton('View Results', `${getFrontendUrl()}/results`)}
     <p style="margin:20px 0 0;color:#64748b;font-size:14px;">Warm regards,<br/>Team ${safeEvent}</p>
   `

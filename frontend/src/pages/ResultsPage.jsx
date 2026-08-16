@@ -88,11 +88,11 @@ export function ResultsPage() {
                 <PartyPopper className="h-6 w-6" />
               </div>
               <h2 className="mt-3 font-display text-xl font-bold text-ink-900 sm:text-2xl">
-                Congratulations to all teams qualified for the Grand Finale! 🎉
+                Congratulations to all the teams that have qualified for the Grand Finale! 🎉
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm text-ink-600">
-                The teams listed below have qualified for the Grand Finale. Further details will be shared with the
-                qualified teams soon via <strong>email</strong> and <strong>WhatsApp</strong>.
+                The teams listed below have qualified for the Grand Finale. Further details will be shared with them
+                shortly via <strong>email</strong> and <strong>WhatsApp</strong>.
               </p>
               <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-4 py-1.5 text-sm font-medium text-brand-700">
                 <MapPin className="h-4 w-4" />
