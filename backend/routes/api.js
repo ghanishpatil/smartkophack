@@ -345,6 +345,7 @@ r.get('/results', async (req, res, next) => {
         qualified.push({
           teamId: team.id,
           teamName: team.name || 'Unnamed',
+          code: team.inviteCode || team.id.slice(0, 6),
           problemStatement: ps?.title || team.problemStatementId || '',
           domain: ps?.domain || '',
           track: ps?.track || '',

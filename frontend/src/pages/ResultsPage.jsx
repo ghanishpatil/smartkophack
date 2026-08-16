@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy } from 'lucide-react'
+import { Trophy, Search, PartyPopper, MapPin } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { APP } from '@/utils/constants.js'
@@ -11,6 +11,7 @@ export function ResultsPage() {
   usePageSeo({ title: 'Results', description: 'Hackathon results — selected teams.' })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetch(`${API}/api/results`)
@@ -20,10 +21,18 @@ export function ResultsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="px-4 py-16 sm:px-6 lg:px-8"><Skeleton className="h-96 w-full rounded-2xl" /></div>
-
   const published = data?.published
   const teams = data?.teams || []
+
+  const filteredTeams = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return teams
+    return teams.filter((t) =>
+      `${t.teamName} ${t.code} ${t.college} ${t.domain} ${t.track} ${t.problemStatement}`.toLowerCase().includes(q),
+    )
+  }, [teams, search])
+
+  if (loading) return <div className="px-4 py-16 sm:px-6 lg:px-8"><Skeleton className="h-96 w-full rounded-2xl" /></div>
 
   return (
     <>
@@ -73,36 +82,77 @@ export function ResultsPage() {
           </div>
         ) : (
           <div className="mx-auto max-w-4xl">
-            <div className="mb-6 text-center">
-              <h2 className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">Qualified Teams</h2>
-              <p className="mt-2 text-sm text-ink-500">{teams.length} team{teams.length === 1 ? '' : 's'} qualified by the jury panel</p>
+            {/* Grand Finale congratulations banner */}
+            <div className="mb-8 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-[rgb(var(--surface))] to-brand-500/10 p-6 text-center shadow-sm">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600">
+                <PartyPopper className="h-6 w-6" />
+              </div>
+              <h2 className="mt-3 font-display text-xl font-bold text-ink-900 sm:text-2xl">
+                Congratulations! Your team has qualified for the Grand Finale 🎉
+              </h2>
+              <p className="mx-auto mt-2 max-w-2xl text-sm text-ink-600">
+                All further details will be shared with you soon via <strong>email</strong> and <strong>WhatsApp</strong>.
+                Please keep an eye on both.
+              </p>
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-4 py-1.5 text-sm font-medium text-brand-700">
+                <MapPin className="h-4 w-4" />
+                The Grand Finale will be held at Sanjivani University
+              </p>
+            </div>
+
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-display text-xl font-bold text-ink-900">Qualified Teams</h3>
+                <p className="mt-1 text-sm text-ink-500">
+                  {teams.length} team{teams.length === 1 ? '' : 's'} qualified · use search to find your team
+                </p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search team name, code, college…"
+                  className="w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] py-2.5 pl-9 pr-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
             </div>
 
             {/* Clean table — qualified teams only, no scores */}
-            <div className="overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-sm">
-              <table className="w-full">
+            <div className="overflow-x-auto rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-sm">
+              <table className="w-full min-w-[560px]">
                 <thead>
                   <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/60">
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Sr.</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Name</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Domain / Track</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">College</th>
+                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Sr.</th>
+                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Name</th>
+                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Code</th>
+                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Domain / Track</th>
+                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">College</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {teams.map((team, i) => (
-                    <tr
-                      key={team.teamId}
-                      className="border-b border-[rgb(var(--border))]/40 last:border-b-0 transition-colors hover:bg-[rgb(var(--surface-muted))]/30"
-                    >
-                      <td className="px-6 py-4 text-sm text-ink-400 font-medium">{i + 1}</td>
-                      <td className="px-6 py-4 text-sm font-semibold text-ink-900">{team.teamName}</td>
-                      <td className="px-6 py-4 text-sm text-ink-600">
-                        {[team.domain, team.track].filter(Boolean).join(' · ') || '—'}
+                  {filteredTeams.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-10 text-center text-sm text-ink-500">
+                        No team matches “{search}”.
                       </td>
-                      <td className="px-6 py-4 text-sm text-ink-600">{team.college || '—'}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredTeams.map((team, i) => (
+                      <tr
+                        key={team.teamId}
+                        className="border-b border-[rgb(var(--border))]/40 last:border-b-0 transition-colors hover:bg-[rgb(var(--surface-muted))]/30"
+                      >
+                        <td className="px-5 py-4 text-sm text-ink-400 font-medium">{i + 1}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-ink-900">{team.teamName}</td>
+                        <td className="px-5 py-4 text-sm font-mono text-ink-600">{team.code || '—'}</td>
+                        <td className="px-5 py-4 text-sm text-ink-600">
+                          {[team.domain, team.track].filter(Boolean).join(' · ') || '—'}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-ink-600">{team.college || '—'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
