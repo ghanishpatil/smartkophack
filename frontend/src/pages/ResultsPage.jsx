@@ -123,7 +123,6 @@ export function ResultsPage() {
               <table className="w-full min-w-[560px]">
                 <thead>
                   <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/60">
-                    <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Sr.</th>
                     <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Name</th>
                     <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Code</th>
                     <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Domain / Track</th>
@@ -133,17 +132,16 @@ export function ResultsPage() {
                 <tbody>
                   {filteredTeams.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-5 py-10 text-center text-sm text-ink-500">
+                      <td colSpan={4} className="px-5 py-10 text-center text-sm text-ink-500">
                         No team matches “{search}”.
                       </td>
                     </tr>
                   ) : (
-                    filteredTeams.map((team, i) => (
+                    filteredTeams.map((team) => (
                       <tr
                         key={team.teamId}
                         className="border-b border-[rgb(var(--border))]/40 last:border-b-0 transition-colors hover:bg-[rgb(var(--surface-muted))]/30"
                       >
-                        <td className="px-5 py-4 text-sm text-ink-400 font-medium">{i + 1}</td>
                         <td className="px-5 py-4 text-sm font-semibold text-ink-900">{team.teamName}</td>
                         <td className="px-5 py-4 text-sm font-mono text-ink-600">{team.code || '—'}</td>
                         <td className="px-5 py-4 text-sm text-ink-600">
