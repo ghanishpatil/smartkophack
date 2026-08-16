@@ -99,6 +99,74 @@ export function AdminProblemsPage() {
     downloadCSV('problem-statements-template.csv', csv)
   }
 
+  /**
+   * Export every problem statement (curated + Open Innovation) to a proper,
+   * formatted Excel workbook (.xls via SpreadsheetML — opens natively in Excel
+   * with a styled header, column widths and wrapped descriptions). Dependency-
+   * free and read-only; nothing on the server changes.
+   */
+  function exportAllPs() {
+    const xmlEsc = (v) => String(v ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '') // strip control chars
+    const cell = (v, type = 'String', styleId) => {
+      const st = styleId ? ` ss:StyleID="${styleId}"` : ''
+      if (type === 'Number' && v !== '' && v != null && !Number.isNaN(Number(v))) {
+        return `<Cell${st}><Data ss:Type="Number">${Number(v)}</Data></Cell>`
+      }
+      return `<Cell${st}><Data ss:Type="String">${xmlEsc(v)}</Data></Cell>`
+    }
+
+    const headers = [
+      'ID', 'Name', 'Organization', 'Department', 'Track', 'Domain',
+      'Description', 'Status', 'Max Teams', 'List Order', 'Selections',
+      'Assigned Judges', 'Type',
+    ]
+    const widths = [110, 220, 150, 150, 70, 130, 380, 80, 80, 80, 80, 110, 180]
+    const headerRow = `<Row>${headers.map((h) => cell(h, 'String', 'hdr')).join('')}</Row>`
+    const bodyRows = sortedRows.map((ps) => {
+      const cells = [
+        cell(ps.id),
+        cell(ps.title || ''),
+        cell(displayOrganization(ps) || ''),
+        cell(displayDepartment(ps) || ''),
+        cell(displayCategory(ps) || ''),
+        cell(displayTheme(ps) || ''),
+        cell(ps.description || '', 'String', 'wrap'),
+        cell(ps.published !== false ? 'Published' : 'Draft'),
+        typeof ps.maxTeams === 'number' ? cell(ps.maxTeams, 'Number') : cell('No cap'),
+        cell(typeof ps.order === 'number' ? ps.order : '', 'Number'),
+        cell(typeof ps.selectionCount === 'number' ? ps.selectionCount : 0, 'Number'),
+        cell(Array.isArray(ps.assignedJudgeIds) ? ps.assignedJudgeIds.length : 0, 'Number'),
+        cell(ps.origin === 'open_innovation' ? 'Open Innovation (team-submitted)' : 'Curated'),
+      ]
+      return `<Row>${cells.join('')}</Row>`
+    }).join('')
+    const cols = widths.map((w) => `<Column ss:AutoFitWidth="0" ss:Width="${w}"/>`).join('')
+
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>
+  <Style ss:ID="wrap"><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+ </Styles>
+ <Worksheet ss:Name="Problem Statements">
+  <Table>${cols}${headerRow}${bodyRows}</Table>
+ </Worksheet>
+</Workbook>`
+
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `problem-statements-${new Date().toISOString().slice(0, 10)}.xls`
+    a.click()
+    URL.revokeObjectURL(url)
+    setMsg(`Exported ${sortedRows.length} problem statement(s) to Excel.`)
+  }
+
   async function handleFileSelect(event) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -420,15 +488,27 @@ export function AdminProblemsPage() {
             .
           </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => { resetBulkState(); setBulkOpen(true) }}
-          className="gap-2"
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          Bulk import (CSV)
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={exportAllPs}
+            disabled={sortedRows.length === 0}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export all (Excel)
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { resetBulkState(); setBulkOpen(true) }}
+            className="gap-2"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Bulk import (CSV)
+          </Button>
+        </div>
       </div>
 
       {msg ? <p className="text-sm text-brand-700">{msg}</p> : null}
