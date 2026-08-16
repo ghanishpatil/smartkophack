@@ -40,9 +40,11 @@ export function AdminSubmissionsPage() {
   const api = useApi()
   const [subs, setSubs] = useState([])
   const [teams, setTeams] = useState([])
+  const [problems, setProblems] = useState([])
   const [collegeByTeam, setCollegeByTeam] = useState(new Map())
   const [collegeFilter, setCollegeFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
+  const [domainFilter, setDomainFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [drawerSub, setDrawerSub] = useState(null)
   const globalFilter = useAdminFiltersStore((s) => s.submissionsGlobalFilter)
@@ -51,13 +53,15 @@ export function AdminSubmissionsPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const [subRows, teamRows, tc] = await Promise.all([
+      const [subRows, teamRows, tc, psRows] = await Promise.all([
         api.adminSubmissions(),
         api.adminTeams(),
         api.adminTeamColleges().catch(() => ({ teams: [] })),
+        api.listAdminProblemStatements().catch(() => []),
       ])
       setSubs(Array.isArray(subRows) ? subRows : [])
       setTeams(Array.isArray(teamRows) ? teamRows : [])
+      setProblems(Array.isArray(psRows) ? psRows : [])
       const cm = new Map()
       for (const row of (Array.isArray(tc?.teams) ? tc.teams : [])) {
         cm.set(row.teamId, { college: row.college || '', collegeLocation: row.collegeLocation || '' })
@@ -81,6 +85,8 @@ export function AdminSubmissionsPage() {
   // Merge team names into submissions
   const enrichedSubs = useMemo(() => {
     const teamMap = new Map(teams.map((t) => [t.id, t]))
+    // Problem statement → domain (theme is the Domain field; domain is a legacy mirror).
+    const psDomain = new Map(problems.map((p) => [p.id, p.theme || p.domain || '']))
     return subs.map((s) => {
       const team = teamMap.get(s.teamId)
       // Current lock state is the source of truth: an admin unlock (e.g. for
@@ -92,17 +98,19 @@ export function AdminSubmissionsPage() {
         ? 'submitted'
         : (s.status === 'submitted' ? 'draft' : (s.status || 'draft'))
       const cl = collegeByTeam.get(s.teamId) || {}
+      const pid = team?.problemStatementId || s.problemStatementId || ''
       return {
         ...s,
         teamName: team?.name || '',
-        problemStatementId: team?.problemStatementId || s.problemStatementId || '',
+        problemStatementId: pid,
+        domain: (pid && psDomain.get(pid)) || '',
         college: cl.college || '',
         collegeLocation: cl.collegeLocation || '',
         submissionLocked,
         effectiveStatus,
       }
     })
-  }, [subs, teams, collegeByTeam])
+  }, [subs, teams, problems, collegeByTeam])
 
   // Distinct college/location values + filtered rows for the dropdown filters.
   const collegeOptions = useMemo(
@@ -113,15 +121,20 @@ export function AdminSubmissionsPage() {
     () => Array.from(new Set(enrichedSubs.map((s) => s.collegeLocation).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [enrichedSubs],
   )
+  const domainOptions = useMemo(
+    () => Array.from(new Set(enrichedSubs.map((s) => s.domain).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [enrichedSubs],
+  )
   const filteredSubs = useMemo(() => {
     const q = String(globalFilter || '').trim().toLowerCase()
     return enrichedSubs.filter((s) => {
       if (collegeFilter !== 'all' && s.college !== collegeFilter) return false
       if (locationFilter !== 'all' && s.collegeLocation !== locationFilter) return false
+      if (domainFilter !== 'all' && s.domain !== domainFilter) return false
       if (q && !`${s.teamName} ${s.teamId} ${s.effectiveStatus}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [enrichedSubs, collegeFilter, locationFilter, globalFilter])
+  }, [enrichedSubs, collegeFilter, locationFilter, domainFilter, globalFilter])
 
   const columns = useMemo(
     () => [
@@ -135,14 +148,15 @@ export function AdminSubmissionsPage() {
       }),
       col.display({
         id: 'college',
-        header: 'College / Location',
+        header: 'College / Location / Domain',
         cell: ({ row }) => {
           const r = row.original
-          if (!r.college && !r.collegeLocation) return <span className="text-xs text-ink-400">—</span>
+          if (!r.college && !r.collegeLocation && !r.domain) return <span className="text-xs text-ink-400">—</span>
           return (
             <div className="text-xs text-ink-600">
               <div className="text-ink-800">{r.college || '—'}</div>
               {r.collegeLocation ? <div className="text-ink-400">{r.collegeLocation}</div> : null}
+              {r.domain ? <Badge tone="neutral" className="mt-0.5 text-[9px]">{r.domain}</Badge> : null}
             </div>
           )
         },
@@ -221,6 +235,7 @@ export function AdminSubmissionsPage() {
             { header: 'Team ID', accessor: (r) => r.teamId },
             { header: 'College', accessor: (r) => r.college || '' },
             { header: 'Location', accessor: (r) => r.collegeLocation || '' },
+            { header: 'Domain', accessor: (r) => r.domain || '' },
             { header: 'Status', accessor: (r) => r.effectiveStatus || r.status || 'draft' },
             { header: 'PPT', accessor: (r) => r.pptUrl || '' },
             { header: 'PDF', accessor: (r) => r.pdfUrl || '' },
@@ -274,10 +289,21 @@ export function AdminSubmissionsPage() {
             {locationOptions.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
         </label>
-        {(collegeFilter !== 'all' || locationFilter !== 'all') ? (
+        <label className="flex-1 text-xs font-medium text-ink-500">
+          Domain
+          <select
+            value={domainFilter}
+            onChange={(e) => setDomainFilter(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          >
+            <option value="all">All domains ({domainOptions.length})</option>
+            {domainOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </label>
+        {(collegeFilter !== 'all' || locationFilter !== 'all' || domainFilter !== 'all') ? (
           <button
             type="button"
-            onClick={() => { setCollegeFilter('all'); setLocationFilter('all') }}
+            onClick={() => { setCollegeFilter('all'); setLocationFilter('all'); setDomainFilter('all') }}
             className="self-end rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm font-medium text-ink-600 hover:bg-[rgb(var(--border))]"
           >
             Clear
