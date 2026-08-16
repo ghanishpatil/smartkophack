@@ -40,6 +40,9 @@ export function AdminSubmissionsPage() {
   const api = useApi()
   const [subs, setSubs] = useState([])
   const [teams, setTeams] = useState([])
+  const [collegeByTeam, setCollegeByTeam] = useState(new Map())
+  const [collegeFilter, setCollegeFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [drawerSub, setDrawerSub] = useState(null)
   const globalFilter = useAdminFiltersStore((s) => s.submissionsGlobalFilter)
@@ -48,12 +51,18 @@ export function AdminSubmissionsPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const [subRows, teamRows] = await Promise.all([
+      const [subRows, teamRows, tc] = await Promise.all([
         api.adminSubmissions(),
         api.adminTeams(),
+        api.adminTeamColleges().catch(() => ({ teams: [] })),
       ])
       setSubs(Array.isArray(subRows) ? subRows : [])
       setTeams(Array.isArray(teamRows) ? teamRows : [])
+      const cm = new Map()
+      for (const row of (Array.isArray(tc?.teams) ? tc.teams : [])) {
+        cm.set(row.teamId, { college: row.college || '', collegeLocation: row.collegeLocation || '' })
+      }
+      setCollegeByTeam(cm)
     } catch {
       if (!silent) {
         setSubs([])
@@ -82,15 +91,37 @@ export function AdminSubmissionsPage() {
       const effectiveStatus = submissionLocked
         ? 'submitted'
         : (s.status === 'submitted' ? 'draft' : (s.status || 'draft'))
+      const cl = collegeByTeam.get(s.teamId) || {}
       return {
         ...s,
         teamName: team?.name || '',
         problemStatementId: team?.problemStatementId || s.problemStatementId || '',
+        college: cl.college || '',
+        collegeLocation: cl.collegeLocation || '',
         submissionLocked,
         effectiveStatus,
       }
     })
-  }, [subs, teams])
+  }, [subs, teams, collegeByTeam])
+
+  // Distinct college/location values + filtered rows for the dropdown filters.
+  const collegeOptions = useMemo(
+    () => Array.from(new Set(enrichedSubs.map((s) => s.college).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [enrichedSubs],
+  )
+  const locationOptions = useMemo(
+    () => Array.from(new Set(enrichedSubs.map((s) => s.collegeLocation).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [enrichedSubs],
+  )
+  const filteredSubs = useMemo(() => {
+    const q = String(globalFilter || '').trim().toLowerCase()
+    return enrichedSubs.filter((s) => {
+      if (collegeFilter !== 'all' && s.college !== collegeFilter) return false
+      if (locationFilter !== 'all' && s.collegeLocation !== locationFilter) return false
+      if (q && !`${s.teamName} ${s.teamId} ${s.effectiveStatus}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [enrichedSubs, collegeFilter, locationFilter, globalFilter])
 
   const columns = useMemo(
     () => [
@@ -101,6 +132,20 @@ export function AdminSubmissionsPage() {
       col.accessor('teamId', {
         header: 'ID',
         cell: (i) => <span className="font-mono text-[11px] text-ink-500">{String(i.getValue()).slice(0, 8)}…</span>,
+      }),
+      col.display({
+        id: 'college',
+        header: 'College / Location',
+        cell: ({ row }) => {
+          const r = row.original
+          if (!r.college && !r.collegeLocation) return <span className="text-xs text-ink-400">—</span>
+          return (
+            <div className="text-xs text-ink-600">
+              <div className="text-ink-800">{r.college || '—'}</div>
+              {r.collegeLocation ? <div className="text-ink-400">{r.collegeLocation}</div> : null}
+            </div>
+          )
+        },
       }),
       col.accessor('effectiveStatus', {
         header: 'Status',
@@ -153,9 +198,9 @@ export function AdminSubmissionsPage() {
     [],
   )
 
-  // Stats
-  const totalSubs = enrichedSubs.length
-  const finalized = enrichedSubs.filter((s) => s.submissionLocked).length
+  // Stats — reflect the active college/location filter.
+  const totalSubs = filteredSubs.length
+  const finalized = filteredSubs.filter((s) => s.submissionLocked).length
   const drafts = totalSubs - finalized
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -171,9 +216,11 @@ export function AdminSubmissionsPage() {
           </p>
         </div>
         <Button variant="secondary" type="button" onClick={() => downloadCsv(
-          `submissions-${Date.now()}.csv`, enrichedSubs, [
+          `submissions-${Date.now()}.csv`, filteredSubs, [
             { header: 'Team Name', accessor: (r) => r.teamName },
             { header: 'Team ID', accessor: (r) => r.teamId },
+            { header: 'College', accessor: (r) => r.college || '' },
+            { header: 'Location', accessor: (r) => r.collegeLocation || '' },
             { header: 'Status', accessor: (r) => r.effectiveStatus || r.status || 'draft' },
             { header: 'PPT', accessor: (r) => r.pptUrl || '' },
             { header: 'PDF', accessor: (r) => r.pdfUrl || '' },
@@ -203,10 +250,45 @@ export function AdminSubmissionsPage() {
         </div>
       </div>
 
+      {/* College + Location filters */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label className="flex-1 text-xs font-medium text-ink-500">
+          College
+          <select
+            value={collegeFilter}
+            onChange={(e) => setCollegeFilter(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          >
+            <option value="all">All colleges ({collegeOptions.length})</option>
+            {collegeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label className="flex-1 text-xs font-medium text-ink-500">
+          Location
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          >
+            <option value="all">All locations ({locationOptions.length})</option>
+            {locationOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
+        {(collegeFilter !== 'all' || locationFilter !== 'all') ? (
+          <button
+            type="button"
+            onClick={() => { setCollegeFilter('all'); setLocationFilter('all') }}
+            className="self-end rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm font-medium text-ink-600 hover:bg-[rgb(var(--border))]"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+
       {/* Table */}
       <DataTable
         columns={columns}
-        data={enrichedSubs}
+        data={filteredSubs}
         globalFilter={globalFilter}
         onGlobalFilterChange={setGlobalFilter}
         onRowClick={(row) => setDrawerSub(row)}
