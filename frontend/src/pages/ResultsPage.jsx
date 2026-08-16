@@ -74,18 +74,19 @@ export function ResultsPage() {
         ) : (
           <div className="mx-auto max-w-4xl">
             <div className="mb-6 text-center">
-              <h2 className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">Selected Teams</h2>
-              <p className="mt-2 text-sm text-ink-500">{teams.length} teams evaluated by the jury panel</p>
+              <h2 className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">Qualified Teams</h2>
+              <p className="mt-2 text-sm text-ink-500">{teams.length} team{teams.length === 1 ? '' : 's'} qualified by the jury panel</p>
             </div>
 
-            {/* Clean table */}
+            {/* Clean table — qualified teams only, no scores */}
             <div className="overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-sm">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/60">
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Sr.</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Team Name</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Problem Statement</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">Domain / Track</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-ink-500">College</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -96,7 +97,10 @@ export function ResultsPage() {
                     >
                       <td className="px-6 py-4 text-sm text-ink-400 font-medium">{i + 1}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-ink-900">{team.teamName}</td>
-                      <td className="px-6 py-4 text-sm text-ink-600">{team.problemStatement}</td>
+                      <td className="px-6 py-4 text-sm text-ink-600">
+                        {[team.domain, team.track].filter(Boolean).join(' · ') || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-ink-600">{team.college || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

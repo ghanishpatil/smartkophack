@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel } from 'lucide-react'
+import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel, Mail } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
@@ -49,6 +49,7 @@ export function AdminResultsPage() {
   const api = useApi()
   const readOnly = useIsReadOnly()
   const [statusBusy, setStatusBusy] = useState('')
+  const [emailBusy, setEmailBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [evals, setEvals] = useState([])
   const [teams, setTeams] = useState([])
@@ -195,6 +196,23 @@ export function AdminResultsPage() {
     setExpanded((cur) => (cur === teamId ? null : teamId))
   }
 
+  // Email qualified teams' leaders. Pass a teamId array for one team, or null
+  // to email ALL qualified teams. Can be sent again later (no lock).
+  async function emailQualified(teamIds) {
+    const one = Array.isArray(teamIds) && teamIds.length === 1
+    const scope = one ? 'this team' : `all ${counts.qualified} qualified team(s)`
+    if (!window.confirm(`Send the "Your team has qualified" email to ${scope}? It goes to the team leader and can be re-sent anytime.`)) return
+    setEmailBusy(true)
+    try {
+      const res = await api.notifyQualifiedTeams(teamIds || null)
+      window.alert(`Sent ${res.sent || 0} email(s)${res.skipped ? `, ${res.skipped} skipped (no leader email)` : ''}.`)
+    } catch (e) {
+      window.alert(e?.message || 'Could not send emails')
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
   // Admin override of a team's jury status (qualified / waitlist / not_qualified / clear).
   async function changeStatus(teamId, next) {
     setStatusBusy(teamId)
@@ -222,9 +240,21 @@ export function AdminResultsPage() {
             Click a row to see which judge evaluated it and the full marks breakdown.
           </p>
         </div>
-        <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportCsv}>
-          <Download className="h-4 w-4" /> Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {!readOnly ? (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              disabled={emailBusy || counts.qualified === 0}
+              onClick={() => emailQualified(null)}
+            >
+              <Mail className="h-4 w-4" /> {emailBusy ? 'Sending…' : `Email all qualified (${counts.qualified})`}
+            </Button>
+          ) : null}
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportCsv}>
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Counts */}
@@ -372,17 +402,30 @@ export function AdminResultsPage() {
                               <Badge tone="neutral">Unset</Badge>
                             )
                           ) : (
-                            <select
-                              value={r.juryStatus || ''}
-                              disabled={statusBusy === r.teamId}
-                              onChange={(e) => changeStatus(r.teamId, e.target.value)}
-                              className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
-                            >
-                              <option value="">Unset</option>
-                              <option value="qualified">Qualified</option>
-                              <option value="waitlist">Waitlist</option>
-                              <option value="not_qualified">Not Qualified</option>
-                            </select>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={r.juryStatus || ''}
+                                disabled={statusBusy === r.teamId}
+                                onChange={(e) => changeStatus(r.teamId, e.target.value)}
+                                className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+                              >
+                                <option value="">Unset</option>
+                                <option value="qualified">Qualified</option>
+                                <option value="waitlist">Waitlist</option>
+                                <option value="not_qualified">Not Qualified</option>
+                              </select>
+                              {r.juryStatus === 'qualified' ? (
+                                <button
+                                  type="button"
+                                  title="Email this team that they qualified"
+                                  disabled={emailBusy}
+                                  onClick={() => emailQualified([r.teamId])}
+                                  className="rounded-lg p-1.5 text-brand-600 transition-colors hover:bg-brand-500/10 disabled:opacity-50"
+                                >
+                                  <Mail className="h-4 w-4" />
+                                </button>
+                              ) : null}
+                            </div>
                           )}
                         </td>
                       </tr>

@@ -165,6 +165,12 @@ export function createApi(getToken, getEventId = () => '') {
     // Per-team college + location (leader-entered) for Results/Reports filters.
     adminTeamColleges: () =>
       authReq('/api/admin/team-colleges'),
+    // Email qualified teams' leaders (all when teamIds omitted, else specific).
+    notifyQualifiedTeams: (teamIds) =>
+      authReq('/api/admin/results/notify-qualified', {
+        method: 'POST',
+        body: Array.isArray(teamIds) && teamIds.length ? { teamIds } : {},
+      }),
     adminSubmissions: (opts = {}) =>
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>

@@ -307,21 +307,7 @@ r.get('/results', async (req, res, next) => {
       }
       const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-      let evalSnap
-      if (eventId) {
-        evalSnap = await db.collection('evaluations')
-          .where('eventId', '==', eventId)
-          .where('evaluationStatus', '==', 'submitted')
-          .limit(2000)
-          .get()
-      } else {
-        evalSnap = await db.collection('evaluations')
-          .where('evaluationStatus', '==', 'submitted')
-          .limit(2000)
-          .get()
-      }
-      const evaluations = evalSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-
+      // Problem statement → { title, domain (theme), track (category) }.
       let psSnap
       if (eventId) {
         psSnap = await db.collection('problemStatements').where('eventId', '==', eventId).limit(200).get()
@@ -329,40 +315,45 @@ r.get('/results', async (req, res, next) => {
         psSnap = await db.collection('problemStatements').limit(200).get()
       }
       const psMap = {}
-      psSnap.docs.forEach((d) => { psMap[d.id] = d.data().title || d.id })
+      psSnap.docs.forEach((d) => {
+        const x = d.data()
+        psMap[d.id] = { title: x.title || d.id, domain: x.theme || x.domain || '', track: x.category || '' }
+      })
 
-      const teamScores = []
-      for (const team of teams) {
-        if (!team.problemStatementId) continue
-        const teamEvals = evaluations.filter((e) => e.teamId === team.id)
-        if (teamEvals.length === 0) continue
-
-        let totalScore = 0
-        let scoreCount = 0
-        for (const ev of teamEvals) {
-          if (ev.scores && typeof ev.scores === 'object') {
-            const vals = Object.values(ev.scores).filter((v) => typeof v === 'number')
-            const sum = vals.reduce((a, b) => a + b, 0)
-            totalScore += sum
-            scoreCount += 1
-          }
-        }
-        const avgScore = scoreCount > 0 ? Math.round((totalScore / scoreCount) * 100) / 100 : 0
-        teamScores.push({
-          teamId: team.id,
-          teamName: team.name || 'Unnamed',
-          problemStatement: psMap[team.problemStatementId] || team.problemStatementId,
-          problemStatementId: team.problemStatementId,
-          avgScore,
-          evalCount: teamEvals.length,
-          shortlisted: Boolean(team.shortlisted),
-        })
+      // College per team — from the team leader's registration record.
+      const mrSnap = await db.collection('memberRegistrations').limit(8000).get()
+      const membersByTeam = {}
+      mrSnap.docs.forEach((d) => {
+        const m = d.data()
+        const tid = m.teamId
+        if (!tid) return
+        ;(membersByTeam[tid] ||= []).push(m)
+      })
+      const collegeByTeam = {}
+      for (const [tid, members] of Object.entries(membersByTeam)) {
+        const sorted = members.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        const leader = sorted.find((m) => m.isLeader) || sorted[0] || {}
+        collegeByTeam[tid] = leader.institute || leader.college || ''
       }
 
-      teamScores.sort((a, b) => b.avgScore - a.avgScore)
-      teamScores.forEach((t, i) => { t.rank = i + 1 })
+      // PUBLIC RESULTS POLICY: only teams marked "qualified" by the jury are
+      // listed, and NO scores/ranks are exposed — just team, domain/track, college.
+      const qualified = []
+      for (const team of teams) {
+        if (team.juryStatus !== 'qualified') continue
+        const ps = team.problemStatementId ? psMap[team.problemStatementId] : null
+        qualified.push({
+          teamId: team.id,
+          teamName: team.name || 'Unnamed',
+          problemStatement: ps?.title || team.problemStatementId || '',
+          domain: ps?.domain || '',
+          track: ps?.track || '',
+          college: collegeByTeam[team.id] || '',
+        })
+      }
+      qualified.sort((a, b) => a.teamName.localeCompare(b.teamName))
 
-      return { published: true, teams: teamScores }
+      return { published: true, teams: qualified }
     })
 
     res.json(data)
@@ -1261,6 +1252,30 @@ export function adminRouter() {
         })
       }
       res.json({ teams })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: email qualified teams' leaders that they have qualified.
+   * Body: { teamIds?: string[] } — omit (or empty) to email ALL qualified teams.
+   * Only teams with juryStatus === 'qualified' are ever emailed. Resendable.
+   */
+  router.post('/results/notify-qualified', async (req, res, next) => {
+    try {
+      const raw = Array.isArray(req.body?.teamIds) ? req.body.teamIds : null
+      const teamIds = raw ? raw.filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 128) : null
+      const { notifyQualified } = await import('../services/notificationService.js')
+      const result = await notifyQualified({ teamIds, eventId: req.eventId || '' })
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'results.notify_qualified',
+        targetType: 'teams',
+        targetId: '',
+        metadata: { sent: result.sent || 0, qualified: result.qualified || 0, scope: teamIds ? teamIds.length : 'all' },
+      })
+      res.json({ ok: true, ...result })
     } catch (e) {
       next(e)
     }

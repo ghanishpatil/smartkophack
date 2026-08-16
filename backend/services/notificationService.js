@@ -22,6 +22,7 @@ import {
   sendTeamMemberJoinedEmail,
   sendAnnouncementEmail,
   sendEvaluationCompleteEmail,
+  sendQualifiedEmail,
 } from './emailService.js'
 
 /** Returns the configured frontend URL without trailing slash. */
@@ -415,6 +416,66 @@ export async function notifyBroadcast({ title, message, link, eventId, audience 
   } catch (err) {
     console.error('[Notify] Broadcast failed:', err.message)
     return { sent: 0, error: err.message }
+  }
+}
+
+/**
+ * Email "your team has qualified" to the team LEADER of qualified teams.
+ * - teamIds: optional array to target specific teams; when omitted, ALL
+ *   qualified teams are emailed.
+ * - Only teams whose juryStatus === 'qualified' are ever emailed (safety).
+ * - Resendable: no state is stored; calling again re-sends.
+ * Returns { sent, qualified, skipped }.
+ */
+export async function notifyQualified({ teamIds = null, eventId = '' } = {}) {
+  try {
+    const db = getDb()
+    let q = db.collection('teams').limit(2000)
+    if (eventId) q = q.where('eventId', '==', eventId)
+    const snap = await q.get()
+    const idSet = Array.isArray(teamIds) && teamIds.length ? new Set(teamIds) : null
+    const targets = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((t) => t.juryStatus === 'qualified' && (!idSet || idSet.has(t.id)))
+    if (targets.length === 0) return { sent: 0, qualified: 0, skipped: 0 }
+
+    // Resolve leader account emails (chunked getAll).
+    const leaderIds = [...new Set(targets.map((t) => t.leaderId).filter(Boolean))]
+    const userInfo = new Map()
+    for (let i = 0; i < leaderIds.length; i += 300) {
+      const refs = leaderIds.slice(i, i + 300).map((id) => db.doc(`users/${id}`))
+      if (refs.length === 0) continue
+      const snaps = await db.getAll(...refs)
+      for (const s of snaps) {
+        if (s.exists) { const u = s.data(); userInfo.set(s.id, { email: u.email || '', name: u.displayName || '' }) }
+      }
+    }
+
+    // Fallback: leader's registration record (for leaders without an account email).
+    const mrSnap = await db.collection('memberRegistrations').where('isLeader', '==', true).limit(8000).get()
+    const mrByTeam = new Map()
+    mrSnap.docs.forEach((d) => {
+      const m = d.data()
+      if (m.teamId && !mrByTeam.has(m.teamId)) mrByTeam.set(m.teamId, { email: m.email || '', name: m.name || '' })
+    })
+
+    const eventName = 'Smart Kopargaon Hackathon'
+    const tasks = []
+    let skipped = 0
+    for (const t of targets) {
+      const fromUser = t.leaderId ? userInfo.get(t.leaderId) : null
+      const fromMr = mrByTeam.get(t.id)
+      const email = (fromUser && fromUser.email) || (fromMr && fromMr.email) || ''
+      const name = (fromUser && fromUser.name) || (fromMr && fromMr.name) || 'Team Leader'
+      if (!email) { skipped += 1; continue }
+      tasks.push(sendQualifiedEmail({ to: email, name, teamName: t.name || 'Your Team', eventName }))
+    }
+    await sendInChunks(tasks)
+    console.log(`[Notify] Qualified emails: ${tasks.length} sent, ${skipped} skipped`)
+    return { sent: tasks.length, qualified: targets.length, skipped }
+  } catch (err) {
+    console.error('[Notify] Qualified emails failed:', err.message)
+    return { sent: 0, qualified: 0, skipped: 0, error: err.message }
   }
 }
 

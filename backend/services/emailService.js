@@ -508,6 +508,25 @@ export async function sendEvaluationCompleteEmail({ to, name, teamName }) {
   return sendEmail({ to, toName: name, subject, htmlContent })
 }
 
+// 8b. Team Qualified Email — sent to a team leader when their team qualifies.
+export async function sendQualifiedEmail({ to, name, teamName, eventName }) {
+  const safeName = escapeHtml(name || 'Team Leader')
+  const safeTeam = escapeHtml(teamName || 'Your Team')
+  const safeEvent = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const subject = `Congratulations! ${safeTeam} has qualified — ${safeEvent}`
+  const bodyHtml = `
+    <p style="margin:0 0 14px;"><strong>Dear ${safeName},</strong></p>
+    <p style="margin:0 0 16px;">Congratulations! We are delighted to inform you that your team
+      <strong>${safeTeam}</strong> has <strong>qualified</strong> in ${safeEvent}. 🎉</p>
+    <p style="margin:0 0 16px;">Thank you for your hard work and innovative solution. Details about the
+      next steps will be shared with you soon. Please keep an eye on your dashboard and announcements.</p>
+    ${ctaButton('View Results', `${getFrontendUrl()}/results`)}
+    <p style="margin:20px 0 0;color:#64748b;font-size:14px;">Warm regards,<br/>Team ${safeEvent}</p>
+  `
+  const htmlContent = renderBrandedEmail({ title: 'Congratulations — Your Team Qualified! 🎉', bodyHtml })
+  return sendEmail({ to, toName: name, subject, htmlContent })
+}
+
 // 9. Account Credentials Email — sent when admin bulk-creates a leader account.
 // Contains their email, a temporary password, and the platform link.
 // Uses the branded credentials.html template with an inline fallback.
@@ -692,6 +711,7 @@ export default {
   sendTeamMemberJoinedEmail,
   sendAnnouncementEmail,
   sendEvaluationCompleteEmail,
+  sendQualifiedEmail,
   sendCredentialsEmail,
   sendOtpEmail,
   sendPasswordResetLinkEmail,
