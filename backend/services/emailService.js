@@ -525,8 +525,8 @@ export async function sendQualifiedEmail({ to, name, teamName, eventName }) {
         <p style="margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#185983;">Grand Finale Details</p>
         <p style="margin:0 0 6px;color:#0f172a;"><strong>📅 Dates:</strong> 29th &amp; 30th August 2026</p>
         <p style="margin:0 0 6px;color:#0f172a;"><strong>📍 Venue:</strong> Sanjivani University, Kopargaon</p>
-        <p style="margin:0;color:#334155;font-size:14px;">Please <strong>plan your travel in advance</strong> for both days.
-          <strong>Accommodation will be provided</strong> to qualified teams.</p>
+        <p style="margin:0;color:#334155;font-size:14px;">Please <strong>plan your travel and accommodation in advance</strong> for both days.
+          Accommodation assistance and any applicable details will be shared with you soon.</p>
       </td></tr>
     </table>
 
