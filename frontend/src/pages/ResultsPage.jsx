@@ -104,7 +104,7 @@ export function ResultsPage() {
               <div>
                 <h3 className="font-display text-xl font-bold text-ink-900">Qualified Teams</h3>
                 <p className="mt-1 text-sm text-ink-500">
-                  {teams.length} team{teams.length === 1 ? '' : 's'} qualified · use search to find your team
+                  Use search to find your team
                 </p>
               </div>
               <div className="relative w-full sm:w-72">
