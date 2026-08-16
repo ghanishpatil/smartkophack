@@ -513,17 +513,29 @@ export async function sendQualifiedEmail({ to, name, teamName, eventName }) {
   const safeName = escapeHtml(name || 'Team Leader')
   const safeTeam = escapeHtml(teamName || 'Your Team')
   const safeEvent = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
-  const subject = `Congratulations! ${safeTeam} has qualified — ${safeEvent}`
+  const subject = `Congratulations! ${safeTeam} has qualified for the Grand Finale — ${safeEvent}`
   const bodyHtml = `
     <p style="margin:0 0 14px;"><strong>Dear ${safeName},</strong></p>
     <p style="margin:0 0 16px;">Congratulations! We are delighted to inform you that your team
-      <strong>${safeTeam}</strong> has <strong>qualified</strong> in ${safeEvent}. 🎉</p>
-    <p style="margin:0 0 16px;">Thank you for your hard work and innovative solution. Details about the
-      next steps will be shared with you soon. Please keep an eye on your dashboard and announcements.</p>
+      <strong>${safeTeam}</strong> has <strong>qualified for the Grand Finale</strong> of ${safeEvent}. 🎉</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#185983;">Grand Finale Details</p>
+        <p style="margin:0 0 6px;color:#0f172a;"><strong>📅 Dates:</strong> 29th &amp; 30th August 2026</p>
+        <p style="margin:0 0 6px;color:#0f172a;"><strong>📍 Venue:</strong> Sanjivani University, Kopargaon</p>
+        <p style="margin:0;color:#334155;font-size:14px;">Please <strong>plan your travel in advance</strong> for both days.
+          <strong>Accommodation will be provided</strong> to qualified teams.</p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 16px;">All other details &mdash; reporting time, schedule, accommodation and travel guidance &mdash;
+      will be shared with you soon over <strong>email</strong> and <strong>WhatsApp</strong>. Please keep an eye on both.</p>
     ${ctaButton('View Results', `${getFrontendUrl()}/results`)}
     <p style="margin:20px 0 0;color:#64748b;font-size:14px;">Warm regards,<br/>Team ${safeEvent}</p>
   `
-  const htmlContent = renderBrandedEmail({ title: 'Congratulations — Your Team Qualified! 🎉', bodyHtml })
+  const htmlContent = renderBrandedEmail({ title: 'You\u2019re in the Grand Finale! 🎉', bodyHtml })
   return sendEmail({ to, toName: name, subject, htmlContent })
 }
 
