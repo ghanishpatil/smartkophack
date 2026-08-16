@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
+import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
 import { Card } from '@/components/ui/Card.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Button } from '@/components/ui/Button.jsx'
@@ -46,6 +47,8 @@ function evalBreakdown(ev) {
 export function AdminResultsPage() {
   usePageSeo({ title: 'Results', description: 'Aggregated team results across judges.' })
   const api = useApi()
+  const readOnly = useIsReadOnly()
+  const [statusBusy, setStatusBusy] = useState('')
   const [loading, setLoading] = useState(true)
   const [evals, setEvals] = useState([])
   const [teams, setTeams] = useState([])
@@ -190,6 +193,19 @@ export function AdminResultsPage() {
 
   function toggle(teamId) {
     setExpanded((cur) => (cur === teamId ? null : teamId))
+  }
+
+  // Admin override of a team's jury status (qualified / waitlist / not_qualified / clear).
+  async function changeStatus(teamId, next) {
+    setStatusBusy(teamId)
+    try {
+      await api.patchAdminTeam(teamId, { juryStatus: next || 'none' })
+      setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, juryStatus: next || '' } : t)))
+    } catch (e) {
+      window.alert(e?.message || 'Could not update status')
+    } finally {
+      setStatusBusy('')
+    }
   }
 
   if (loading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -348,11 +364,25 @@ export function AdminResultsPage() {
                             <span className="text-xs text-ink-400">Not evaluated</span>
                           )}
                         </td>
-                        <td className="px-3 py-2">
-                          {r.juryStatus ? (
-                            <Badge tone={STATUS_TONE[r.juryStatus] || 'neutral'}>{STATUS_LABEL[r.juryStatus] || r.juryStatus}</Badge>
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          {readOnly ? (
+                            r.juryStatus ? (
+                              <Badge tone={STATUS_TONE[r.juryStatus] || 'neutral'}>{STATUS_LABEL[r.juryStatus] || r.juryStatus}</Badge>
+                            ) : (
+                              <Badge tone="neutral">Unset</Badge>
+                            )
                           ) : (
-                            <Badge tone="neutral">Unset</Badge>
+                            <select
+                              value={r.juryStatus || ''}
+                              disabled={statusBusy === r.teamId}
+                              onChange={(e) => changeStatus(r.teamId, e.target.value)}
+                              className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+                            >
+                              <option value="">Unset</option>
+                              <option value="qualified">Qualified</option>
+                              <option value="waitlist">Waitlist</option>
+                              <option value="not_qualified">Not Qualified</option>
+                            </select>
                           )}
                         </td>
                       </tr>

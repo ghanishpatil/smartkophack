@@ -1456,11 +1456,25 @@ export function adminRouter() {
         }
       }
 
+      // Admin override of the jury qualification status (normally set by judges).
+      // Accepts qualified | waitlist | not_qualified, or '' / 'none' to clear.
+      if (typeof body.juryStatus === 'string') {
+        const js = body.juryStatus.trim().toLowerCase()
+        const JURY_STATUS = new Set(['qualified', 'waitlist', 'not_qualified'])
+        if (js === '' || js === 'none') {
+          patch.juryStatus = FieldValue.delete()
+        } else if (JURY_STATUS.has(js)) {
+          patch.juryStatus = js
+        } else {
+          return res.status(400).json({ error: 'juryStatus must be qualified, waitlist, not_qualified, or none.' })
+        }
+      }
+
       const metaKeys = Object.keys(patch).filter((k) => k !== 'updatedAt')
       if (!metaKeys.length) {
         return res
           .status(400)
-          .json({ error: 'No valid fields (submissionLocked, shortlisted, registrationStatus).' })
+          .json({ error: 'No valid fields (submissionLocked, shortlisted, registrationStatus, juryStatus).' })
       }
       await db().doc(`teams/${teamId}`).set(patch, { merge: true })
       await appendAuditLog({
