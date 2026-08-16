@@ -14,6 +14,10 @@ import { useAdminFiltersStore } from '@/stores/adminFiltersStore.js'
 
 const col = createColumnHelper()
 
+// Jury qualification status (set by judges) — for the filter + display.
+const JURY_STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
+const JURY_STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not Qualified' }
+
 function completeness(sub) {
   const fields = [sub.pptUrl, sub.pdfUrl, sub.githubUrl, sub.videoUrl].filter(Boolean).length
   return { fields, ok: fields >= 3 }
@@ -45,6 +49,7 @@ export function AdminSubmissionsPage() {
   const [collegeFilter, setCollegeFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [domainFilter, setDomainFilter] = useState('all')
+  const [juryFilter, setJuryFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [drawerSub, setDrawerSub] = useState(null)
   const globalFilter = useAdminFiltersStore((s) => s.submissionsGlobalFilter)
@@ -106,6 +111,7 @@ export function AdminSubmissionsPage() {
         domain: (pid && psDomain.get(pid)) || '',
         college: cl.college || '',
         collegeLocation: cl.collegeLocation || '',
+        juryStatus: team?.juryStatus || '',
         submissionLocked,
         effectiveStatus,
       }
@@ -131,10 +137,12 @@ export function AdminSubmissionsPage() {
       if (collegeFilter !== 'all' && s.college !== collegeFilter) return false
       if (locationFilter !== 'all' && s.collegeLocation !== locationFilter) return false
       if (domainFilter !== 'all' && s.domain !== domainFilter) return false
+      if (juryFilter === 'unset' && s.juryStatus) return false
+      if (juryFilter !== 'all' && juryFilter !== 'unset' && s.juryStatus !== juryFilter) return false
       if (q && !`${s.teamName} ${s.teamId} ${s.effectiveStatus}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [enrichedSubs, collegeFilter, locationFilter, domainFilter, globalFilter])
+  }, [enrichedSubs, collegeFilter, locationFilter, domainFilter, juryFilter, globalFilter])
 
   const columns = useMemo(
     () => [
@@ -200,6 +208,16 @@ export function AdminSubmissionsPage() {
           : <Badge tone="neutral">No</Badge>),
       }),
       col.display({
+        id: 'jury',
+        header: 'Jury Status',
+        cell: ({ row }) => {
+          const js = row.original.juryStatus
+          return js
+            ? <Badge tone={JURY_STATUS_TONE[js] || 'neutral'}>{JURY_STATUS_LABEL[js] || js}</Badge>
+            : <Badge tone="neutral">Unset</Badge>
+        },
+      }),
+      col.display({
         id: 'actions',
         header: '',
         cell: ({ row }) => (
@@ -242,6 +260,7 @@ export function AdminSubmissionsPage() {
             { header: 'Video', accessor: (r) => r.videoUrl || '' },
             { header: 'GitHub', accessor: (r) => r.githubUrl || '' },
             { header: 'Finalized', accessor: (r) => r.submissionLocked ? 'Yes' : 'No' },
+            { header: 'Jury Status', accessor: (r) => JURY_STATUS_LABEL[r.juryStatus] || '' },
             { header: 'Version', accessor: (r) => r.currentVersion || 1 },
           ]
         )}>
@@ -300,15 +319,38 @@ export function AdminSubmissionsPage() {
             {domainOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </label>
-        {(collegeFilter !== 'all' || locationFilter !== 'all' || domainFilter !== 'all') ? (
+        {(collegeFilter !== 'all' || locationFilter !== 'all' || domainFilter !== 'all' || juryFilter !== 'all') ? (
           <button
             type="button"
-            onClick={() => { setCollegeFilter('all'); setLocationFilter('all'); setDomainFilter('all') }}
+            onClick={() => { setCollegeFilter('all'); setLocationFilter('all'); setDomainFilter('all'); setJuryFilter('all') }}
             className="self-end rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm font-medium text-ink-600 hover:bg-[rgb(var(--border))]"
           >
             Clear
           </button>
         ) : null}
+      </div>
+
+      {/* Jury status filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-ink-500">Jury status:</span>
+        {[
+          { id: 'all', label: 'All' },
+          { id: 'qualified', label: 'Qualified' },
+          { id: 'waitlist', label: 'Waitlist' },
+          { id: 'not_qualified', label: 'Not Qualified' },
+          { id: 'unset', label: 'Unset' },
+        ].map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setJuryFilter(f.id)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              juryFilter === f.id ? 'bg-brand-500 text-white' : 'bg-[rgb(var(--surface-muted))] text-ink-600 hover:bg-[rgb(var(--border))]'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Table */}
