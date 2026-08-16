@@ -69,23 +69,32 @@ export function AdminReportsPage() {
   const [subs, setSubs] = useState([])
   const [evals, setEvals] = useState([])
   const [problems, setProblems] = useState([])
+  const [collegeByTeam, setCollegeByTeam] = useState(new Map())
+  const [collegeFilter, setCollegeFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('all')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, sub, evRows, ps] = await Promise.all([
+      const [s, t, sub, evRows, ps, tc] = await Promise.all([
         api.adminStats(),
         api.adminTeams(),
         api.adminSubmissions(),
         api.adminEvaluations().catch(() => []),
         api.listAdminProblemStatements().catch(() => []),
+        api.adminTeamColleges().catch(() => ({ teams: [] })),
       ])
       setStats(s)
       setTeams(Array.isArray(t) ? t : [])
       setSubs(Array.isArray(sub) ? sub : [])
       setEvals(Array.isArray(evRows) ? evRows : [])
       setProblems(Array.isArray(ps) ? ps : [])
+      const cm = new Map()
+      for (const row of (Array.isArray(tc?.teams) ? tc.teams : [])) {
+        cm.set(row.teamId, { college: row.college || '', collegeLocation: row.collegeLocation || '' })
+      }
+      setCollegeByTeam(cm)
     } catch {
       setStats(null)
     } finally {
@@ -177,6 +186,50 @@ export function AdminReportsPage() {
       .sort((a, b) => b.count - a.count)
     return { rows, noPs, totalWithPs: teams.length - noPs }
   }, [problems, teams])
+
+  // ── Teams by College & Location (filterable) ────────────────────────────────
+  // Join each team with its leader-entered college + location and problem title.
+  const teamsWithCollege = useMemo(() => {
+    const psTitle = new Map(problems.map((p) => [p.id, p.title || p.id]))
+    return teams.map((t) => {
+      const cl = collegeByTeam.get(t.id) || {}
+      return {
+        id: t.id,
+        name: t.name || 'Unnamed',
+        college: cl.college || '',
+        collegeLocation: cl.collegeLocation || '',
+        psTitle: t.problemStatementId ? (psTitle.get(t.problemStatementId) || t.problemStatementId) : '',
+        registered: Boolean(t.eventRegistered),
+      }
+    })
+  }, [teams, problems, collegeByTeam])
+
+  const collegeOptions = useMemo(
+    () => Array.from(new Set(teamsWithCollege.map((t) => t.college).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [teamsWithCollege],
+  )
+  const locationOptions = useMemo(
+    () => Array.from(new Set(teamsWithCollege.map((t) => t.collegeLocation).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [teamsWithCollege],
+  )
+
+  const filteredTeamsByCollege = useMemo(() => {
+    return teamsWithCollege.filter((t) => {
+      if (collegeFilter !== 'all' && t.college !== collegeFilter) return false
+      if (locationFilter !== 'all' && t.collegeLocation !== locationFilter) return false
+      return true
+    })
+  }, [teamsWithCollege, collegeFilter, locationFilter])
+
+  // Count of (filtered) teams per location, for a quick breakdown.
+  const locationBreakdown = useMemo(() => {
+    const counts = new Map()
+    for (const t of filteredTeamsByCollege) {
+      const loc = t.collegeLocation || 'Unspecified'
+      counts.set(loc, (counts.get(loc) || 0) + 1)
+    }
+    return [...counts.entries()].map(([location, count]) => ({ location, count })).sort((a, b) => b.count - a.count)
+  }, [filteredTeamsByCollege])
 
   // Open Innovation teams broken down by the participant's own problem domain
   // (selfDomain — e.g. Waste Management, Health, Other). Open Innovation problem
@@ -532,6 +585,96 @@ export function AdminReportsPage() {
             {trackDistribution.noPs} team{trackDistribution.noPs > 1 ? 's have' : ' has'} not selected a problem statement yet.
           </p>
         )}
+      </Card>
+
+      {/* Teams by College & Location (filterable) */}
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-ink-900">Teams by College &amp; Location</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              Filter teams by their college and location (from the team leader&apos;s registration details).
+            </p>
+          </div>
+          <Badge tone="brand">{filteredTeamsByCollege.length} team{filteredTeamsByCollege.length === 1 ? '' : 's'}</Badge>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <label className="flex-1 text-xs font-medium text-ink-500">
+            College
+            <select
+              value={collegeFilter}
+              onChange={(e) => setCollegeFilter(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            >
+              <option value="all">All colleges ({collegeOptions.length})</option>
+              {collegeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label className="flex-1 text-xs font-medium text-ink-500">
+            Location
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            >
+              <option value="all">All locations ({locationOptions.length})</option>
+              {locationOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </label>
+          {(collegeFilter !== 'all' || locationFilter !== 'all') ? (
+            <button
+              type="button"
+              onClick={() => { setCollegeFilter('all'); setLocationFilter('all') }}
+              className="self-end rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm font-medium text-ink-600 hover:bg-[rgb(var(--border))]"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+
+        {/* Count-by-location breakdown */}
+        {locationBreakdown.length > 0 ? (
+          <div className="mt-5 space-y-3">
+            {locationBreakdown.slice(0, 12).map((d) => (
+              <StageBar
+                key={d.location}
+                label={d.location}
+                value={d.count}
+                max={locationBreakdown[0].count}
+                className="from-amber-500 to-orange-400"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-ink-400">No teams match this filter.</p>
+        )}
+
+        {/* Matching teams table */}
+        {filteredTeamsByCollege.length > 0 ? (
+          <div className="mt-5 max-h-80 overflow-auto rounded-xl border border-[rgb(var(--border))]">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-[rgb(var(--surface-muted))] text-xs uppercase tracking-wide text-ink-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Team</th>
+                  <th className="px-3 py-2 font-medium">College</th>
+                  <th className="px-3 py-2 font-medium">Location</th>
+                  <th className="px-3 py-2 font-medium">Problem</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[rgb(var(--border))]">
+                {filteredTeamsByCollege.map((t) => (
+                  <tr key={t.id}>
+                    <td className="px-3 py-2 font-medium text-ink-900">{t.name}</td>
+                    <td className="px-3 py-2 text-ink-600">{t.college || '—'}</td>
+                    <td className="px-3 py-2 text-ink-600">{t.collegeLocation || '—'}</td>
+                    <td className="px-3 py-2 text-ink-600">{t.psTitle || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </Card>
 
       {/* Open Innovation by Domain */}

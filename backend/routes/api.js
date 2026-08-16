@@ -1234,6 +1234,39 @@ export function adminRouter() {
   })
 
   /**
+   * Admin: per-team college + location, derived from memberRegistrations
+   * (the leader's row, falling back to the first member). Powers the College /
+   * Location filters on the Results and Reports pages. Read-only, single batch
+   * read, admin/observer only.
+   */
+  router.get('/team-colleges', async (req, res, next) => {
+    try {
+      const snap = await db().collection('memberRegistrations').limit(8000).get()
+      const byTeam = new Map()
+      for (const d of snap.docs) {
+        const m = d.data()
+        const tid = m.teamId || ''
+        if (!tid) continue
+        if (!byTeam.has(tid)) byTeam.set(tid, [])
+        byTeam.get(tid).push(m)
+      }
+      const teams = []
+      for (const [teamId, members] of byTeam) {
+        const sorted = members.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        const leader = sorted.find((m) => m.isLeader) || sorted[0] || {}
+        teams.push({
+          teamId,
+          college: leader.institute || leader.college || '',
+          collegeLocation: leader.collegeLocation || '',
+        })
+      }
+      res.json({ teams })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: delete a single evaluation doc (evaluations/{judgeId}_{teamId}).
    * Lets an admin remove a judge's evaluation so it can be redone.
    */

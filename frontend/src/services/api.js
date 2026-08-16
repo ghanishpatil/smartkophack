@@ -162,6 +162,9 @@ export function createApi(getToken, getEventId = () => '') {
     // Search Pro: find any person (member/leader/judge/mentor) by name/email/phone.
     adminSearch: (q) =>
       authReq(`/api/admin/search?q=${encodeURIComponent(q)}`),
+    // Per-team college + location (leader-entered) for Results/Reports filters.
+    adminTeamColleges: () =>
+      authReq('/api/admin/team-colleges'),
     adminSubmissions: (opts = {}) =>
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>

@@ -7,6 +7,10 @@ import { Card } from '@/components/ui/Card.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 
+// Team qualification status (set by judges) — shown per team card.
+const JURY_STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
+const JURY_STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not Qualified' }
+
 /** Total + max + per-criterion breakdown for one evaluation, from its snapshot. */
 function marksOf(ev) {
   if (!ev?.scores || typeof ev.scores !== 'object') return null
@@ -144,11 +148,18 @@ export function AdminJudgeEvaluationsPage() {
                 {/* Team + status + total marks */}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h2 className="font-display text-lg font-bold text-ink-900">{team?.name || ev.teamId}</h2>
                       <Badge tone={status === 'submitted' ? 'success' : status === 'draft' ? 'warn' : 'neutral'} className="gap-1">
                         {status === 'submitted' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}{status}
                       </Badge>
+                      {team?.juryStatus ? (
+                        <Badge tone={JURY_STATUS_TONE[team.juryStatus] || 'neutral'}>
+                          {JURY_STATUS_LABEL[team.juryStatus] || team.juryStatus}
+                        </Badge>
+                      ) : (
+                        <Badge tone="neutral">Status: Unset</Badge>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-ink-600">
                       <span className="font-medium text-ink-700">Problem:</span> {psTitle}
