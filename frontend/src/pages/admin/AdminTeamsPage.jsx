@@ -42,6 +42,7 @@ export function AdminTeamsPage() {
   const [drawerTeam, setDrawerTeam] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [qualExportBusy, setQualExportBusy] = useState(false)
   const [usersMap, setUsersMap] = useState(new Map())
   const globalFilter = useAdminFiltersStore((s) => s.teamsGlobalFilter)
   const setGlobalFilter = useAdminFiltersStore((s) => s.setTeamsGlobalFilter)
@@ -220,6 +221,56 @@ export function AdminTeamsPage() {
     )
   }, [teams])
 
+  // Export ONLY qualified teams, with just the TEAM LEADER's details:
+  // team name, leader name, mobile, email, college, city (location), year, etc.
+  // The leader lives in each team's member registrations (isLeader === true).
+  const exportQualifiedLeaders = useCallback(async () => {
+    const qualified = teams.filter((t) => t.juryStatus === 'qualified')
+    if (qualified.length === 0) {
+      globalThis.alert('No qualified teams to export.')
+      return
+    }
+    setQualExportBusy(true)
+    try {
+      const results = await Promise.all(
+        qualified.map(async (t) => {
+          try {
+            const res = await api.teamMemberRegistrations(t.id)
+            const regs = Array.isArray(res?.registrations) ? res.registrations : []
+            // Prefer the flagged leader; fall back to order 0 / first member.
+            const leader =
+              regs.find((m) => m.isLeader) ||
+              regs.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0] ||
+              null
+            return { team: t, leader }
+          } catch {
+            return { team: t, leader: null }
+          }
+        }),
+      )
+
+      downloadCsv(`qualified-team-leaders-${Date.now()}.csv`, results, [
+        { header: 'Team Name', accessor: (x) => x.team.name || '' },
+        { header: 'Invite Code', accessor: (x) => x.team.inviteCode || '' },
+        { header: 'Leader Name', accessor: (x) => x.leader?.name || '' },
+        { header: 'Leader Mobile', accessor: (x) => x.leader?.phone || '' },
+        { header: 'Leader Email', accessor: (x) => x.leader?.email || '' },
+        { header: 'College', accessor: (x) => x.leader?.institute || '' },
+        { header: 'City / Location', accessor: (x) => x.leader?.collegeLocation || '' },
+        { header: 'Year of Study', accessor: (x) => x.leader?.yearOfStudy || '' },
+        { header: 'Department', accessor: (x) => x.leader?.department || '' },
+        { header: 'Problem Statement', accessor: (x) => x.team.problemStatementId || '' },
+        { header: 'Team Size', accessor: (x) => (typeof x.team.teamSize === 'number' && x.team.teamSize > 0) ? x.team.teamSize : (x.team.memberIds || []).length },
+      ])
+    } catch (e) {
+      globalThis.alert(e?.message || 'Could not export qualified team leaders')
+    } finally {
+      setQualExportBusy(false)
+    }
+  }, [teams, api])
+
+  const qualifiedCount = useMemo(() => teams.filter((t) => t.juryStatus === 'qualified').length, [teams])
+
   const columns = useMemo(
     () => [
       col.accessor('name', { header: 'Team', cell: (i) => i.getValue() || '—' }),
@@ -269,9 +320,20 @@ export function AdminTeamsPage() {
             Row click opens details. Multi-select for bulk operations — payment, registration, submissions, shortlist, and email.
           </p>
         </div>
-        <Button variant="secondary" type="button" onClick={exportTeamsCsv}>
-          Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" type="button" onClick={exportTeamsCsv}>
+            Export CSV
+          </Button>
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={qualExportBusy || qualifiedCount === 0}
+            onClick={exportQualifiedLeaders}
+            title="Export qualified teams with their team leader's details (mobile, email, college, city…)"
+          >
+            {qualExportBusy ? 'Exporting…' : `Export qualified leaders (${qualifiedCount})`}
+          </Button>
+        </div>
       </div>
 
       {selectedIds.length > 0 && !readOnly ? (
