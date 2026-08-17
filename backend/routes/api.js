@@ -1283,6 +1283,46 @@ export function adminRouter() {
   })
 
   /**
+   * Admin: send a CUSTOM email to qualified teams — reaching the team leader AND
+   * every member whose email is on record (from registration).
+   * Body: { teamIds?: string[], subject?, title?, message, link? }
+   *  - Omit teamIds (or empty) to email ALL qualified teams; pass one id to email
+   *    a single qualified team.
+   *  - {{TEAM}} in subject/title/message is replaced with the team name.
+   * Only teams with juryStatus === 'qualified' are ever emailed. Resendable.
+   */
+  router.post('/results/notify-qualified-custom', async (req, res, next) => {
+    try {
+      const raw = Array.isArray(req.body?.teamIds) ? req.body.teamIds : null
+      const teamIds = raw ? raw.filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 128) : null
+      const subject = typeof req.body?.subject === 'string' ? req.body.subject.slice(0, 200) : ''
+      const title = typeof req.body?.title === 'string' ? req.body.title.slice(0, 200) : ''
+      const message = typeof req.body?.message === 'string' ? req.body.message.slice(0, 5000) : ''
+      const link = typeof req.body?.link === 'string' ? req.body.link.slice(0, 500) : ''
+      if (!message.trim()) {
+        return res.status(400).json({ error: 'A message is required.' })
+      }
+      const { notifyQualifiedCustom } = await import('../services/notificationService.js')
+      const result = await notifyQualifiedCustom({ teamIds, eventId: req.eventId || '', subject, title, message, link })
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'results.notify_qualified_custom',
+        targetType: 'teams',
+        targetId: '',
+        metadata: {
+          sent: result.sent || 0,
+          recipients: result.recipients || 0,
+          qualified: result.qualified || 0,
+          scope: teamIds ? teamIds.length : 'all',
+        },
+      })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: delete a single evaluation doc (evaluations/{judgeId}_{teamId}).
    * Lets an admin remove a judge's evaluation so it can be redone.
    */

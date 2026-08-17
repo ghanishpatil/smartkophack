@@ -492,6 +492,28 @@ function sendAnnouncementEmailSimple({ to, name, title, message, link }) {
   return sendEmail({ to, toName: name, subject, htmlContent })
 }
 
+// 7b. Custom Team Email — fully customizable subject/title/message with the SKH
+// branded wrapper. Used to email qualified teams (leader + members) a message
+// the admin composes from the Results page. Optional CTA link.
+export async function sendCustomEmail({ to, name, subject, title, message, link }) {
+  const safeName = escapeHtml(name || 'Participant')
+  const safeTitle = escapeHtml(title || 'Smart Kopargaon Hackathon')
+  const safeMessage = escapeHtml(message || '').replace(/\n/g, '<br>')
+  const linkUrl = String(link || '').trim()
+  const linkSafe = /^https?:\/\//i.test(linkUrl) ? escapeHtml(linkUrl) : ''
+  const bodyHtml = `
+    <p style="margin:0 0 14px;"><strong>Dear ${safeName},</strong></p>
+    <div style="background:#f8fafc;border-left:4px solid #185983;padding:14px 18px;border-radius:6px;margin:0 0 16px;">
+      <p style="margin:0;color:#334155;line-height:1.6;">${safeMessage}</p>
+    </div>
+    ${linkSafe ? ctaButton('Open Link', linkSafe) : ''}
+    <p style="margin:20px 0 0;color:#64748b;font-size:14px;">Warm regards,<br/>Team Smart Kopargaon Hackathon</p>
+  `
+  const htmlContent = renderBrandedEmail({ title: safeTitle, bodyHtml })
+  const finalSubject = String(subject || title || 'Smart Kopargaon Hackathon').slice(0, 200)
+  return sendEmail({ to, toName: safeName, subject: escapeHtml(finalSubject), htmlContent })
+}
+
 // 8. Evaluation Complete Email (for teams)
 export async function sendEvaluationCompleteEmail({ to, name, teamName }) {
   const safeName = escapeHtml(name)

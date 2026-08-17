@@ -23,6 +23,7 @@ import {
   sendAnnouncementEmail,
   sendEvaluationCompleteEmail,
   sendQualifiedEmail,
+  sendCustomEmail,
 } from './emailService.js'
 
 /** Returns the configured frontend URL without trailing slash. */
@@ -476,6 +477,113 @@ export async function notifyQualified({ teamIds = null, eventId = '' } = {}) {
   } catch (err) {
     console.error('[Notify] Qualified emails failed:', err.message)
     return { sent: 0, qualified: 0, skipped: 0, error: err.message }
+  }
+}
+
+/**
+ * Send a CUSTOM (admin-composed) email to qualified teams, reaching EVERY
+ * member whose email is on record — the team leader's account email plus each
+ * member's registration email (deduped per team).
+ *
+ * - teamIds: optional array to target specific qualified team(s); omit for ALL.
+ * - subject/title/message: admin-composed content. `{{TEAM}}` in subject/message
+ *   is replaced with the team's name so one template personalizes per team.
+ * - link: optional CTA URL (only http/https rendered).
+ * - Only teams whose juryStatus === 'qualified' are ever emailed (safety).
+ * Returns { sent, qualified, skipped, recipients }.
+ */
+export async function notifyQualifiedCustom({
+  teamIds = null,
+  eventId = '',
+  subject = '',
+  title = '',
+  message = '',
+  link = '',
+} = {}) {
+  try {
+    const db = getDb()
+    let q = db.collection('teams').limit(2000)
+    if (eventId) q = q.where('eventId', '==', eventId)
+    const snap = await q.get()
+    const idSet = Array.isArray(teamIds) && teamIds.length ? new Set(teamIds) : null
+    const targets = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((t) => t.juryStatus === 'qualified' && (!idSet || idSet.has(t.id)))
+    if (targets.length === 0) return { sent: 0, qualified: 0, skipped: 0, recipients: 0 }
+
+    const targetIdSet = new Set(targets.map((t) => t.id))
+
+    // Leader account emails (chunked getAll).
+    const leaderIds = [...new Set(targets.map((t) => t.leaderId).filter(Boolean))]
+    const leaderByUid = new Map()
+    for (let i = 0; i < leaderIds.length; i += 300) {
+      const refs = leaderIds.slice(i, i + 300).map((id) => db.doc(`users/${id}`))
+      if (refs.length === 0) continue
+      const snaps = await db.getAll(...refs)
+      for (const s of snaps) {
+        if (s.exists) { const u = s.data(); leaderByUid.set(s.id, { email: u.email || '', name: u.displayName || '' }) }
+      }
+    }
+
+    // All member registrations grouped by team (leader + members).
+    const mrSnap = await db.collection('memberRegistrations').limit(20000).get()
+    const membersByTeam = new Map()
+    mrSnap.docs.forEach((d) => {
+      const m = d.data()
+      if (!m.teamId || !targetIdSet.has(m.teamId)) return
+      if (!membersByTeam.has(m.teamId)) membersByTeam.set(m.teamId, [])
+      membersByTeam.get(m.teamId).push({ email: String(m.email || '').trim(), name: m.name || '' })
+    })
+
+    const tasks = []
+    let recipients = 0
+    let skipped = 0
+    for (const t of targets) {
+      const teamName = t.name || 'Your Team'
+      const seen = new Set()
+      const list = []
+
+      // Team leader's account email first.
+      const la = t.leaderId ? leaderByUid.get(t.leaderId) : null
+      if (la && la.email) {
+        const key = la.email.toLowerCase()
+        seen.add(key)
+        list.push({ email: la.email, name: la.name || 'Team Leader' })
+      }
+      // Every member email from registration data (dedup by lowercased email).
+      for (const m of (membersByTeam.get(t.id) || [])) {
+        if (!m.email) continue
+        const key = m.email.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        list.push({ email: m.email, name: m.name || 'Participant' })
+      }
+
+      if (list.length === 0) { skipped += 1; continue }
+
+      const finalSubject = (subject || `Congratulations! ${teamName} has qualified`).replace(/\{\{TEAM\}\}/g, teamName)
+      const finalMessage = (message || '').replace(/\{\{TEAM\}\}/g, teamName)
+      const finalTitle = (title || 'Your team has qualified! 🎉').replace(/\{\{TEAM\}\}/g, teamName)
+
+      for (const r of list) {
+        recipients += 1
+        tasks.push(sendCustomEmail({
+          to: r.email,
+          name: r.name,
+          subject: finalSubject,
+          title: finalTitle,
+          message: finalMessage,
+          link,
+        }))
+      }
+    }
+
+    await sendInChunks(tasks)
+    console.log(`[Notify] Custom qualified emails: ${tasks.length} sent to ${recipients} recipient(s), ${skipped} team(s) skipped`)
+    return { sent: tasks.length, qualified: targets.length, skipped, recipients }
+  } catch (err) {
+    console.error('[Notify] Custom qualified emails failed:', err.message)
+    return { sent: 0, qualified: 0, skipped: 0, recipients: 0, error: err.message }
   }
 }
 

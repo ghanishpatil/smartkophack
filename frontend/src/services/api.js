@@ -171,6 +171,13 @@ export function createApi(getToken, getEventId = () => '') {
         method: 'POST',
         body: Array.isArray(teamIds) && teamIds.length ? { teamIds } : {},
       }),
+    // Send a CUSTOM email to qualified team(s) — leader + all members on record.
+    // payload: { teamIds?, subject?, title?, message, link? }
+    notifyQualifiedTeamsCustom: (payload = {}) =>
+      authReq('/api/admin/results/notify-qualified-custom', {
+        method: 'POST',
+        body: payload,
+      }),
     adminSubmissions: (opts = {}) =>
       authReq(`/api/admin/submissions${opts.all ? '?all=1' : ''}`),
     adminEvaluations: (opts = {}) =>

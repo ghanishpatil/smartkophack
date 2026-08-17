@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel, Mail } from 'lucide-react'
+import { Trophy, Search, Download, ChevronRight, ChevronDown, Gavel, Mail, MailPlus } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useIsReadOnly } from '@/hooks/useIsReadOnly.js'
@@ -51,6 +51,10 @@ export function AdminResultsPage() {
   const [statusBusy, setStatusBusy] = useState('')
   const [emailBusy, setEmailBusy] = useState(false)
   const [teamDataBusy, setTeamDataBusy] = useState(false)
+  // Custom-email composer target: null (closed), or { teamIds, label }.
+  // teamIds === null → all qualified; [id] → that single qualified team.
+  const [composeTarget, setComposeTarget] = useState(null)
+  const [composeBusy, setComposeBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [evals, setEvals] = useState([])
   const [teams, setTeams] = useState([])
@@ -276,6 +280,29 @@ export function AdminResultsPage() {
     }
   }
 
+  // Send the admin-composed custom email to the target qualified team(s). This
+  // reaches the team leader AND every member whose email is on record.
+  async function sendCustomEmail({ subject, title, message, link }) {
+    if (!composeTarget) return
+    setComposeBusy(true)
+    try {
+      const payload = { subject, title, message, link }
+      if (Array.isArray(composeTarget.teamIds) && composeTarget.teamIds.length) {
+        payload.teamIds = composeTarget.teamIds
+      }
+      const res = await api.notifyQualifiedTeamsCustom(payload)
+      window.alert(
+        `Sent ${res.sent || 0} email(s) to ${res.recipients || 0} recipient(s) across ${res.qualified || 0} team(s)` +
+        `${res.skipped ? `, ${res.skipped} team(s) skipped (no emails on record)` : ''}.`,
+      )
+      setComposeTarget(null)
+    } catch (e) {
+      window.alert(e?.message || 'Could not send emails')
+    } finally {
+      setComposeBusy(false)
+    }
+  }
+
   // Admin override of a team's jury status (qualified / waitlist / not_qualified / clear).
   async function changeStatus(teamId, next) {
     setStatusBusy(teamId)
@@ -305,14 +332,26 @@ export function AdminResultsPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!readOnly ? (
-            <Button
-              size="sm"
-              className="gap-1.5"
-              disabled={emailBusy || counts.qualified === 0}
-              onClick={() => emailQualified(null)}
-            >
-              <Mail className="h-4 w-4" /> {emailBusy ? 'Sending…' : `Email all qualified (${counts.qualified})`}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={emailBusy || counts.qualified === 0}
+                onClick={() => emailQualified(null)}
+              >
+                <Mail className="h-4 w-4" /> {emailBusy ? 'Sending…' : `Email all qualified (${counts.qualified})`}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="gap-1.5"
+                disabled={counts.qualified === 0}
+                onClick={() => setComposeTarget({ teamIds: null, label: `all ${counts.qualified} qualified team(s)` })}
+                title="Compose a custom email to every member of all qualified teams"
+              >
+                <MailPlus className="h-4 w-4" /> Custom email qualified
+              </Button>
+            </>
           ) : null}
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportCsv}>
             <Download className="h-4 w-4" /> Export CSV
@@ -489,15 +528,25 @@ export function AdminResultsPage() {
                                 <option value="not_qualified">Not Qualified</option>
                               </select>
                               {r.juryStatus === 'qualified' ? (
-                                <button
-                                  type="button"
-                                  title="Email this team that they qualified"
-                                  disabled={emailBusy}
-                                  onClick={() => emailQualified([r.teamId])}
-                                  className="rounded-lg p-1.5 text-brand-600 transition-colors hover:bg-brand-500/10 disabled:opacity-50"
-                                >
-                                  <Mail className="h-4 w-4" />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    title="Email this team that they qualified (standard template, leader only)"
+                                    disabled={emailBusy}
+                                    onClick={() => emailQualified([r.teamId])}
+                                    className="rounded-lg p-1.5 text-brand-600 transition-colors hover:bg-brand-500/10 disabled:opacity-50"
+                                  >
+                                    <Mail className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Compose a custom email to this team (leader + all members)"
+                                    onClick={() => setComposeTarget({ teamIds: [r.teamId], label: `“${r.name}” (leader + members)` })}
+                                    className="rounded-lg p-1.5 text-brand-600 transition-colors hover:bg-brand-500/10 disabled:opacity-50"
+                                  >
+                                    <MailPlus className="h-4 w-4" />
+                                  </button>
+                                </>
                               ) : null}
                             </div>
                           )}
@@ -559,6 +608,104 @@ export function AdminResultsPage() {
           rubrics differ. Only submitted evaluations are counted. Click any evaluated row to expand the per-judge marks.
         </p>
       </Card>
+
+      {composeTarget ? (
+        <QualifiedEmailModal
+          scopeLabel={composeTarget.label}
+          busy={composeBusy}
+          onClose={() => !composeBusy && setComposeTarget(null)}
+          onSend={sendCustomEmail}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Compose + send a custom email to qualified team(s). Reaches the team leader
+ * and every member whose email is on record. Use {{TEAM}} in the subject or
+ * message to insert each team's name automatically.
+ */
+function QualifiedEmailModal({ scopeLabel, busy, onClose, onSend }) {
+  const [subject, setSubject] = useState('Congratulations! {{TEAM}} has qualified 🎉')
+  const [title, setTitle] = useState('Your team has qualified! 🎉')
+  const [message, setMessage] = useState('')
+  const [link, setLink] = useState('')
+
+  const canSend = message.trim().length > 0 && !busy
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-[rgb(var(--surface))] p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink-900">
+          <MailPlus className="h-5 w-5 text-brand-600" /> Custom email to qualified teams
+        </h2>
+        <p className="mt-1 text-sm text-ink-500">
+          Sending to <strong>{scopeLabel}</strong>. Reaches the team leader and every member whose email
+          was provided at registration. Use <code className="rounded bg-[rgb(var(--surface-muted))] px-1">{'{{TEAM}}'}</code> to
+          insert each team&apos;s name.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-ink-700">Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Email subject"
+              className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700">Heading (inside email)</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Big heading shown at the top of the email body"
+              className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700">Message *</label>
+            <textarea
+              rows={6}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Write your message here. Line breaks are preserved. You can use {{TEAM}} for the team name."
+              className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700">Button link (optional)</label>
+            <input
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://…"
+              className="mt-1 w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="secondary" type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="gap-1.5"
+            disabled={!canSend}
+            onClick={() => onSend({ subject, title, message, link })}
+          >
+            <Mail className="h-4 w-4" /> {busy ? 'Sending…' : 'Send email'}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
