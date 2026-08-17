@@ -50,6 +50,7 @@ export function AdminResultsPage() {
   const readOnly = useIsReadOnly()
   const [statusBusy, setStatusBusy] = useState('')
   const [emailBusy, setEmailBusy] = useState(false)
+  const [teamDataBusy, setTeamDataBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [evals, setEvals] = useState([])
   const [teams, setTeams] = useState([])
@@ -192,6 +193,68 @@ export function AdminResultsPage() {
     ])
   }
 
+  // Full member-level export for qualified teams: one row per member with all
+  // their details (name, email, phone, college, year, department, role). Fetches
+  // each qualified team's member registrations, then flattens to a single CSV.
+  async function exportTeamData() {
+    const qualified = rows.filter((r) => r.juryStatus === 'qualified')
+    if (qualified.length === 0) {
+      window.alert('No qualified teams to export.')
+      return
+    }
+    setTeamDataBusy(true)
+    try {
+      const results = await Promise.all(
+        qualified.map(async (r) => {
+          try {
+            const res = await api.teamMemberRegistrations(r.teamId)
+            const regs = Array.isArray(res?.registrations) ? res.registrations : []
+            return { team: r, members: regs }
+          } catch {
+            return { team: r, members: [] }
+          }
+        }),
+      )
+
+      // Flatten: one row per member. Teams with no member records still get a
+      // single row so the qualified team is never silently dropped.
+      const out = []
+      for (const { team, members } of results) {
+        const sorted = [...members].sort(
+          (a, b) => (b.isLeader ? 1 : 0) - (a.isLeader ? 1 : 0) || (a.order ?? 0) - (b.order ?? 0),
+        )
+        if (sorted.length === 0) {
+          out.push({ team, m: null })
+        } else {
+          for (const m of sorted) out.push({ team, m })
+        }
+      }
+
+      downloadCsv(`qualified-teams-full-data-${Date.now()}.csv`, out, [
+        { header: 'Rank', accessor: (x) => x.team.rank },
+        { header: 'Team', accessor: (x) => x.team.name },
+        { header: 'Team Code', accessor: (x) => x.team.code },
+        { header: 'Problem Statement', accessor: (x) => x.team.psTitle },
+        { header: 'Domain', accessor: (x) => x.team.domain },
+        { header: 'Track', accessor: (x) => x.team.track },
+        { header: 'Avg %', accessor: (x) => x.team.avg },
+        { header: 'Status', accessor: (x) => STATUS_LABEL[x.team.juryStatus] || '' },
+        { header: 'Member Role', accessor: (x) => (x.m ? (x.m.isLeader ? 'Leader' : 'Member') : '') },
+        { header: 'Member Name', accessor: (x) => x.m?.name || '' },
+        { header: 'Member Email', accessor: (x) => x.m?.email || '' },
+        { header: 'Member Phone', accessor: (x) => x.m?.phone || '' },
+        { header: 'College', accessor: (x) => x.m?.institute || x.team.college || '' },
+        { header: 'College Location', accessor: (x) => x.m?.collegeLocation || x.team.collegeLocation || '' },
+        { header: 'Year of Study', accessor: (x) => x.m?.yearOfStudy || '' },
+        { header: 'Department', accessor: (x) => x.m?.department || '' },
+      ])
+    } catch (e) {
+      window.alert(e?.message || 'Could not export team data')
+    } finally {
+      setTeamDataBusy(false)
+    }
+  }
+
   function toggle(teamId) {
     setExpanded((cur) => (cur === teamId ? null : teamId))
   }
@@ -253,6 +316,17 @@ export function AdminResultsPage() {
           ) : null}
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportCsv}>
             <Download className="h-4 w-4" /> Export CSV
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
+            disabled={teamDataBusy || counts.qualified === 0}
+            onClick={exportTeamData}
+            title="Export full member details (name, email, phone, college…) for every qualified team"
+          >
+            <Download className="h-4 w-4" />
+            {teamDataBusy ? 'Exporting…' : `Export team data (${counts.qualified})`}
           </Button>
         </div>
       </div>
