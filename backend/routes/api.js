@@ -3417,6 +3417,63 @@ export function adminRouter() {
     }
   })
 
+  /** Admin: Bulk-invite Registration Desk accounts — creates accounts + emails credentials. */
+  router.post('/registration-desk/bulk-invite', async (req, res, next) => {
+    try {
+      let emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      if (emails.length === 0 && typeof req.body?.emailsText === 'string') {
+        emails = req.body.emailsText.split(/[\s,;]+/).filter(Boolean)
+      }
+      if (emails.length === 0) return res.status(400).json({ error: 'Provide emails (array) or emailsText (string).' })
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'registration_desk')
+      await appendAuditLog({ actorUid: req.user.uid, action: 'regdesk.bulk_invite', targetType: 'users', targetId: '', metadata: result.summary })
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: Registration Desk accounts + their assigned domains — read-only. */
+  router.get('/registration-desk/status', async (req, res, next) => {
+    try {
+      const data = await buildStaffInviteStatus('registration_desk')
+      const ids = data.participants.map((p) => p.uid)
+      const domainMap = {}
+      for (let i = 0; i < ids.length; i += 10) {
+        const chunk = ids.slice(i, i + 10)
+        const snaps = await Promise.all(chunk.map((id) => db().doc(`users/${id}`).get()))
+        snaps.forEach((s) => {
+          if (s.exists) domainMap[s.id] = Array.isArray(s.data().assignedDomains) ? s.data().assignedDomains : []
+        })
+      }
+      data.participants = data.participants.map((p) => ({ ...p, assignedDomains: domainMap[p.uid] || [] }))
+      res.json({ ok: true, ...data })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: assign check-in domains to a Registration Desk account. */
+  router.post('/registration-desk/assign-domains', async (req, res, next) => {
+    try {
+      const { uid, domains } = req.body || {}
+      if (!uid) return res.status(400).json({ error: 'uid required' })
+      const list = Array.isArray(domains) ? domains : []
+      const invalid = list.filter((d) => !JUDGE_VALID_DOMAINS.includes(d))
+      if (invalid.length) return res.status(400).json({ error: `Invalid domain(s): ${invalid.join(', ')}` })
+      const userRef = db().doc(`users/${uid}`)
+      const snap = await userRef.get()
+      if (!snap.exists) return res.status(404).json({ error: 'User not found.' })
+      if (snap.data().role !== 'registration_desk') return res.status(400).json({ error: 'User is not a Registration Desk account.' })
+      await userRef.set({ assignedDomains: list, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      await appendAuditLog({ actorUid: req.user.uid, action: 'regdesk.assign_domains', targetType: 'user', targetId: uid, metadata: { domains: list } })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /**
    * Admin: Bulk-invite Observers (read-only viewer role) — creates accounts +
    * emails credentials. Observers can view the admin dashboard but cannot make
@@ -4974,6 +5031,162 @@ export function mentorsRouter() {
     } catch (e) {
       next(e)
     }
+  })
+
+  return router
+}
+
+/**
+ * Registration Desk router — mounted at /api/reg-desk.
+ * Domain-scoped attendance check-in for the on-ground registration desk. All
+ * data access is server-side (Admin SDK), so no Firestore client rules change
+ * is needed. Registration-desk accounts see ONLY teams in their assigned
+ * domains; admins see all. Team domain is derived from the linked problem
+ * statement's `theme` field.
+ */
+export function registrationDeskRouter() {
+  const router = Router()
+  const db = () => getDb()
+  const DOMAINS = [
+    'Health', 'Education', 'Transportation', 'Food Safety & Security',
+    'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
+  ]
+
+  router.use(verifyFirebaseToken, loadUserRole, attachEventContext, requireRole('registration_desk', 'admin'))
+
+  const isAdmin = (req) => req.profile?.role === 'admin'
+
+  // null => all domains (admin); array => the desk account's assigned domains
+  async function scopeDomains(req) {
+    if (isAdmin(req)) return null
+    const snap = await db().doc(`users/${req.user.uid}`).get()
+    return snap.exists && Array.isArray(snap.data().assignedDomains) ? snap.data().assignedDomains : []
+  }
+
+  async function teamDomain(teamId) {
+    const tSnap = await db().doc(`teams/${teamId}`).get()
+    if (!tSnap.exists) return null
+    const psId = tSnap.data().problemStatementId || ''
+    if (!psId) return ''
+    const psSnap = await db().doc(`problemStatements/${psId}`).get()
+    return psSnap.exists ? (psSnap.data().theme || '') : ''
+  }
+
+  async function loadTeams(req) {
+    const activeEvent = await getActiveEvent()
+    const eventId = req.eventId || activeEvent?.id || ''
+    const allowed = await scopeDomains(req)
+
+    const psCol = db().collection('problemStatements')
+    const psSnap = await (eventId ? psCol.where('eventId', '==', eventId).get() : psCol.get())
+    const psMap = {}
+    psSnap.forEach((d) => { const x = d.data(); psMap[d.id] = { domain: x.theme || '', track: x.track || '', title: x.title || '' } })
+
+    const tCol = db().collection('teams')
+    const tSnap = await (eventId ? tCol.where('eventId', '==', eventId).get() : tCol.get())
+    const teams = []
+    tSnap.forEach((d) => {
+      const t = d.data()
+      const ps = psMap[t.problemStatementId] || { domain: '', track: '', title: '' }
+      if (allowed && !allowed.includes(ps.domain)) return
+      teams.push({ id: d.id, name: t.name || '', domain: ps.domain || '', track: ps.track || '', psTitle: ps.title || '' })
+    })
+
+    const ids = teams.map((t) => t.id)
+    const regByTeam = {}
+    for (let i = 0; i < ids.length; i += 10) {
+      const chunk = ids.slice(i, i + 10)
+      if (!chunk.length) break
+      const snap = await db().collection('memberRegistrations').where('teamId', 'in', chunk).get()
+      snap.forEach((d) => {
+        const x = d.data()
+        ;(regByTeam[x.teamId] ||= []).push({
+          id: d.id, name: x.name || '', email: x.email || '',
+          isLeader: Boolean(x.isLeader), order: typeof x.order === 'number' ? x.order : 0,
+          present: Boolean(x.present),
+        })
+      })
+    }
+
+    return teams.map((t) => {
+      const members = (regByTeam[t.id] || []).sort((a, b) => a.order - b.order)
+      const presentCount = members.filter((m) => m.present).length
+      return { ...t, members, presentCount, totalMembers: members.length }
+    }).sort((a, b) => a.domain.localeCompare(b.domain) || a.name.localeCompare(b.name))
+  }
+
+  router.get('/me', async (req, res, next) => {
+    try {
+      const snap = await db().doc(`users/${req.user.uid}`).get()
+      const d = snap.exists ? snap.data() : {}
+      res.json({
+        ok: true,
+        role: req.profile?.role,
+        assignedDomains: isAdmin(req) ? DOMAINS : (Array.isArray(d.assignedDomains) ? d.assignedDomains : []),
+        displayName: d.displayName || '',
+        email: d.email || req.user.email || '',
+      })
+    } catch (e) { next(e) }
+  })
+
+  router.get('/teams', async (req, res, next) => {
+    try { res.json({ ok: true, teams: await loadTeams(req) }) } catch (e) { next(e) }
+  })
+
+  router.get('/stats', async (req, res, next) => {
+    try {
+      const teams = await loadTeams(req)
+      const byDomain = {}
+      let present = 0, total = 0, teamsFullyIn = 0
+      for (const t of teams) {
+        const key = t.domain || 'Unassigned'
+        byDomain[key] ||= { domain: key, teams: 0, present: 0, total: 0 }
+        byDomain[key].teams += 1
+        byDomain[key].present += t.presentCount
+        byDomain[key].total += t.totalMembers
+        present += t.presentCount; total += t.totalMembers
+        if (t.totalMembers > 0 && t.presentCount === t.totalMembers) teamsFullyIn += 1
+      }
+      res.json({
+        ok: true,
+        totals: { present, absent: total - present, total, teams: teams.length, teamsFullyIn },
+        byDomain: Object.values(byDomain),
+      })
+    } catch (e) { next(e) }
+  })
+
+  router.post('/attendance', async (req, res, next) => {
+    try {
+      const { memberId, present } = req.body || {}
+      if (!memberId) return res.status(400).json({ error: 'memberId required' })
+      const ref = db().collection('memberRegistrations').doc(String(memberId))
+      const snap = await ref.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Member not found.' })
+      const allowed = await scopeDomains(req)
+      if (allowed) {
+        const domain = await teamDomain(snap.data().teamId)
+        if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+      }
+      await ref.set({ present: Boolean(present), attendanceAt: FieldValue.serverTimestamp(), attendanceBy: req.user.uid }, { merge: true })
+      res.json({ ok: true })
+    } catch (e) { next(e) }
+  })
+
+  router.post('/attendance/team', async (req, res, next) => {
+    try {
+      const { teamId, present } = req.body || {}
+      if (!teamId) return res.status(400).json({ error: 'teamId required' })
+      const allowed = await scopeDomains(req)
+      if (allowed) {
+        const domain = await teamDomain(String(teamId))
+        if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+      }
+      const snap = await db().collection('memberRegistrations').where('teamId', '==', String(teamId)).get()
+      const batch = db().batch()
+      snap.forEach((d) => batch.set(d.ref, { present: Boolean(present), attendanceAt: FieldValue.serverTimestamp(), attendanceBy: req.user.uid }, { merge: true }))
+      await batch.commit()
+      res.json({ ok: true, updated: snap.size })
+    } catch (e) { next(e) }
   })
 
   return router

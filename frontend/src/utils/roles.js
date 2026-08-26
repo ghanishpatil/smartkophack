@@ -5,6 +5,8 @@ export const ROLES = {
   MENTOR: 'mentor',
   // Read-only "Observer" — sees the admin dashboard but cannot change anything.
   VIEWER: 'viewer',
+  // On-ground attendance check-in for assigned domains.
+  REGISTRATION_DESK: 'registration_desk',
 }
 
 export function roleHome(role) {
@@ -17,6 +19,8 @@ export function roleHome(role) {
       return '/judge/home'
     case ROLES.MENTOR:
       return '/mentor'
+    case ROLES.REGISTRATION_DESK:
+      return '/reg-desk'
     default:
       return '/dashboard'
   }

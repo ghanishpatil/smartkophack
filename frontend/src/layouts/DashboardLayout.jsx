@@ -65,6 +65,7 @@ const nav = {
     { to: '/admin/timeline', label: 'Timeline', icon: Clock },
     { to: '/admin/sponsors', label: 'Sponsors', icon: Building2 },
     { to: '/admin/hero', label: 'Latest News', icon: Image },
+    { to: '/admin/registration-desk', label: 'Registration Desk', icon: ClipboardCheck },
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
     { to: '/admin/access', label: 'Access Control', icon: ShieldCheck },
     { to: '/admin/audit', label: 'Activity Logs', icon: ScrollText },
@@ -88,6 +89,9 @@ const nav = {
   mentor: [
     { to: '/mentor', label: 'Dashboard', icon: Home, end: true },
     { to: '/mentor/chat', label: 'Teams Chat', icon: MessageCircle },
+  ],
+  regdesk: [
+    { to: '/reg-desk', label: 'Check-in Desk', icon: ClipboardCheck, end: true },
   ],
   // Observer (read-only) — a curated, view-only subset of the admin nav.
   // Only pages that are fully read-only for Observers are exposed here.
@@ -113,6 +117,7 @@ const roleLabels = {
   [ROLES.JUDGE]: 'Jury Member',
   [ROLES.MENTOR]: 'Mentor',
   [ROLES.VIEWER]: 'Observer (Read-only)',
+  [ROLES.REGISTRATION_DESK]: 'Registration Desk',
 }
 
 const roleBadgeColors = {
@@ -121,6 +126,7 @@ const roleBadgeColors = {
   [ROLES.JUDGE]: 'bg-amber-500/15 text-amber-600',
   [ROLES.MENTOR]: 'bg-emerald-500/15 text-emerald-600',
   [ROLES.VIEWER]: 'bg-slate-500/15 text-slate-600',
+  [ROLES.REGISTRATION_DESK]: 'bg-cyan-500/15 text-cyan-600',
 }
 
 export function DashboardLayout({ variant = 'default' }) {
@@ -156,7 +162,8 @@ export function DashboardLayout({ variant = 'default' }) {
   const isParticipantShell = variant === 'participant'
   const isAdminShell = variant === 'admin'
   const isJudgeShell = variant === 'judge'
-  const shellMobile = isParticipantShell || isAdminShell || isJudgeShell
+  const isRegDeskShell = variant === 'regdesk'
+  const shellMobile = isParticipantShell || isAdminShell || isJudgeShell || isRegDeskShell
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() =>

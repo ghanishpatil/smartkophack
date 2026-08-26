@@ -1,5 +1,6 @@
-import { motion } from 'framer-motion'
-import { Target, Building2, Lightbulb, Users, Award, Globe, Zap, Shield } from 'lucide-react'
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Target, Building2, Lightbulb, Users, Award, Globe, Zap, Shield, X } from 'lucide-react'
 import { SectionHeading } from '@/components/ui/SectionHeading.jsx'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { APP } from '@/utils/constants.js'
@@ -17,6 +18,27 @@ const values = [
   { icon: Zap, title: 'Rapid prototyping', body: '48-hour build sprints with mentors, resources, and structured milestones.' },
   { icon: Shield, title: 'Data integrity', body: 'Audit trails, role-based access, and transparent evaluation workflows.' },
   { icon: Building2, title: 'Government alignment', body: 'Aligned with Smart Cities Mission, Digital India, and state innovation policies.' },
+]
+
+/* ─── UN SDG Goals ─── */
+const SDG_GOALS = [
+  { id: 1, title: 'No Poverty', color: '#E5243B', desc: 'End poverty in all its forms everywhere.' },
+  { id: 2, title: 'Zero Hunger', color: '#DDA63A', desc: 'End hunger, achieve food security and improved nutrition.', skh: 'Agriculture' },
+  { id: 3, title: 'Good Health & Well-being', color: '#4C9F38', desc: 'Ensure healthy lives and promote well-being for all.', skh: 'Health' },
+  { id: 4, title: 'Quality Education', color: '#C5192D', desc: 'Ensure inclusive and equitable quality education.', skh: 'Education' },
+  { id: 5, title: 'Gender Equality', color: '#FF3A21', desc: 'Achieve gender equality and empower all women and girls.' },
+  { id: 6, title: 'Clean Water & Sanitation', color: '#26BDE2', desc: 'Ensure availability and sustainable management of water.', skh: 'Waste Management' },
+  { id: 7, title: 'Affordable & Clean Energy', color: '#FCC30B', desc: 'Ensure access to affordable, reliable, sustainable energy.' },
+  { id: 8, title: 'Decent Work & Economic Growth', color: '#A21942', desc: 'Promote sustained, inclusive economic growth.', skh: 'Industry & MSME' },
+  { id: 9, title: 'Industry, Innovation & Infrastructure', color: '#FD6925', desc: 'Build resilient infrastructure, promote innovation.', skh: 'Industry & MSME' },
+  { id: 10, title: 'Reduced Inequalities', color: '#DD1367', desc: 'Reduce inequality within and among countries.' },
+  { id: 11, title: 'Sustainable Cities & Communities', color: '#FD9D24', desc: 'Make cities inclusive, safe, resilient and sustainable.', skh: 'Open Innovation' },
+  { id: 12, title: 'Responsible Consumption & Production', color: '#BF8B2E', desc: 'Ensure sustainable consumption and production patterns.', skh: 'Food Safety & Security' },
+  { id: 13, title: 'Climate Action', color: '#3F7E44', desc: 'Take urgent action to combat climate change.' },
+  { id: 14, title: 'Life Below Water', color: '#0A97D9', desc: 'Conserve and sustainably use the oceans and marine resources.' },
+  { id: 15, title: 'Life on Land', color: '#56C02B', desc: 'Protect, restore and promote sustainable use of terrestrial ecosystems.' },
+  { id: 16, title: 'Peace, Justice & Strong Institutions', color: '#00689D', desc: 'Promote peaceful, inclusive societies and strong institutions.' },
+  { id: 17, title: 'Partnerships for the Goals', color: '#19486A', desc: 'Strengthen the means of implementation and revitalize global partnerships.', skh: 'SKH Core Mission' },
 ]
 
 export function AboutPage() {
@@ -107,6 +129,169 @@ export function AboutPage() {
           </div>
         </div>
       </section>
+
+      {/* UN SDG Goals */}
+      <SDGSection />
     </div>
+  )
+}
+
+/* ─── SDG Section ─── */
+const sdgImg = (id) => `/sdg/goal-${String(id).padStart(2, '0')}.png`
+const alignedCount = SDG_GOALS.filter((g) => g.skh).length
+
+function SDGSection() {
+  const [active, setActive] = useState(null)
+  const selected = active !== null ? SDG_GOALS[active] : null
+
+  return (
+    <section className="relative overflow-hidden border-t border-[rgb(var(--border))]/60 bg-gradient-to-b from-[rgb(var(--surface-muted))]/40 to-[rgb(var(--page-bg))] py-20 sm:py-28">
+      {/* Ambient glow */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -left-32 top-1/4 h-80 w-80 rounded-full bg-brand-500/5 blur-[110px]" />
+        <div className="absolute -right-32 bottom-1/4 h-72 w-72 rounded-full bg-emerald-500/5 blur-[110px]" />
+      </div>
+
+      <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <SectionHeading
+          eyebrow="SKH × Global Goals"
+          title="SKH and the UN Sustainable Development Goals"
+          description={`SKH's 8 domains map directly to ${alignedCount} of the 17 UN SDGs — building solutions that contribute to the 2030 Agenda. Tap any goal to see how it connects.`}
+        />
+
+        {/* SDG 17 spotlight */}
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+          className="relative mx-auto mb-14 max-w-4xl overflow-hidden rounded-3xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6 shadow-card sm:p-8"
+        >
+          <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: '#19486A' }} />
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full blur-3xl" style={{ background: '#19486A18' }} />
+          <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+            <motion.img
+              src={sdgImg(17)}
+              alt="UN Sustainable Development Goal 17 — Partnerships for the Goals"
+              loading="lazy"
+              initial={{ scale: 0.85, rotate: -4, opacity: 0 }}
+              whileInView={{ scale: 1, rotate: 0, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              className="h-28 w-28 shrink-0 rounded-2xl shadow-lg ring-1 ring-black/5 sm:h-32 sm:w-32"
+            />
+            <div className="text-center sm:text-left">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.15em] text-brand-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand-600" /> Our umbrella goal
+              </span>
+              <h3 className="mt-3 font-display text-2xl font-bold text-ink-900">Partnerships for the Goals</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-600">
+                SKH is a living example of <strong className="text-ink-900">SDG 17</strong> — a multi-stakeholder partnership uniting government,
+                academia, industry, and civil society to build real solutions for Kopargaon Taluka. Every team that participates strengthens
+                this ecosystem.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Goal grid — official UN icons */}
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 md:gap-4">
+          {SDG_GOALS.map((g, i) => {
+            const isActive = active === i
+            return (
+              <motion.button
+                key={g.id}
+                type="button"
+                onClick={() => setActive(isActive ? null : i)}
+                initial={{ opacity: 0, y: 14, scale: 0.92 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.025, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                aria-label={`Goal ${g.id}: ${g.title}`}
+                className={[
+                  'group relative aspect-square overflow-hidden rounded-2xl shadow-card outline-none transition-all duration-300',
+                  'hover:-translate-y-1 hover:shadow-xl focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
+                  isActive ? '-translate-y-1 shadow-xl ring-2 ring-offset-2 ring-offset-[rgb(var(--page-bg))]' : '',
+                ].join(' ')}
+                style={isActive ? { '--tw-ring-color': g.color } : undefined}
+              >
+                <img
+                  src={sdgImg(g.id)}
+                  alt={`UN SDG ${g.id}: ${g.title}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+                {/* hover sheen */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/0 to-white/25 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                {/* SKH-aligned badge */}
+                {g.skh && (
+                  <span className="absolute right-1.5 top-1.5 rounded-md bg-white/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-brand-700 shadow-sm backdrop-blur-sm sm:text-[9px]">
+                    SKH
+                  </span>
+                )}
+              </motion.button>
+            )
+          })}
+        </div>
+
+        {/* Legend + attribution */}
+        <div className="mt-6 flex flex-col items-center justify-between gap-3 text-xs text-ink-500 sm:flex-row">
+          <span className="inline-flex items-center gap-2">
+            <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-brand-700 shadow-sm ring-1 ring-[rgb(var(--border))]">SKH</span>
+            Directly aligned with an SKH domain
+          </span>
+          <a
+            href="https://www.un.org/sustainabledevelopment/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-ink-400 underline-offset-2 hover:text-brand-600 hover:underline"
+          >
+            SDG icons © United Nations
+          </a>
+        </div>
+
+        {/* Detail panel */}
+        <AnimatePresence mode="wait">
+          {selected && (
+            <motion.div
+              key={selected.id}
+              initial={{ opacity: 0, y: 14, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.97 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="mx-auto mt-8 max-w-2xl overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-card-hover"
+            >
+              <div className="h-1.5" style={{ background: selected.color }} />
+              <div className="flex items-start gap-4 p-5 sm:p-6">
+                <img
+                  src={sdgImg(selected.id)}
+                  alt={`UN SDG ${selected.id}: ${selected.title}`}
+                  className="h-16 w-16 shrink-0 rounded-xl shadow-md ring-1 ring-black/5 sm:h-20 sm:w-20"
+                />
+                <div className="flex-1">
+                  <p className="font-display text-xs font-bold uppercase tracking-wide" style={{ color: selected.color }}>Goal {selected.id}</p>
+                  <h4 className="mt-0.5 font-display text-lg font-bold text-ink-900">{selected.title}</h4>
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink-600">{selected.desc}</p>
+                  {selected.skh && (
+                    <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs font-bold text-brand-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />
+                      Linked to SKH domain: {selected.skh}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActive(null)}
+                  aria-label="Close"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-[rgb(var(--surface-muted))] hover:text-ink-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </section>
   )
 }

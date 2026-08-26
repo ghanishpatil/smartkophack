@@ -9,6 +9,7 @@ import { AboutPage } from '@/pages/AboutPage.jsx'
 import { ProblemsPage } from '@/pages/ProblemsPage.jsx'
 import { ContactPage } from '@/pages/ContactPage.jsx'
 import { HowToRegisterPage } from '@/pages/HowToRegisterPage.jsx'
+import { GrandFinalePage } from '@/pages/GrandFinalePage.jsx'
 import { PrivacyPolicyPage, TermsOfUsePage, DisclaimerPage } from '@/pages/LegalPages.jsx'
 import { AuthPage } from '@/pages/AuthPage.jsx'
 import { ChangePasswordPage } from '@/pages/ChangePasswordPage.jsx'
@@ -145,6 +146,12 @@ const AdminSponsorsPage = lazy(() =>
 const AdminHeroPage = lazy(() =>
   import('@/pages/admin/AdminHeroPage.jsx').then((m) => ({ default: m.AdminHeroPage })),
 )
+const AdminRegistrationDeskPage = lazy(() =>
+  import('@/pages/admin/AdminRegistrationDeskPage.jsx').then((m) => ({ default: m.AdminRegistrationDeskPage })),
+)
+const RegDeskHomePage = lazy(() =>
+  import('@/pages/regdesk/RegDeskHomePage.jsx').then((m) => ({ default: m.RegDeskHomePage })),
+)
 const JudgeHomePage = lazy(() => import('@/pages/jury/JudgeHomePage.jsx').then((m) => ({ default: m.JudgeHomePage })))
 const JudgeAssignmentsPage = lazy(() =>
   import('@/pages/jury/JudgeAssignmentsPage.jsx').then((m) => ({ default: m.JudgeAssignmentsPage })),
@@ -238,6 +245,14 @@ export default function App() {
             element={
               <AnimatedOutlet>
                 <HowToRegisterPage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/grand-finale"
+            element={
+              <AnimatedOutlet>
+                <GrandFinalePage />
               </AnimatedOutlet>
             }
           />
@@ -396,6 +411,7 @@ export default function App() {
             <Route path="/admin/timeline" element={<AdminTimelinePage />} />
             <Route path="/admin/sponsors" element={<AdminSponsorsPage />} />
             <Route path="/admin/hero" element={<AdminHeroPage />} />
+            <Route path="/admin/registration-desk" element={<AdminRegistrationDeskPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route path="/admin/health" element={<AdminHealthPage />} />
             <Route path="/admin/security" element={<AdminSecurityPage />} />
@@ -421,6 +437,12 @@ export default function App() {
           <Route element={<DashboardLayout variant="mentor" />}>
             <Route path="/mentor" element={<MentorDashboard />} />
             <Route path="/mentor/chat" element={<MentorChatPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute roles={[ROLES.REGISTRATION_DESK]} />}>
+          <Route element={<DashboardLayout variant="regdesk" />}>
+            <Route path="/reg-desk" element={<RegDeskHomePage />} />
           </Route>
         </Route>
 

@@ -366,6 +366,21 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/viewers/bulk-invite', { method: 'POST', body: { emails } }),
     viewerInviteStatus: () =>
       authReq('/api/admin/viewers/status'),
+    // Registration Desk — admin management
+    bulkInviteRegDesk: (emails) =>
+      authReq('/api/admin/registration-desk/bulk-invite', { method: 'POST', body: { emails } }),
+    regDeskInviteStatus: () =>
+      authReq('/api/admin/registration-desk/status'),
+    assignRegDeskDomains: (uid, domains) =>
+      authReq('/api/admin/registration-desk/assign-domains', { method: 'POST', body: { uid, domains } }),
+    // Registration Desk — desk + admin check-in data
+    regDeskMe: () => authReq('/api/reg-desk/me'),
+    regDeskTeams: () => authReq('/api/reg-desk/teams'),
+    regDeskStats: () => authReq('/api/reg-desk/stats'),
+    regDeskMarkMember: (memberId, present) =>
+      authReq('/api/reg-desk/attendance', { method: 'POST', body: { memberId, present } }),
+    regDeskMarkTeam: (teamId, present) =>
+      authReq('/api/reg-desk/attendance/team', { method: 'POST', body: { teamId, present } }),
     // Hero slideshow settings (banners are uploaded via multipart in the page)
     updateHeroSettings: (body) =>
       authReq('/api/hero-banners/settings', { method: 'PUT', body }),

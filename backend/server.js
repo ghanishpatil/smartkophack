@@ -7,7 +7,7 @@ import compression from 'compression'
 import rateLimit from 'express-rate-limit'
 import { initFirebaseAdmin } from './services/firebaseAdmin.js'
 import { ensureHackathonInstall } from './services/hackathonBootstrap.js'
-import { publicRouter, adminRouter, judgesRouter, mentorsRouter } from './routes/api.js'
+import { publicRouter, adminRouter, judgesRouter, mentorsRouter, registrationDeskRouter } from './routes/api.js'
 import { participantRouter } from './routes/participant.js'
 import chatRouter from './routes/chat.js'
 import adminChatRouter from './routes/adminChat.js'
@@ -403,6 +403,7 @@ app.use('/api/admin', adminRouter())
 app.use('/api/admin/chatbot', adminChatRouter)
 app.use('/api/judges', judgesRouter())
 app.use('/api/mentors', mentorsRouter())
+app.use('/api/reg-desk', registrationDeskRouter())
 
 app.use(notFound)
 app.use(errorHandler)

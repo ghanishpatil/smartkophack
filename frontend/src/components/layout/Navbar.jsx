@@ -9,16 +9,17 @@ import { roleHome, ROLES } from '@/utils/roles.js'
 
 const links = [
   { to: '/', label: 'Home' },
-  { to: '/about', label: 'About SKH' },
+  { to: '/about', label: 'About & SDGs' },
   { to: '/problems', label: 'Problem Statements' },
   { to: '/timeline', label: 'Event Timeline' },
   { to: '/announcements', label: 'Announcements' },
   { to: '/results', label: 'Results' },
-  { to: '/sponsors', label: 'Partners & Sponsors' },
-  { to: '/how-to-register', label: 'How to Register' },
+  { to: '/grand-finale', label: 'Grand Finale' },
 ]
 
 const resourceLinks = [
+  { to: '/how-to-register', label: 'How to Register' },
+  { to: '/sponsors', label: 'Partners & Sponsors' },
   { to: '/guidelines', label: 'Submission Guidelines' },
   { to: '/code-of-conduct', label: 'Code of Conduct' },
 ]
