@@ -242,25 +242,58 @@ export function normalizePhase(input, existingId = null) {
     deadline: typeof input.deadline === 'string' ? input.deadline : null,
     requirements: {},
     evaluationCriteria: [],
+    // Two-part ("50:50 Finals") scoring — see backend/utils/evaluationScores.js
+    // for how these fields are resolved and applied at score time.
+    scoringMode: input.scoringMode === 'twoPart' ? 'twoPart' : 'single',
+    evaluationCriteriaA: [],
+    evaluationCriteriaB: [],
+    partAWeight: 50,
+    partBWeight: 50,
+    partALabel: 'Part A',
+    partBLabel: 'Part B',
   }
 
   for (const key of ALLOWED_REQUIREMENTS) {
     normalized.requirements[key] = Boolean(input.requirements?.[key])
   }
 
-  // Per-phase evaluation criteria
-  if (Array.isArray(input.evaluationCriteria)) {
-    normalized.evaluationCriteria = input.evaluationCriteria
+  function normalizeCriterionRow(c) {
+    return {
+      key: String(c.key || c.label).toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 30),
+      label: String(c.label).trim().slice(0, 100),
+      maxScore: typeof c.maxScore === 'number' && c.maxScore > 0 ? Math.min(100, Math.floor(c.maxScore)) : 10,
+      hint: c.hint ? String(c.hint).trim().slice(0, 200) : '',
+      weight: typeof c.weight === 'number' ? Math.max(0, Math.min(1, c.weight)) : 1,
+    }
+  }
+
+  function normalizeCriterionList(raw) {
+    if (!Array.isArray(raw)) return []
+    return raw
       .filter((c) => c && typeof c === 'object' && c.label)
-      .map((c) => ({
-        key: String(c.key || c.label).toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 30),
-        label: String(c.label).trim().slice(0, 100),
-        maxScore: typeof c.maxScore === 'number' && c.maxScore > 0 ? Math.min(100, Math.floor(c.maxScore)) : 10,
-        hint: c.hint ? String(c.hint).trim().slice(0, 200) : '',
-        weight: typeof c.weight === 'number' ? Math.max(0, Math.min(1, c.weight)) : 1,
-      }))
+      .map(normalizeCriterionRow)
       .slice(0, 20)
   }
+
+  // Per-phase evaluation criteria (single-rubric mode)
+  normalized.evaluationCriteria = normalizeCriterionList(input.evaluationCriteria)
+
+  // Two-part rubrics (only meaningful when scoringMode === 'twoPart', but we
+  // store them regardless so an admin can toggle modes without losing data).
+  normalized.evaluationCriteriaA = normalizeCriterionList(input.evaluationCriteriaA)
+  normalized.evaluationCriteriaB = normalizeCriterionList(input.evaluationCriteriaB)
+
+  const rawA = Number(input.partAWeight)
+  const rawB = Number(input.partBWeight)
+  normalized.partAWeight = Number.isFinite(rawA) && rawA >= 0 ? Math.min(1000, rawA) : 50
+  normalized.partBWeight = Number.isFinite(rawB) && rawB >= 0 ? Math.min(1000, rawB) : 50
+
+  normalized.partALabel = typeof input.partALabel === 'string' && input.partALabel.trim()
+    ? input.partALabel.trim().slice(0, 80)
+    : 'Part A'
+  normalized.partBLabel = typeof input.partBLabel === 'string' && input.partBLabel.trim()
+    ? input.partBLabel.trim().slice(0, 80)
+    : 'Part B'
 
   return normalized
 }

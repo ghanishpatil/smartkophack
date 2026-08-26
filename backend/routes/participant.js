@@ -2186,6 +2186,29 @@ r.get('/evaluation-remarks', async (req, res, next) => {
     let n = 0
     snap.docs.forEach((d) => {
       const e = d.data()
+
+      if (e.scoringMode === 'twoPart') {
+        // Finals model — the judge submits Evaluation 1 (Part A) and
+        // Evaluation 2 (Part B) separately. Only show remarks for parts that
+        // have actually been submitted (statusA / statusB === 'submitted'),
+        // even if the whole evaluation isn't complete yet. Still no scores.
+        const fbA = e.statusA === 'submitted' && typeof e.feedbackA === 'string' ? e.feedbackA.trim() : ''
+        const fbB = e.statusB === 'submitted' && typeof e.feedbackB === 'string' ? e.feedbackB.trim() : ''
+        if (!fbA && !fbB) return
+        n += 1
+        const labelA = typeof e.partALabel === 'string' && e.partALabel ? e.partALabel : 'Part A'
+        const labelB = typeof e.partBLabel === 'string' && e.partBLabel ? e.partBLabel : 'Part B'
+        remarks.push({
+          id: `judge-${n}`,
+          judgeLabel: `Judge ${n}`,
+          feedbackA: fbA ? fbA.slice(0, 8000) : '',
+          feedbackB: fbB ? fbB.slice(0, 8000) : '',
+          labelA,
+          labelB,
+        })
+        return
+      }
+
       if (e.evaluationStatus !== 'submitted') return
       const fb = typeof e.feedback === 'string' ? e.feedback.trim() : ''
       if (!fb) return

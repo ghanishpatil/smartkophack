@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { ConfirmModal } from '@/components/admin/ConfirmModal.jsx'
+import { parseCriterionLines, splitPasteGrid } from '@/utils/evaluationCriteriaCsv.js'
 
 /**
  * Convert a stored UTC ISO string into the local wall-clock `YYYY-MM-DDTHH:mm`
@@ -81,6 +82,13 @@ function newPhase(order) {
     deadline: null,
     requirements: { pptRequired: false, pdfRequired: false, videoRequired: false, githubRequired: false, deployedUrlRequired: false },
     evaluationCriteria: [],
+    scoringMode: 'single',
+    evaluationCriteriaA: [],
+    evaluationCriteriaB: [],
+    partAWeight: 50,
+    partBWeight: 50,
+    partALabel: 'Part A',
+    partBLabel: 'Part B',
   }
 }
 
@@ -162,6 +170,13 @@ export function AdminPhasesPage() {
         deadline,
         requirements: existing.requirements || { pptRequired: false, pdfRequired: false, videoRequired: false, githubRequired: false, deployedUrlRequired: false },
         evaluationCriteria: existing.evaluationCriteria || [],
+        scoringMode: existing.scoringMode || 'single',
+        evaluationCriteriaA: existing.evaluationCriteriaA || [],
+        evaluationCriteriaB: existing.evaluationCriteriaB || [],
+        partAWeight: existing.partAWeight ?? 50,
+        partBWeight: existing.partBWeight ?? 50,
+        partALabel: existing.partALabel || 'Part A',
+        partBLabel: existing.partBLabel || 'Part B',
       }
     })
     setPhases(newPhases)
@@ -200,6 +215,81 @@ export function AdminPhasesPage() {
       if (i !== idx) return p
       return { ...p, evaluationCriteria: p.evaluationCriteria.filter((_, ci) => ci !== cIdx) }
     }))
+  }
+
+  // Two-part ("50:50 Finals") rubric editing — `part` is 'A' or 'B'; each part
+  // is a fully independent criteria list, mirroring the single-rubric helpers above.
+  function partField(part) {
+    return part === 'A' ? 'evaluationCriteriaA' : 'evaluationCriteriaB'
+  }
+
+  function updatePartCriterion(idx, part, cIdx, patch) {
+    const field = partField(part)
+    setPhases((prev) => prev.map((p, i) => {
+      if (i !== idx) return p
+      const criteria = [...(p[field] || [])]
+      criteria[cIdx] = { ...criteria[cIdx], ...patch }
+      return { ...p, [field]: criteria }
+    }))
+  }
+
+  function addPartCriterion(idx, part) {
+    const field = partField(part)
+    setPhases((prev) => prev.map((p, i) => {
+      if (i !== idx) return p
+      const criteria = [...(p[field] || []), { key: '', label: '', maxScore: 10, hint: '', weight: 1 }]
+      return { ...p, [field]: criteria }
+    }))
+  }
+
+  function removePartCriterion(idx, part, cIdx) {
+    const field = partField(part)
+    setPhases((prev) => prev.map((p, i) => {
+      if (i !== idx) return p
+      return { ...p, [field]: (p[field] || []).filter((_, ci) => ci !== cIdx) }
+    }))
+  }
+
+  // Replace a part's whole criteria list at once (used by CSV/sheet upload).
+  function setPartCriteria(idx, part, list) {
+    const field = partField(part)
+    setPhases((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: list } : p)))
+  }
+
+  // Upload a criteria sheet (CSV / Excel-saved-as-CSV / pasted TSV file) and
+  // load it straight into a part's criteria — no manual typing needed.
+  function uploadCriteriaFor(idx, part) {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,text/csv,text/plain'
+    input.onchange = async () => {
+      const f = input.files?.[0]
+      if (!f) return
+      try {
+        const text = await f.text()
+        const parsed = parseCriterionLines(splitPasteGrid(text))
+        if (parsed.length === 0) {
+          setMsg('No criteria rows found in that file. Use columns: key, label, maxScore, hint (or a single column of labels).')
+          return
+        }
+        setPartCriteria(idx, part, parsed)
+        setMsg(`✓ Loaded ${parsed.length} criteria into ${part === 'A' ? 'Part A' : 'Part B'}. Click "Save All Phases" to apply.`)
+      } catch (e) {
+        setMsg(e.message || 'Could not read that file.')
+      }
+    }
+    input.click()
+  }
+
+  // Both Finals parts use the same official 8-criteria rubric — copy A → B so
+  // the admin only uploads/enters it once.
+  function copyPartAtoB(idx) {
+    setPhases((prev) => prev.map((p, i) => {
+      if (i !== idx) return p
+      const clone = (p.evaluationCriteriaA || []).map((c) => ({ ...c }))
+      return { ...p, evaluationCriteriaB: clone }
+    }))
+    setMsg('✓ Copied Part A criteria into Part B. Click "Save All Phases" to apply.')
   }
 
   function addPhase() {
@@ -474,53 +564,257 @@ export function AdminPhasesPage() {
                     </div>
                   </div>
 
-                  {/* Evaluation Criteria */}
+                  {/* Scoring mode — single rubric vs two-part (50:50 Finals) */}
                   <div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-wide text-ink-500">Evaluation Criteria</p>
-                      <Button size="xs" variant="secondary" onClick={() => addCriterion(idx)}>
-                        <Plus className="mr-1 h-3 w-3" /> Add Criterion
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink-500">Scoring Mode</p>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      Two-part mode is for the Grand Finale&apos;s 50:50 model: judges score each team against{' '}
+                      <strong>two independent rubrics</strong> (e.g. Existing Project + New Challenge) in one sitting,
+                      and the system computes a weighted Final Score.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={phase.scoringMode !== 'twoPart' ? 'primary' : 'secondary'}
+                        onClick={() => updatePhase(idx, { scoringMode: 'single' })}
+                      >
+                        Single rubric
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={phase.scoringMode === 'twoPart' ? 'primary' : 'secondary'}
+                        onClick={() => updatePhase(idx, { scoringMode: 'twoPart' })}
+                      >
+                        Two-part (50:50)
                       </Button>
                     </div>
-                    <div className="mt-2 space-y-2">
-                      {(phase.evaluationCriteria || []).length === 0 ? (
-                        <p className="text-xs text-ink-400">No criteria defined. Default rubric will be used.</p>
-                      ) : (
-                        phase.evaluationCriteria.map((c, ci) => (
-                          <div key={ci} className="grid grid-cols-12 gap-2 rounded-lg border border-[rgb(var(--border))] p-3">
+                  </div>
+
+                  {phase.scoringMode === 'twoPart' ? (
+                    <div className="space-y-5 rounded-xl border border-brand-500/30 bg-brand-500/5 p-4">
+                      {/* Part labels + weights */}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500">Part A label</label>
                             <input
-                              className="col-span-5 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
-                              placeholder="Label (e.g. Innovation)"
-                              value={c.label || ''}
-                              onChange={(e) => updateCriterion(idx, ci, { label: e.target.value })}
+                              className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                              placeholder="e.g. Existing Project"
+                              value={phase.partALabel || ''}
+                              onChange={(e) => updatePhase(idx, { partALabel: e.target.value })}
                             />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500">Weight %</label>
                             <input
                               type="number"
-                              min="1"
-                              max="100"
-                              className="col-span-2 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
-                              placeholder="Max"
-                              value={c.maxScore || 10}
-                              onChange={(e) => updateCriterion(idx, ci, { maxScore: Number(e.target.value) })}
+                              min="0"
+                              max="1000"
+                              className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                              value={phase.partAWeight ?? 50}
+                              onChange={(e) => updatePhase(idx, { partAWeight: Number(e.target.value) })}
                             />
-                            <input
-                              className="col-span-4 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
-                              placeholder="Hint (optional)"
-                              value={c.hint || ''}
-                              onChange={(e) => updateCriterion(idx, ci, { hint: e.target.value })}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeCriterion(idx, ci)}
-                              className="col-span-1 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
                           </div>
-                        ))
-                      )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500">Part B label</label>
+                            <input
+                              className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                              placeholder="e.g. New Problem Statement / Challenge"
+                              value={phase.partBLabel || ''}
+                              onChange={(e) => updatePhase(idx, { partBLabel: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500">Weight %</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="1000"
+                              className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                              value={phase.partBWeight ?? 50}
+                              onChange={(e) => updatePhase(idx, { partBWeight: Number(e.target.value) })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-ink-400">
+                        Weights are normalized automatically (e.g. 50/50, or any ratio) — they don&apos;t need to add up to 100.
+                      </p>
+
+                      <div className="rounded-lg border border-brand-500/20 bg-[rgb(var(--surface))] p-3 text-[11px] text-ink-500">
+                        <strong className="text-ink-700">Tip:</strong> upload your criteria sheet (CSV, or Excel saved as
+                        CSV) into Part A, then click <strong>Copy Part A → Part B</strong> — both parts use the same
+                        official rubric, so you only enter it once. Columns: <span className="font-mono">key, label, maxScore, hint</span>.
+                      </div>
+
+                      {/* Part A criteria */}
+                      <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold uppercase tracking-wide text-ink-500">
+                            {phase.partALabel || 'Part A'} — Criteria
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="xs" variant="secondary" onClick={() => uploadCriteriaFor(idx, 'A')}>
+                              <FileText className="mr-1 h-3 w-3" /> Upload sheet
+                            </Button>
+                            <Button size="xs" variant="secondary" onClick={() => addPartCriterion(idx, 'A')}>
+                              <Plus className="mr-1 h-3 w-3" /> Add Criterion
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {(phase.evaluationCriteriaA || []).length === 0 ? (
+                            <p className="text-xs text-ink-400">No criteria defined. Default rubric will be used.</p>
+                          ) : (
+                            phase.evaluationCriteriaA.map((c, ci) => (
+                              <div key={ci} className="grid grid-cols-12 gap-2 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+                                <input
+                                  className="col-span-5 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Label (e.g. Innovation & Uniqueness)"
+                                  value={c.label || ''}
+                                  onChange={(e) => updatePartCriterion(idx, 'A', ci, { label: e.target.value })}
+                                />
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  className="col-span-2 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Max"
+                                  value={c.maxScore || 10}
+                                  onChange={(e) => updatePartCriterion(idx, 'A', ci, { maxScore: Number(e.target.value) })}
+                                />
+                                <input
+                                  className="col-span-4 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Hint (optional)"
+                                  value={c.hint || ''}
+                                  onChange={(e) => updatePartCriterion(idx, 'A', ci, { hint: e.target.value })}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePartCriterion(idx, 'A', ci)}
+                                  className="col-span-1 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Copy A → B convenience */}
+                      <div className="flex justify-center">
+                        <Button size="xs" variant="secondary" onClick={() => copyPartAtoB(idx)}>
+                          Copy Part A → Part B
+                        </Button>
+                      </div>
+
+                      {/* Part B criteria */}
+                      <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold uppercase tracking-wide text-ink-500">
+                            {phase.partBLabel || 'Part B'} — Criteria
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="xs" variant="secondary" onClick={() => uploadCriteriaFor(idx, 'B')}>
+                              <FileText className="mr-1 h-3 w-3" /> Upload sheet
+                            </Button>
+                            <Button size="xs" variant="secondary" onClick={() => addPartCriterion(idx, 'B')}>
+                              <Plus className="mr-1 h-3 w-3" /> Add Criterion
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {(phase.evaluationCriteriaB || []).length === 0 ? (
+                            <p className="text-xs text-ink-400">No criteria defined. Default rubric will be used.</p>
+                          ) : (
+                            phase.evaluationCriteriaB.map((c, ci) => (
+                              <div key={ci} className="grid grid-cols-12 gap-2 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3">
+                                <input
+                                  className="col-span-5 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Label (e.g. Innovation & Uniqueness)"
+                                  value={c.label || ''}
+                                  onChange={(e) => updatePartCriterion(idx, 'B', ci, { label: e.target.value })}
+                                />
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  className="col-span-2 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Max"
+                                  value={c.maxScore || 10}
+                                  onChange={(e) => updatePartCriterion(idx, 'B', ci, { maxScore: Number(e.target.value) })}
+                                />
+                                <input
+                                  className="col-span-4 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                  placeholder="Hint (optional)"
+                                  value={c.hint || ''}
+                                  onChange={(e) => updatePartCriterion(idx, 'B', ci, { hint: e.target.value })}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePartCriterion(idx, 'B', ci)}
+                                  className="col-span-1 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* Evaluation Criteria — single rubric mode */
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold uppercase tracking-wide text-ink-500">Evaluation Criteria</p>
+                        <Button size="xs" variant="secondary" onClick={() => addCriterion(idx)}>
+                          <Plus className="mr-1 h-3 w-3" /> Add Criterion
+                        </Button>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {(phase.evaluationCriteria || []).length === 0 ? (
+                          <p className="text-xs text-ink-400">No criteria defined. Default rubric will be used.</p>
+                        ) : (
+                          phase.evaluationCriteria.map((c, ci) => (
+                            <div key={ci} className="grid grid-cols-12 gap-2 rounded-lg border border-[rgb(var(--border))] p-3">
+                              <input
+                                className="col-span-5 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                placeholder="Label (e.g. Innovation)"
+                                value={c.label || ''}
+                                onChange={(e) => updateCriterion(idx, ci, { label: e.target.value })}
+                              />
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                className="col-span-2 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                placeholder="Max"
+                                value={c.maxScore || 10}
+                                onChange={(e) => updateCriterion(idx, ci, { maxScore: Number(e.target.value) })}
+                              />
+                              <input
+                                className="col-span-4 h-9 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--page-bg))] px-2 text-sm"
+                                placeholder="Hint (optional)"
+                                value={c.hint || ''}
+                                onChange={(e) => updateCriterion(idx, ci, { hint: e.target.value })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeCriterion(idx, ci)}
+                                className="col-span-1 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Remove phase */}
                   <div className="flex justify-between border-t border-[rgb(var(--border))] pt-4">

@@ -68,28 +68,35 @@ export function AdminReportsPage() {
   const [teams, setTeams] = useState([])
   const [subs, setSubs] = useState([])
   const [evals, setEvals] = useState([])
+  const [archivedEvals, setArchivedEvals] = useState([])
   const [problems, setProblems] = useState([])
+  const [users, setUsers] = useState([])
   const [collegeByTeam, setCollegeByTeam] = useState(new Map())
   const [collegeFilter, setCollegeFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [exportingAll, setExportingAll] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, sub, evRows, ps, tc] = await Promise.all([
+      const [s, t, sub, evRows, ps, tc, arch, us] = await Promise.all([
         api.adminStats(),
         api.adminTeams(),
         api.adminSubmissions(),
         api.adminEvaluations().catch(() => []),
         api.listAdminProblemStatements().catch(() => []),
         api.adminTeamColleges().catch(() => ({ teams: [] })),
+        api.listAdminArchivedEvaluations().catch(() => ({ items: [] })),
+        api.listUsers().catch(() => []),
       ])
       setStats(s)
       setTeams(Array.isArray(t) ? t : [])
       setSubs(Array.isArray(sub) ? sub : [])
       setEvals(Array.isArray(evRows) ? evRows : [])
+      setArchivedEvals(Array.isArray(arch?.items) ? arch.items : [])
       setProblems(Array.isArray(ps) ? ps : [])
+      setUsers(Array.isArray(us) ? us : [])
       const cm = new Map()
       for (const row of (Array.isArray(tc?.teams) ? tc.teams : [])) {
         cm.set(row.teamId, { college: row.college || '', collegeLocation: row.collegeLocation || '' })
@@ -279,15 +286,112 @@ export function AdminReportsPage() {
     ])
   }
 
+  // Readable label maps for exports.
+  const judgeLabelById = useMemo(() => {
+    const m = new Map()
+    for (const u of users) m.set(u.id, u.email || u.displayName || u.id)
+    return m
+  }, [users])
+  const teamNameById = useMemo(() => {
+    const m = new Map()
+    for (const t of teams) m.set(t.id, t.name || t.id)
+    return m
+  }, [teams])
+  const psTitleById = useMemo(() => {
+    const m = new Map()
+    for (const p of problems) m.set(p.id, p.title || p.id)
+    return m
+  }, [problems])
+
+  // Columns that cover BOTH single-rubric and two-part (Finals) evaluations in
+  // one flat CSV — empty cells where a shape doesn't apply.
+  const evaluationColumns = [
+    { header: 'Evaluation ID', accessor: (r) => r.id || '' },
+    { header: 'Team', accessor: (r) => teamNameById.get(r.teamId) || r.teamId || '' },
+    { header: 'Team ID', accessor: (r) => r.teamId || '' },
+    { header: 'Judge', accessor: (r) => judgeLabelById.get(r.judgeId) || r.judgeId || '' },
+    { header: 'Problem Statement', accessor: (r) => psTitleById.get(r.problemStatementId) || r.problemStatementId || '' },
+    { header: 'Scoring Mode', accessor: (r) => (r.scoringMode === 'twoPart' ? 'Two-part (Finals)' : 'Single') },
+    { header: 'Overall Status', accessor: (r) => r.evaluationStatus || 'pending' },
+    // Single-rubric fields
+    { header: 'Scores', accessor: (r) => (r.scoringMode === 'twoPart' ? '' : JSON.stringify(r.scores || {})) },
+    { header: 'Feedback', accessor: (r) => (r.scoringMode === 'twoPart' ? '' : (r.feedback || '')) },
+    // Two-part fields
+    { header: 'Part A Label', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.partALabel || 'Part A') : '') },
+    { header: 'Part A Status', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.statusA || 'pending') : '') },
+    { header: 'Part A Scores', accessor: (r) => (r.scoringMode === 'twoPart' ? JSON.stringify(r.scoresA || {}) : '') },
+    { header: 'Part A Feedback', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.feedbackA || '') : '') },
+    { header: 'Part B Label', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.partBLabel || 'Part B') : '') },
+    { header: 'Part B Status', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.statusB || 'pending') : '') },
+    { header: 'Part B Scores', accessor: (r) => (r.scoringMode === 'twoPart' ? JSON.stringify(r.scoresB || {}) : '') },
+    { header: 'Part B Feedback', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.feedbackB || '') : '') },
+    { header: 'Part A Weight %', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.partAWeight ?? '') : '') },
+    { header: 'Part B Weight %', accessor: (r) => (r.scoringMode === 'twoPart' ? (r.partBWeight ?? '') : '') },
+    { header: 'Final Score %', accessor: (r) => (typeof r.finalScorePct === 'number' ? r.finalScorePct : '') },
+  ]
+
   function exportEvaluations() {
-    downloadCsv(`evaluations-report-${Date.now()}.csv`, evals, [
-      { header: 'ID', accessor: (r) => r.id },
-      { header: 'Team', accessor: (r) => r.teamId },
-      { header: 'Judge', accessor: (r) => r.judgeId },
-      { header: 'Status', accessor: (r) => r.evaluationStatus },
-      { header: 'Scores', accessor: (r) => JSON.stringify(r.scores || {}) },
-      { header: 'Feedback', accessor: (r) => r.feedback || '' },
-    ])
+    downloadCsv(`evaluations-report-${Date.now()}.csv`, evals, evaluationColumns)
+  }
+
+  // Download a complete snapshot of the whole system as a set of clearly-named
+  // CSV files (staggered so the browser doesn't block multiple downloads):
+  // teams, submissions, live evaluations, archived (past-round) evaluations,
+  // and problem statements.
+  async function downloadEverything() {
+    setExportingAll(true)
+    try {
+      const stamp = Date.now()
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+      downloadCsv(`ALL-teams-${stamp}.csv`, teams, [
+        { header: 'ID', accessor: (r) => r.id },
+        { header: 'Name', accessor: (r) => r.name },
+        { header: 'Registration', accessor: (r) => r.registrationStatus },
+        { header: 'Payment', accessor: (r) => r.paymentStatus },
+        { header: 'Problem Statement', accessor: (r) => psTitleById.get(r.problemStatementId) || r.problemStatementId || '' },
+        { header: 'College', accessor: (r) => (collegeByTeam.get(r.id) || {}).college || '' },
+        { header: 'Location', accessor: (r) => (collegeByTeam.get(r.id) || {}).collegeLocation || '' },
+        { header: 'Jury Status', accessor: (r) => r.juryStatus || '' },
+        { header: 'Submitted', accessor: (r) => (r.submissionLocked ? 'Yes' : 'No') },
+        { header: 'Shortlisted', accessor: (r) => (r.shortlisted ? 'Yes' : 'No') },
+        { header: 'Members', accessor: (r) => (r.memberIds || []).length },
+      ])
+      await sleep(400)
+
+      downloadCsv(`ALL-submissions-${stamp}.csv`, subs, [
+        { header: 'Team ID', accessor: (r) => r.teamId },
+        { header: 'Team', accessor: (r) => teamNameById.get(r.teamId) || r.teamId },
+        { header: 'Status', accessor: (r) => r.status || 'draft' },
+        { header: 'PPT', accessor: (r) => r.pptUrl || '' },
+        { header: 'PDF', accessor: (r) => r.pdfUrl || '' },
+        { header: 'Video', accessor: (r) => r.videoUrl || '' },
+        { header: 'GitHub', accessor: (r) => r.githubUrl || '' },
+      ])
+      await sleep(400)
+
+      downloadCsv(`ALL-evaluations-live-${stamp}.csv`, evals, evaluationColumns)
+      await sleep(400)
+
+      if (archivedEvals.length > 0) {
+        downloadCsv(`ALL-evaluations-archived-${stamp}.csv`, archivedEvals, [
+          { header: 'Archive Label', accessor: (r) => r.archiveLabel || '' },
+          ...evaluationColumns.map((c) => ({ header: c.header, accessor: c.accessor })),
+          { header: 'Archived At', accessor: (r) => r.archivedAtIso || '' },
+        ])
+        await sleep(400)
+      }
+
+      downloadCsv(`ALL-problem-statements-${stamp}.csv`, problems, [
+        { header: 'ID', accessor: (r) => r.id },
+        { header: 'Title', accessor: (r) => r.title || '' },
+        { header: 'Domain', accessor: (r) => r.theme || r.domain || '' },
+        { header: 'Track', accessor: (r) => r.category || '' },
+        { header: 'Teams Selected', accessor: (r) => (typeof r.selectionCount === 'number' ? r.selectionCount : 0) },
+      ])
+    } finally {
+      setExportingAll(false)
+    }
   }
 
   // Download a professional, page-aligned PDF of the report. Clones the report
@@ -420,6 +524,9 @@ export function AdminReportsPage() {
         </div>
         <div className="no-print flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={load}>Refresh</Button>
+          <Button variant="secondary" size="sm" className="gap-1.5" disabled={exportingAll} onClick={downloadEverything}>
+            <Download className="h-4 w-4" /> {exportingAll ? 'Exporting…' : 'Download Everything'}
+          </Button>
           <Button size="sm" className="gap-1.5" onClick={downloadReportPdf}>
             <Download className="h-4 w-4" /> Download PDF
           </Button>
@@ -789,6 +896,9 @@ export function AdminReportsPage() {
         <h2 className="font-display text-lg font-semibold text-ink-900">Export Center</h2>
         <p className="mt-2 text-sm text-ink-600">Download data snapshots as CSV for audits, finance, and reporting.</p>
         <div className="mt-4 flex flex-wrap gap-3">
+          <Button className="gap-1.5" type="button" disabled={exportingAll} onClick={downloadEverything}>
+            <Download className="h-4 w-4" /> {exportingAll ? 'Exporting…' : 'Download Everything (all CSVs)'}
+          </Button>
           <Button variant="secondary" type="button" onClick={exportTeams}>Teams CSV</Button>
           <Button variant="secondary" type="button" onClick={() => downloadCsv(`submissions-${Date.now()}.csv`, subs, [
             { header: 'Team ID', accessor: (r) => r.teamId },
@@ -799,7 +909,20 @@ export function AdminReportsPage() {
             { header: 'GitHub', accessor: (r) => r.githubUrl ? 'Yes' : 'No' },
           ])}>Submissions CSV</Button>
           <Button variant="secondary" type="button" disabled={!evals.length} onClick={exportEvaluations}>Evaluations CSV</Button>
+          {archivedEvals.length > 0 ? (
+            <Button variant="secondary" type="button" onClick={() => downloadCsv(`evaluations-archived-${Date.now()}.csv`, archivedEvals, [
+              { header: 'Archive Label', accessor: (r) => r.archiveLabel || '' },
+              ...evaluationColumns.map((c) => ({ header: c.header, accessor: c.accessor })),
+              { header: 'Archived At', accessor: (r) => r.archivedAtIso || '' },
+            ])}>Archived Evaluations CSV ({archivedEvals.length})</Button>
+          ) : null}
         </div>
+        {archivedEvals.length > 0 ? (
+          <p className="mt-3 text-xs text-ink-500">
+            Archived evaluations include the {archivedEvals.length} record(s) preserved from earlier rounds (e.g. Round 2)
+            before the Finals started.
+          </p>
+        ) : null}
       </Card>
     </div>
   )

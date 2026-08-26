@@ -38,7 +38,24 @@ export function JudgeRemarks() {
         {remarks.map((r) => (
           <div key={r.id} className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">{r.judgeLabel}</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700">{r.feedback}</p>
+            {r.feedbackA !== undefined || r.feedbackB !== undefined ? (
+              <div className="mt-1 space-y-2">
+                {r.feedbackA ? (
+                  <div>
+                    <p className="text-[11px] font-semibold text-ink-500">{r.labelA || 'Part A'}</p>
+                    <p className="whitespace-pre-wrap text-sm text-ink-700">{r.feedbackA}</p>
+                  </div>
+                ) : null}
+                {r.feedbackB ? (
+                  <div>
+                    <p className="text-[11px] font-semibold text-ink-500">{r.labelB || 'Part B'}</p>
+                    <p className="whitespace-pre-wrap text-sm text-ink-700">{r.feedbackB}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700">{r.feedback}</p>
+            )}
           </div>
         ))}
       </div>

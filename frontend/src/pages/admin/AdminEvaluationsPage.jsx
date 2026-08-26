@@ -35,6 +35,23 @@ export function AdminEvaluationsPage() {
   const [criteriaErr, setCriteriaErr] = useState('')
   const [criteriaScopedEventId, setCriteriaScopedEventId] = useState('')
 
+  // Archive current-round evaluations before starting the Finals.
+  const [archiveLabel, setArchiveLabel] = useState('round-2')
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveMsg, setArchiveMsg] = useState('')
+
+  // Two-part (Finals 50:50) rubric — upload TWO sheets (Part A + Part B).
+  const [twoPartOn, setTwoPartOn] = useState(false)
+  const [criteriaA, setCriteriaA] = useState([])
+  const [criteriaB, setCriteriaB] = useState([])
+  const [labelA, setLabelA] = useState('Existing Project')
+  const [labelB, setLabelB] = useState('New Problem Statement / Challenge')
+  const [weightA, setWeightA] = useState(50)
+  const [weightB, setWeightB] = useState(50)
+  const [twoPartSaving, setTwoPartSaving] = useState(false)
+  const [twoPartMsg, setTwoPartMsg] = useState('')
+  const [twoPartErr, setTwoPartErr] = useState('')
+
   const rubricEventId = criteriaScopedEventId || eventId
 
   const [usersMap, setUsersMap] = useState(new Map())
@@ -81,6 +98,14 @@ export function AdminEvaluationsPage() {
       if (id) setCriteriaScopedEventId(id)
       const list = Array.isArray(data?.criteria) ? data.criteria : []
       setCriteriaDraft(list)
+      // Two-part (Finals) config
+      setTwoPartOn(data?.scoringMode === 'twoPart')
+      setCriteriaA(Array.isArray(data?.criteriaA) ? data.criteriaA : [])
+      setCriteriaB(Array.isArray(data?.criteriaB) ? data.criteriaB : [])
+      if (typeof data?.partALabel === 'string' && data.partALabel) setLabelA(data.partALabel)
+      if (typeof data?.partBLabel === 'string' && data.partBLabel) setLabelB(data.partBLabel)
+      if (typeof data?.partAWeight === 'number') setWeightA(data.partAWeight)
+      if (typeof data?.partBWeight === 'number') setWeightB(data.partBWeight)
     } catch (e) {
       setCriteriaErr(e.message || 'Could not load criteria')
       setCriteriaDraft([])
@@ -157,6 +182,68 @@ export function AdminEvaluationsPage() {
     } finally {
       setCriteriaSaving(false)
     }
+  }
+
+  async function archiveAndStartFresh() {
+    const label = (archiveLabel || 'round-2').trim() || 'round-2'
+    const submittedCount = rows.filter((r) => r.evaluationStatus === 'submitted').length
+    const ok = window.confirm(
+      `Archive ALL current evaluations under the label "${label}" and clear them so a new round (Finals) starts fresh?\n\n` +
+      `• ${rows.length} evaluation record(s) will be copied to the permanent archive (${submittedCount} submitted).\n` +
+      `• The live evaluations will then be cleared — judges will start the new round with a clean slate.\n` +
+      `• Nothing is lost: archived scores stay viewable/exportable in Reports.\n\n` +
+      `Proceed?`,
+    )
+    if (!ok) return
+    setArchiveBusy(true)
+    setArchiveMsg('')
+    try {
+      const res = await api.archiveAdminEvaluations(label)
+      setArchiveMsg(`Archived ${res.archived || 0} evaluation(s) as "${res.label || label}" and cleared the live board. Finals can now start fresh.`)
+      await loadEvaluations()
+    } catch (e) {
+      setArchiveMsg(e.message || 'Archive failed')
+    } finally {
+      setArchiveBusy(false)
+    }
+  }
+
+  async function saveTwoPart() {
+    if (!rubricEventId) return
+    setTwoPartErr('')
+    setTwoPartMsg('')
+    if (twoPartOn && (criteriaA.length === 0 || criteriaB.length === 0)) {
+      setTwoPartErr('Upload both Part A and Part B rubrics before enabling two-part scoring.')
+      return
+    }
+    setTwoPartSaving(true)
+    try {
+      await api.patchAdminEvent(rubricEventId, {
+        scoringMode: twoPartOn ? 'twoPart' : 'single',
+        evaluationCriteriaA: criteriaA.length ? criteriaA : null,
+        evaluationCriteriaB: criteriaB.length ? criteriaB : null,
+        partALabel: labelA,
+        partBLabel: labelB,
+        partAWeight: Number(weightA) || 50,
+        partBWeight: Number(weightB) || 50,
+      })
+      setTwoPartMsg(
+        twoPartOn
+          ? 'Two-part Finals scoring saved. Judges now submit two evaluations per team (Part A, then Part B).'
+          : 'Saved. Two-part scoring is OFF — judges use the single rubric above.',
+      )
+      await loadCriteria()
+    } catch (e) {
+      setTwoPartErr(e.message || 'Save failed')
+    } finally {
+      setTwoPartSaving(false)
+    }
+  }
+
+  function copyAtoB() {
+    setCriteriaB(criteriaA.map((c) => ({ ...c })))
+    setTwoPartMsg('Copied Part A rubric into Part B. Click "Save two-part rubric" to apply.')
+    setTwoPartErr('')
   }
 
   async function clearCustomCriteria() {
@@ -289,6 +376,146 @@ export function AdminEvaluationsPage() {
         </div>
       </Card>
 
+      {/* Finals — Two-Part Rubric (upload TWO sheets) */}
+      <Card className="space-y-4 border-brand-500/30 bg-brand-500/5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-ink-900">Finals — Two-part rubric (50:50)</h2>
+            <p className="mt-1 text-sm text-ink-600">
+              For the Grand Finale, judges submit <strong>two evaluations per team</strong>: one for the existing project,
+              one for the new challenge. Upload a rubric sheet for <strong>each part</strong> — just like the single
+              rubric above, but two of them. The Final Score is the weighted combination.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm">
+            <input type="checkbox" checked={twoPartOn} onChange={(e) => setTwoPartOn(e.target.checked)} className="h-4 w-4 accent-brand-600" />
+            <span className="font-medium text-ink-800">Enable two-part scoring</span>
+          </label>
+        </div>
+
+        {twoPartErr ? <p className="text-sm text-red-600">{twoPartErr}</p> : null}
+        {twoPartMsg ? <p className="text-sm text-brand-700">{twoPartMsg}</p> : null}
+
+        {/* Part labels + weights */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-3 gap-2">
+            <label className="col-span-2 text-xs font-medium text-ink-500">
+              Part A label
+              <input
+                value={labelA}
+                onChange={(e) => setLabelA(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </label>
+            <label className="text-xs font-medium text-ink-500">
+              Weight %
+              <input
+                type="number" min="0" max="1000"
+                value={weightA}
+                onChange={(e) => setWeightA(Number(e.target.value))}
+                className="mt-1 block w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="col-span-2 text-xs font-medium text-ink-500">
+              Part B label
+              <input
+                value={labelB}
+                onChange={(e) => setLabelB(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </label>
+            <label className="text-xs font-medium text-ink-500">
+              Weight %
+              <input
+                type="number" min="0" max="1000"
+                value={weightB}
+                onChange={(e) => setWeightB(Number(e.target.value))}
+                className="mt-1 block w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </label>
+          </div>
+        </div>
+        <p className="text-xs text-ink-500">Weights are auto-normalized — 50/50, 60/40, or any ratio works.</p>
+
+        {/* Two uploaders */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <RubricUploader
+            title={`Part A — ${labelA}`}
+            criteria={criteriaA}
+            onChange={setCriteriaA}
+            onError={setTwoPartErr}
+            onMessage={setTwoPartMsg}
+            onDownloadTemplate={downloadTemplate}
+          />
+          <RubricUploader
+            title={`Part B — ${labelB}`}
+            criteria={criteriaB}
+            onChange={setCriteriaB}
+            onError={setTwoPartErr}
+            onMessage={setTwoPartMsg}
+            onDownloadTemplate={downloadTemplate}
+            extraAction={
+              <Button type="button" size="sm" variant="secondary" disabled={criteriaA.length === 0} onClick={copyAtoB}>
+                Copy Part A → Part B
+              </Button>
+            }
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="primary" disabled={!rubricEventId || twoPartSaving} onClick={saveTwoPart}>
+            {twoPartSaving ? 'Saving…' : 'Save two-part rubric'}
+          </Button>
+          <span className="self-center text-xs text-ink-500">
+            When enabled, this applies to the active evaluation. Both parts use the official 8-criteria sheet — upload it
+            to Part A and click <strong>Copy Part A → Part B</strong> if both parts are identical.
+          </span>
+        </div>
+      </Card>
+
+      {/* Archive current round & start Finals fresh */}
+      <Card className="space-y-4 border-amber-500/30 bg-amber-500/5">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-ink-900">Start a new evaluation round (Finals)</h2>
+          <p className="mt-1 text-sm text-ink-600">
+            Before the Finals begin, archive the current round&apos;s evaluations so the new (two-part) Finals scoring
+            starts from a clean slate. Each judge scores a team in one document, so without archiving, Finals scores would
+            overwrite the earlier round. Archiving copies every current evaluation into a permanent, read-only store
+            (viewable and exportable in Reports), then clears the live board.
+          </p>
+        </div>
+
+        {archiveMsg ? (
+          <p className={`text-sm ${archiveMsg.toLowerCase().includes('fail') ? 'text-red-600' : 'text-emerald-700'}`}>{archiveMsg}</p>
+        ) : null}
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-medium text-ink-500">
+            Archive label
+            <input
+              value={archiveLabel}
+              onChange={(e) => setArchiveLabel(e.target.value)}
+              placeholder="round-2"
+              className="mt-1 block w-48 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </label>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={archiveBusy}
+            onClick={archiveAndStartFresh}
+          >
+            {archiveBusy ? 'Archiving…' : 'Archive current evaluations & start fresh'}
+          </Button>
+        </div>
+        <p className="text-xs text-ink-500">
+          Tip: after archiving, go to <strong>Competition Phases</strong> and switch the Finals phase to
+          <strong> Two-part (50:50)</strong> scoring so judges submit their two evaluations per team.
+        </p>
+      </Card>
+
       {/* Judge-centric view: list judges → click to see their teams + marks */}
       <JudgeEvaluations
         rows={rows}
@@ -300,6 +527,90 @@ export function AdminEvaluationsPage() {
 
       {/* Score Distribution & Insights */}
       {submitted > 0 && <EvaluationInsights evaluations={rows} usersMap={usersMap} teamsMap={teamsMap} />}
+    </div>
+  )
+}
+
+/**
+ * Reusable single-rubric uploader: upload CSV, paste from a sheet, or download
+ * the template, with a live preview table. Used for each part (A / B) of the
+ * Finals two-part rubric. Mirrors the primary single-rubric block's UX.
+ */
+function RubricUploader({ title, criteria = [], onChange, onError, onMessage, onDownloadTemplate, extraAction = null }) {
+  const fileRef = useRef(null)
+  const [paste, setPaste] = useState('')
+
+  async function onFile(e) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    try {
+      const parsed = parseCriterionLines(splitPasteGrid(await f.text()))
+      if (parsed.length === 0) {
+        onError?.(`${title}: no criteria rows found in that file.`)
+        return
+      }
+      onChange(parsed)
+      onMessage?.(`Loaded ${parsed.length} row(s) into ${title}. Save to apply.`)
+    } catch (err) {
+      onError?.(err.message || 'Could not read file')
+    }
+  }
+
+  function applyPaste() {
+    const parsed = parseCriterionLines(splitPasteGrid(paste))
+    if (parsed.length === 0) {
+      onError?.(`${title}: no criteria rows found. Use columns key, label, maxScore, hint — or a single column of labels.`)
+      return
+    }
+    onChange(parsed)
+    onMessage?.(`Loaded ${parsed.length} row(s) into ${title}. Save to apply.`)
+  }
+
+  return (
+    <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
+      <p className="text-sm font-semibold text-ink-900">{title}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={onFile} />
+        <Button type="button" size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>Upload CSV</Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onDownloadTemplate}>Template</Button>
+        {extraAction}
+      </div>
+      <Textarea
+        className="mt-3"
+        label="Or paste from Excel / Sheets"
+        rows={3}
+        value={paste}
+        placeholder="Paste header + rows, or label-only lines…"
+        onChange={(e) => setPaste(e.target.value)}
+      />
+      <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={applyPaste}>Apply paste</Button>
+
+      <p className="mt-3 mb-1 text-xs font-semibold uppercase text-ink-500">Preview ({criteria.length})</p>
+      {criteria.length === 0 ? (
+        <p className="text-sm text-ink-500">No rows yet — upload or paste a rubric sheet.</p>
+      ) : (
+        <div className="max-h-44 overflow-auto rounded-lg border border-[rgb(var(--border))]">
+          <table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-[rgb(var(--surface-muted))]">
+              <tr>
+                <th className="px-2 py-1.5 font-semibold">Label</th>
+                <th className="px-2 py-1.5 font-semibold">Max</th>
+                <th className="px-2 py-1.5 font-semibold">Hint</th>
+              </tr>
+            </thead>
+            <tbody>
+              {criteria.map((r, idx) => (
+                <tr key={`${r.key || 'k'}-${idx}`} className="border-t border-[rgb(var(--border))]">
+                  <td className="px-2 py-1.5">{r.label}</td>
+                  <td className="px-2 py-1.5">{r.maxScore ?? 10}</td>
+                  <td className="px-2 py-1.5 text-ink-500">{r.hint || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -397,6 +708,12 @@ function EvaluationInsights({ evaluations, usersMap = new Map(), teamsMap = new 
    * (the legacy 4-criterion default max) to avoid dividing by zero.
    */
   function normalizedPct(ev) {
+    // Two-part (Finals 50:50) evaluations already carry a server-computed
+    // weighted Final Score % — use it directly instead of a raw sum, since
+    // Part A and Part B use independent rubrics with independent maxes.
+    if (ev.scoringMode === 'twoPart') {
+      return typeof ev.finalScorePct === 'number' ? ev.finalScorePct : 0
+    }
     if (!ev.scores || typeof ev.scores !== 'object') return 0
     const vals = Object.values(ev.scores).map(Number).filter(Number.isFinite)
     if (vals.length === 0) return 0
@@ -414,7 +731,8 @@ function EvaluationInsights({ evaluations, usersMap = new Map(), teamsMap = new 
   // Aggregate normalized scores per team
   const teamScores = {}
   for (const ev of submitted) {
-    if (!ev.teamId || !ev.scores) continue
+    if (!ev.teamId) continue
+    if (ev.scoringMode !== 'twoPart' && !ev.scores) continue
     if (!teamScores[ev.teamId]) teamScores[ev.teamId] = { total: 0, count: 0 }
     teamScores[ev.teamId].total += normalizedPct(ev)
     teamScores[ev.teamId].count += 1
@@ -431,7 +749,7 @@ function EvaluationInsights({ evaluations, usersMap = new Map(), teamsMap = new 
 
   // Score distribution histogram (normalized 0–100% buckets of 10)
   const allNormalized = submitted
-    .filter((e) => e.scores)
+    .filter((e) => e.scoringMode === 'twoPart' || e.scores)
     .map((e) => normalizedPct(e))
 
   const bins = {}

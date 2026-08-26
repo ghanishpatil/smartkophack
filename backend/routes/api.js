@@ -25,6 +25,10 @@ import {
   resolveEvaluationCriteria,
   defaultScoresFromCriteria,
   parseEvaluationCriteriaPayload,
+  resolveScoringConfig,
+  computePartTotal,
+  computeFinalScorePct,
+  normalizeCriteriaList,
 } from '../utils/evaluationScores.js'
 import { appendAuditLog } from '../services/auditLog.js'
 import { clearTeamRegistration, teamHasRegistrationRecord } from '../services/clearTeamRegistration.js'
@@ -693,7 +697,19 @@ export function adminRouter() {
       }
       const merged = await getActiveEventConfig()
       const criteria = resolveEvaluationCriteria(merged)
-      res.json({ eventId, criteria })
+      // Also surface the event-level two-part (Finals) rubric config so the
+      // Evaluations page can show/edit two rubric uploaders.
+      res.json({
+        eventId,
+        criteria,
+        scoringMode: merged.scoringMode === 'twoPart' ? 'twoPart' : 'single',
+        criteriaA: normalizeCriteriaList(Array.isArray(merged.evaluationCriteriaA) ? merged.evaluationCriteriaA : []),
+        criteriaB: normalizeCriteriaList(Array.isArray(merged.evaluationCriteriaB) ? merged.evaluationCriteriaB : []),
+        partAWeight: typeof merged.partAWeight === 'number' ? merged.partAWeight : 50,
+        partBWeight: typeof merged.partBWeight === 'number' ? merged.partBWeight : 50,
+        partALabel: typeof merged.partALabel === 'string' && merged.partALabel ? merged.partALabel : 'Part A',
+        partBLabel: typeof merged.partBLabel === 'string' && merged.partBLabel ? merged.partBLabel : 'Part B',
+      })
     } catch (e) {
       next(e)
     }
@@ -794,6 +810,35 @@ export function adminRouter() {
           patch.evaluationCriteria = parsed.criteria
         }
       }
+
+      // Two-part (Finals 50:50) event-level rubric config. Lets the admin upload
+      // two rubric sheets (Part A + Part B) from the Evaluations page and flip
+      // the whole active evaluation into two-evaluation mode.
+      if (body.scoringMode !== undefined) {
+        patch.scoringMode = body.scoringMode === 'twoPart' ? 'twoPart' : 'single'
+      }
+      if (body.evaluationCriteriaA !== undefined) {
+        if (body.evaluationCriteriaA === null) {
+          patch.evaluationCriteriaA = FieldValue.delete()
+        } else {
+          const parsedA = parseEvaluationCriteriaPayload(body.evaluationCriteriaA)
+          if (!parsedA.ok) return res.status(400).json({ error: `Part A: ${parsedA.error}` })
+          patch.evaluationCriteriaA = parsedA.criteria
+        }
+      }
+      if (body.evaluationCriteriaB !== undefined) {
+        if (body.evaluationCriteriaB === null) {
+          patch.evaluationCriteriaB = FieldValue.delete()
+        } else {
+          const parsedB = parseEvaluationCriteriaPayload(body.evaluationCriteriaB)
+          if (!parsedB.ok) return res.status(400).json({ error: `Part B: ${parsedB.error}` })
+          patch.evaluationCriteriaB = parsedB.criteria
+        }
+      }
+      if (typeof body.partAWeight === 'number' && body.partAWeight >= 0) patch.partAWeight = Math.min(1000, body.partAWeight)
+      if (typeof body.partBWeight === 'number' && body.partBWeight >= 0) patch.partBWeight = Math.min(1000, body.partBWeight)
+      if (typeof body.partALabel === 'string') patch.partALabel = body.partALabel.trim().slice(0, 80)
+      if (typeof body.partBLabel === 'string') patch.partBLabel = body.partBLabel.trim().slice(0, 80)
 
       await ref.set(patch, { merge: true })
       // Phase 8: Set as active event if requested
@@ -1346,6 +1391,102 @@ export function adminRouter() {
         metadata: { judgeId: data.judgeId || '', teamId: data.teamId || '' },
       })
       res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: Archive the current round's evaluations, then clear the live ones so
+   * a NEW round of evaluation (e.g. the Finals two-part scoring) starts fresh.
+   *
+   * Why this exists: an evaluation doc is keyed `evaluations/{judgeId}_{teamId}`
+   * — a single doc per judge+team. When the Finals reuse the same judges and
+   * teams, a fresh Finals evaluation would otherwise OVERWRITE the Round 2
+   * scores. This endpoint first copies every current evaluation into the
+   * `evaluationsArchive` collection (full snapshot, tagged with a label like
+   * "round-2"), then deletes the live docs. The archive is a permanent,
+   * read-only record the admin can view/export later; deletion is therefore
+   * safe (fully recoverable from the archive copy).
+   *
+   * Body: { label?: string }  (label defaults to "round-2")
+   */
+  router.post('/evaluations/archive', async (req, res, next) => {
+    try {
+      const rawLabel = String(req.body?.label || 'round-2').trim().toLowerCase()
+      const label = rawLabel.replace(/[^a-z0-9_-]/g, '-').slice(0, 40) || 'round-2'
+
+      const activeEvent = await getActiveEvent()
+      const eventId = activeEvent?.id || null
+
+      // Fetch all live evaluations, scoped to the active event when possible.
+      const snap = await db().collection('evaluations').limit(5000).get()
+      const docs = snap.docs.filter((d) => {
+        const e = d.data()
+        return !eventId || !e.eventId || e.eventId === eventId
+      })
+
+      if (docs.length === 0) {
+        return res.json({ ok: true, archived: 0, cleared: 0, label, message: 'No evaluations to archive.' })
+      }
+
+      const archivedAtIso = new Date().toISOString()
+      let archived = 0
+      let cleared = 0
+
+      // Firestore batches allow 500 writes. Each doc costs 2 writes here
+      // (archive set + original delete), so process ~200 docs per batch.
+      const CHUNK = 200
+      for (let i = 0; i < docs.length; i += CHUNK) {
+        const slice = docs.slice(i, i + CHUNK)
+        const batch = db().batch()
+        for (const d of slice) {
+          const data = d.data()
+          const archiveId = `${label}__${d.id}`.slice(0, 480)
+          const archiveRef = db().doc(`evaluationsArchive/${archiveId}`)
+          batch.set(archiveRef, {
+            ...data,
+            archiveLabel: label,
+            originalId: d.id,
+            archivedAt: FieldValue.serverTimestamp(),
+            archivedAtIso,
+            archivedBy: req.user.uid,
+          })
+          batch.delete(d.ref)
+          archived += 1
+          cleared += 1
+        }
+        await batch.commit()
+      }
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'evaluations.archive',
+        targetType: 'event',
+        targetId: eventId || 'all',
+        metadata: { label, archived, cleared },
+      })
+
+      res.json({ ok: true, archived, cleared, label })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: List archived evaluations (read-only). Optional ?label= filter.
+   * Used by the Reports export and the Evaluations page archive viewer.
+   */
+  router.get('/evaluations/archived', async (req, res, next) => {
+    try {
+      const label = typeof req.query.label === 'string' ? req.query.label.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40) : ''
+      let q = db().collection('evaluationsArchive').limit(5000)
+      if (label) q = q.where('archiveLabel', '==', label)
+      const snap = await q.get()
+      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      // Distinct labels present, for the UI to offer a filter.
+      const labels = Array.from(new Set(items.map((x) => x.archiveLabel).filter(Boolean))).sort()
+      res.json({ items, labels })
     } catch (e) {
       next(e)
     }
@@ -3888,29 +4029,92 @@ export function judgesRouter() {
     }
   }
 
-  const evaluationDetailFromSnap = (snap, criteria) => {
-    const fb = defaultScoresFromCriteria(criteria)
+  /**
+   * Build the judge-facing evaluation detail for a team.
+   *
+   * `scoringConfig` comes from `resolveScoringConfig()` and is either
+   * `{ mode: 'single', criteria }` (legacy/default) or
+   * `{ mode: 'twoPart', criteriaA, criteriaB, weightA, weightB, labelA, labelB }`
+   * (Finals 50:50 model — two independent rubrics scored in one sitting).
+   */
+  const evaluationDetailFromSnap = (snap, scoringConfig) => {
+    const isTwoPart = scoringConfig?.mode === 'twoPart'
+
+    if (!isTwoPart) {
+      const criteria = scoringConfig?.criteria || scoringConfig
+      const fb = defaultScoresFromCriteria(criteria)
+      if (!snap.exists) {
+        return {
+          evaluationStatus: 'pending',
+          evaluationLocked: false,
+          scores: fb,
+          feedback: '',
+          submittedAt: null,
+          updatedAt: null,
+        }
+      }
+      const e = snap.data()
+      const locked = Boolean(e.evaluationLocked)
+      const submitted = e.evaluationStatus === 'submitted'
+      const scoresRaw = submitted ? e.scores : e.draftScores ?? e.scores ?? {}
+      const scores = { ...fb, ...(scoresRaw && typeof scoresRaw === 'object' ? scoresRaw : {}) }
+      const feedback = submitted ? String(e.feedback ?? '') : String(e.draftFeedback ?? e.feedback ?? '')
+      return {
+        evaluationStatus: submitted ? 'submitted' : e.evaluationStatus === 'draft' ? 'draft' : 'pending',
+        evaluationLocked: locked,
+        scores,
+        feedback,
+        submittedAt: tsIso(e.submittedAt),
+        updatedAt: tsIso(e.updatedAt),
+      }
+    }
+
+    // Two-part (50:50 Finals) shape — the judge submits TWO separate
+    // evaluations for the team: "Evaluation 1" (Part A) and "Evaluation 2"
+    // (Part B), one at a time. Each part has its own independent status.
+    const fbA = defaultScoresFromCriteria(scoringConfig.criteriaA)
+    const fbB = defaultScoresFromCriteria(scoringConfig.criteriaB)
     if (!snap.exists) {
       return {
         evaluationStatus: 'pending',
         evaluationLocked: false,
-        scores: fb,
-        feedback: '',
+        scoringMode: 'twoPart',
+        statusA: 'pending',
+        statusB: 'pending',
+        scoresA: fbA,
+        scoresB: fbB,
+        feedbackA: '',
+        feedbackB: '',
+        finalScorePct: null,
+        submittedAtA: null,
+        submittedAtB: null,
         submittedAt: null,
         updatedAt: null,
       }
     }
     const e = snap.data()
     const locked = Boolean(e.evaluationLocked)
-    const submitted = e.evaluationStatus === 'submitted'
-    const scoresRaw = submitted ? e.scores : e.draftScores ?? e.scores ?? {}
-    const scores = { ...fb, ...(scoresRaw && typeof scoresRaw === 'object' ? scoresRaw : {}) }
-    const feedback = submitted ? String(e.feedback ?? '') : String(e.draftFeedback ?? e.feedback ?? '')
+    const statusA = e.statusA === 'submitted' ? 'submitted' : e.statusA === 'draft' ? 'draft' : 'pending'
+    const statusB = e.statusB === 'submitted' ? 'submitted' : e.statusB === 'draft' ? 'draft' : 'pending'
+    const scoresARaw = statusA === 'submitted' ? e.scoresA : e.draftScoresA ?? e.scoresA ?? {}
+    const scoresBRaw = statusB === 'submitted' ? e.scoresB : e.draftScoresB ?? e.scoresB ?? {}
+    const scoresA = { ...fbA, ...(scoresARaw && typeof scoresARaw === 'object' ? scoresARaw : {}) }
+    const scoresB = { ...fbB, ...(scoresBRaw && typeof scoresBRaw === 'object' ? scoresBRaw : {}) }
+    const feedbackA = statusA === 'submitted' ? String(e.feedbackA ?? '') : String(e.draftFeedbackA ?? e.feedbackA ?? '')
+    const feedbackB = statusB === 'submitted' ? String(e.feedbackB ?? '') : String(e.draftFeedbackB ?? e.feedbackB ?? '')
     return {
-      evaluationStatus: submitted ? 'submitted' : e.evaluationStatus === 'draft' ? 'draft' : 'pending',
+      evaluationStatus: statusA === 'submitted' && statusB === 'submitted' ? 'submitted' : (statusA !== 'pending' || statusB !== 'pending') ? 'draft' : 'pending',
       evaluationLocked: locked,
-      scores,
-      feedback,
+      scoringMode: 'twoPart',
+      statusA,
+      statusB,
+      scoresA,
+      scoresB,
+      feedbackA,
+      feedbackB,
+      finalScorePct: typeof e.finalScorePct === 'number' ? e.finalScorePct : null,
+      submittedAtA: tsIso(e.submittedAtA),
+      submittedAtB: tsIso(e.submittedAtB),
       submittedAt: tsIso(e.submittedAt),
       updatedAt: tsIso(e.updatedAt),
     }
@@ -3929,12 +4133,24 @@ export function judgesRouter() {
       const merged = await getActiveEventConfig()
       const { getEvaluationPhase } = await import('../services/competitionPhases.js')
       const evalPhase = getEvaluationPhase(merged)
-      const criteria = resolveEvaluationCriteria(merged, evalPhase)
+      const scoringConfig = resolveScoringConfig(merged, evalPhase)
       const edition = {
         submissionDeadline: tsIso(merged.submissionDeadline),
         lifecyclePhase: merged.lifecyclePhase,
         evaluationOpen: evaluationPhaseAllowsJudge(merged),
-        evaluationCriteria: criteria,
+        scoringMode: scoringConfig.mode,
+        // Legacy field kept for older clients — single-mode criteria only.
+        evaluationCriteria: scoringConfig.mode === 'twoPart' ? scoringConfig.criteriaA : scoringConfig.criteria,
+        ...(scoringConfig.mode === 'twoPart'
+          ? {
+              evaluationCriteriaA: scoringConfig.criteriaA,
+              evaluationCriteriaB: scoringConfig.criteriaB,
+              partAWeight: scoringConfig.rawWeightA,
+              partBWeight: scoringConfig.rawWeightB,
+              partALabel: scoringConfig.labelA,
+              partBLabel: scoringConfig.labelB,
+            }
+          : {}),
       }
 
       // BUG-2 FIX: Add eventId filter to the Firestore query instead of fetching
@@ -4060,12 +4276,23 @@ export function judgesRouter() {
       const merged = await getActiveEventConfig()
       const { getEvaluationPhase: getEvalPhaseReview } = await import('../services/competitionPhases.js')
       const evalPhaseReview = getEvalPhaseReview(merged)
-      const criteria = resolveEvaluationCriteria(merged, evalPhaseReview)
+      const scoringConfig = resolveScoringConfig(merged, evalPhaseReview)
       const edition = {
         submissionDeadline: tsIso(merged.submissionDeadline),
         lifecyclePhase: merged.lifecyclePhase,
         evaluationOpen: evaluationPhaseAllowsJudge(merged),
-        evaluationCriteria: criteria,
+        scoringMode: scoringConfig.mode,
+        evaluationCriteria: scoringConfig.mode === 'twoPart' ? scoringConfig.criteriaA : scoringConfig.criteria,
+        ...(scoringConfig.mode === 'twoPart'
+          ? {
+              evaluationCriteriaA: scoringConfig.criteriaA,
+              evaluationCriteriaB: scoringConfig.criteriaB,
+              partAWeight: scoringConfig.rawWeightA,
+              partBWeight: scoringConfig.rawWeightB,
+              partALabel: scoringConfig.labelA,
+              partBLabel: scoringConfig.labelB,
+            }
+          : {}),
       }
 
       const psId = teamRaw.problemStatementId || ''
@@ -4096,20 +4323,41 @@ export function judgesRouter() {
       }
 
       const evSnap = await db().doc(`evaluations/${uid}_${teamId}`).get()
-      const evaluation = evaluationDetailFromSnap(evSnap, criteria)
+      const evaluation = evaluationDetailFromSnap(evSnap, scoringConfig)
 
       const team = judgeTeamRow(teamSnap.id, teamRaw, evalSummaryFromSnap(evSnap))
 
-      res.json({ team, problemStatement, submission, evaluation, evaluationCriteria: criteria, edition })
+      res.json({
+        team,
+        problemStatement,
+        submission,
+        evaluation,
+        evaluationCriteria: edition.evaluationCriteria,
+        edition,
+      })
     } catch (e) {
       next(e)
     }
   })
 
+  /**
+   * Submit (or save a draft of) an evaluation.
+   *
+   * Single-rubric phases: { teamId, scores, feedback, draft, status? }
+   *
+   * Two-part ("50:50 Finals") phases: the judge submits TWO separate
+   * evaluations for the same team — Evaluation 1 (Part A: Existing Project)
+   * and Evaluation 2 (Part B: New Challenge). Each call carries a `part`
+   * flag: { teamId, part: 'A' | 'B', scores, feedback, draft, status? }.
+   * Part B cannot be submitted (final) until Part A has been submitted —
+   * this enforces the "submit 2 evaluations, one after another" flow.
+   */
   router.post('/evaluations', async (req, res, next) => {
     try {
-      const { teamId, scores, feedback, draft } = req.body || {}
-      if (!teamId || !scores) return res.status(400).json({ error: 'teamId and scores required' })
+      const { teamId, part, scores, feedback, draft } = req.body || {}
+      if (!teamId || !scores) {
+        return res.status(400).json({ error: 'teamId and scores required' })
+      }
 
       // Validate teamId format (prevent path traversal)
       if (typeof teamId !== 'string' || teamId.length > 128 || /[\/\.\#\$\[\]]/.test(teamId)) {
@@ -4119,6 +4367,7 @@ export function judgesRouter() {
       const jid = req.user.uid
       const feedbackText = String(feedback ?? '').slice(0, 8000)
       const isDraft = draft === true
+      const requestedPart = part === 'A' || part === 'B' ? part : null
 
       const teamSnap = await db().doc(`teams/${teamId}`).get()
       if (!teamSnap.exists) return res.status(404).json({ error: 'Team not found' })
@@ -4161,21 +4410,37 @@ export function judgesRouter() {
 
       const { getEvaluationPhase: getEvalPhaseSubmit } = await import('../services/competitionPhases.js')
       const evalPhaseSubmit = getEvalPhaseSubmit(merged)
-      const criteria = resolveEvaluationCriteria(merged, evalPhaseSubmit)
-      let normalizedScores
+      const scoringConfig = resolveScoringConfig(merged, evalPhaseSubmit)
+      const isTwoPart = scoringConfig.mode === 'twoPart'
+
+      // Two-part phases require a `part` flag ('A' or 'B') identifying which
+      // of the two evaluations this submission is for. Single-rubric phases
+      // must NOT send one — prevents a stale client writing the wrong shape.
+      if (isTwoPart && !requestedPart) {
+        return res.status(400).json({ error: "This phase requires two evaluations — pass part: 'A' or 'B'." })
+      }
+      if (!isTwoPart && requestedPart) {
+        return res.status(400).json({ error: 'This phase uses single-rubric scoring (no part flag).' })
+      }
+
+      const partCriteria = isTwoPart ? (requestedPart === 'A' ? scoringConfig.criteriaA : scoringConfig.criteriaB) : scoringConfig.criteria
+
+      let normalizedScores = null
       try {
-        normalizedScores = normalizeJudgeScores(scores, criteria)
+        normalizedScores = normalizeJudgeScores(scores, partCriteria)
       } catch (e) {
         return res.status(e.status || 400).json({ error: e.message })
       }
 
-      // Team status is REQUIRED for a final submission. Accept it in the payload
-      // (Qualified / Waitlist / Not Qualified) or reuse an already-set status.
+      // Team status is REQUIRED before the FINAL (second) submission completes
+      // the evaluation. For two-part phases it's only enforced on Part B, since
+      // Part A alone doesn't finish the judge's assessment of the team yet.
       const VALID_STATUS = new Set(['qualified', 'waitlist', 'not_qualified'])
       const rawStatus = String(req.body?.status || '').trim().toLowerCase()
       const providedStatus = VALID_STATUS.has(rawStatus) ? rawStatus : ''
       const existingStatus = VALID_STATUS.has(team.juryStatus) ? team.juryStatus : ''
-      if (!isDraft && !providedStatus && !existingStatus) {
+      const statusRequiredNow = !isDraft && (!isTwoPart || requestedPart === 'B')
+      if (statusRequiredNow && !providedStatus && !existingStatus) {
         return res.status(400).json({ error: 'Set the team status (Qualified / Waitlist / Not Qualified) before submitting.' })
       }
 
@@ -4186,13 +4451,28 @@ export function judgesRouter() {
       // judge could both pass the 'submitted' check and both write without this guard.
       let alreadySubmitted = false
       let alreadyLocked = false
+      let partANotSubmittedYet = false
+      let finalScorePctOut = null
 
       await db().runTransaction(async (tx) => {
         const curEval = await tx.get(evalRef)
-        if (curEval.exists) {
-          const prev = curEval.data()
-          if (prev.evaluationLocked === true) { alreadyLocked = true; return }
-          if (prev.evaluationStatus === 'submitted') { alreadySubmitted = true; return }
+        const prev = curEval.exists ? curEval.data() : null
+
+        if (prev?.evaluationLocked === true) { alreadyLocked = true; return }
+
+        if (isTwoPart) {
+          const curStatusForPart = requestedPart === 'A' ? prev?.statusA : prev?.statusB
+          if (curStatusForPart === 'submitted') { alreadySubmitted = true; return }
+          // Enforce the sequential order: Evaluation 2 (Part B) can only be
+          // submitted (final) after Evaluation 1 (Part A) has been submitted.
+          // Drafts of Part B are still allowed to be saved early (no lock-step
+          // required for autosave), only the FINAL submit is gated.
+          if (requestedPart === 'B' && !isDraft && prev?.statusA !== 'submitted') {
+            partANotSubmittedYet = true
+            return
+          }
+        } else {
+          if (prev?.evaluationStatus === 'submitted') { alreadySubmitted = true; return }
         }
 
         const payload = {
@@ -4200,23 +4480,112 @@ export function judgesRouter() {
           judgeId: jid,
           eventId: evtId || '',
           problemStatementId: team.problemStatementId || '',
-          evaluationStatus: isDraft ? 'draft' : 'submitted',
-          // Store a snapshot of the criteria used for this evaluation.
-          // This allows the admin dashboard to normalize scores correctly
-          // even if the rubric changes after submission (Issue B fix).
-          evaluationCriteria: criteria,
+          scoringMode: isTwoPart ? 'twoPart' : 'single',
           updatedAt: FieldValue.serverTimestamp(),
         }
 
-        if (isDraft) {
-          payload.draftScores = normalizedScores
-          payload.draftFeedback = feedbackText
+        if (isTwoPart) {
+          // Store a snapshot of both rubrics + weights used for this evaluation
+          // (Issue B fix pattern) so admin views stay correct even if the rubric
+          // changes after submission.
+          payload.evaluationCriteriaA = scoringConfig.criteriaA
+          payload.evaluationCriteriaB = scoringConfig.criteriaB
+          payload.partAWeight = scoringConfig.rawWeightA
+          payload.partBWeight = scoringConfig.rawWeightB
+          payload.partALabel = scoringConfig.labelA
+          payload.partBLabel = scoringConfig.labelB
+          // Clear any legacy single-mode fields in case this doc was previously
+          // scored under single mode and the phase was switched to twoPart.
+          if (prev && prev.scoringMode !== 'twoPart') {
+            payload.evaluationCriteria = FieldValue.delete()
+            payload.scores = FieldValue.delete()
+            payload.draftScores = FieldValue.delete()
+            payload.feedback = FieldValue.delete()
+            payload.draftFeedback = FieldValue.delete()
+            payload.evaluationStatus = FieldValue.delete()
+          }
+
+          const scoreField = requestedPart === 'A' ? 'scoresA' : 'scoresB'
+          const draftScoreField = requestedPart === 'A' ? 'draftScoresA' : 'draftScoresB'
+          const feedbackField = requestedPart === 'A' ? 'feedbackA' : 'feedbackB'
+          const draftFeedbackField = requestedPart === 'A' ? 'draftFeedbackA' : 'draftFeedbackB'
+          const statusField = requestedPart === 'A' ? 'statusA' : 'statusB'
+          const submittedAtField = requestedPart === 'A' ? 'submittedAtA' : 'submittedAtB'
+
+          if (isDraft) {
+            payload[draftScoreField] = normalizedScores
+            payload[draftFeedbackField] = feedbackText
+            payload[statusField] = 'draft'
+            // Keep the doc-level evaluationStatus in sync for list/queue views
+            // (evalSummaryFromSnap reads this raw field directly, it does not
+            // recompute from statusA/statusB the way evaluationDetailFromSnap does).
+            // Once either part has any progress, the whole evaluation is "in
+            // progress" (draft) until Part B is finally submitted.
+            if (prev?.evaluationStatus !== 'submitted') payload.evaluationStatus = 'draft'
+          } else {
+            payload[scoreField] = normalizedScores
+            payload[feedbackField] = feedbackText
+            payload[statusField] = 'submitted'
+            payload[submittedAtField] = FieldValue.serverTimestamp()
+            payload[draftScoreField] = FieldValue.delete()
+            payload[draftFeedbackField] = FieldValue.delete()
+
+            // If this submission completes both parts, compute the weighted
+            // Final Score now (Part A's scores are already on `prev` since
+            // Part B can only be finally submitted after Part A is submitted).
+            if (requestedPart === 'B') {
+              const scoresAFinal = prev?.scoresA && typeof prev.scoresA === 'object' ? prev.scoresA : {}
+              const { total: totalA, max: maxA } = computePartTotal(scoresAFinal, scoringConfig.criteriaA)
+              const { total: totalB, max: maxB } = computePartTotal(normalizedScores, scoringConfig.criteriaB)
+              const computed = computeFinalScorePct({
+                totalA, maxA, totalB, maxB,
+                weightA: scoringConfig.weightA,
+                weightB: scoringConfig.weightB,
+              })
+              payload.finalScorePct = computed.finalScorePct
+              payload.evaluationStatus = 'submitted'
+              payload.submittedAt = FieldValue.serverTimestamp()
+              finalScorePctOut = computed.finalScorePct
+            } else {
+              // Only Part A submitted so far — overall evaluation is still "draft".
+              payload.evaluationStatus = 'draft'
+            }
+          }
         } else {
-          payload.scores = normalizedScores
-          payload.feedback = feedbackText
-          payload.submittedAt = FieldValue.serverTimestamp()
-          payload.draftScores = FieldValue.delete()
-          payload.draftFeedback = FieldValue.delete()
+          // Store a snapshot of the criteria used for this evaluation.
+          // This allows the admin dashboard to normalize scores correctly
+          // even if the rubric changes after submission (Issue B fix).
+          payload.evaluationCriteria = scoringConfig.criteria
+          // Clear any stale two-part fields in case this doc was previously
+          // scored under twoPart mode and the phase was switched back.
+          if (prev && prev.scoringMode === 'twoPart') {
+            payload.scoresA = FieldValue.delete()
+            payload.scoresB = FieldValue.delete()
+            payload.draftScoresA = FieldValue.delete()
+            payload.draftScoresB = FieldValue.delete()
+            payload.feedbackA = FieldValue.delete()
+            payload.feedbackB = FieldValue.delete()
+            payload.draftFeedbackA = FieldValue.delete()
+            payload.draftFeedbackB = FieldValue.delete()
+            payload.finalScorePct = FieldValue.delete()
+            payload.statusA = FieldValue.delete()
+            payload.statusB = FieldValue.delete()
+            payload.submittedAtA = FieldValue.delete()
+            payload.submittedAtB = FieldValue.delete()
+          }
+
+          if (isDraft) {
+            payload.draftScores = normalizedScores
+            payload.draftFeedback = feedbackText
+            payload.evaluationStatus = 'draft'
+          } else {
+            payload.scores = normalizedScores
+            payload.feedback = feedbackText
+            payload.evaluationStatus = 'submitted'
+            payload.submittedAt = FieldValue.serverTimestamp()
+            payload.draftScores = FieldValue.delete()
+            payload.draftFeedback = FieldValue.delete()
+          }
         }
 
         if (!curEval.exists) payload.createdAt = FieldValue.serverTimestamp()
@@ -4225,17 +4594,21 @@ export function judgesRouter() {
       })
 
       if (alreadyLocked) return res.status(403).json({ error: 'This evaluation has been locked.' })
-      if (alreadySubmitted) return res.status(409).json({ error: 'Evaluation already submitted.' })
+      if (alreadySubmitted) return res.status(409).json({ error: 'This evaluation has already been submitted.' })
+      if (partANotSubmittedYet) {
+        return res.status(409).json({ error: 'Submit Evaluation 1 (first part) before submitting Evaluation 2.' })
+      }
 
-      // Persist the team status chosen at submit time (final submissions only).
-      if (!isDraft && providedStatus && providedStatus !== existingStatus) {
+      // Persist the team status chosen at submit time (final submissions only,
+      // and only once the WHOLE evaluation is complete — i.e. not on Part A alone).
+      if (statusRequiredNow && providedStatus && providedStatus !== existingStatus) {
         await db().doc(`teams/${teamId}`).set(
           { juryStatus: providedStatus, updatedAt: FieldValue.serverTimestamp() },
           { merge: true },
         )
       }
 
-      res.json({ ok: true })
+      res.json({ ok: true, finalScorePct: finalScorePctOut })
     } catch (e) {
       next(e)
     }

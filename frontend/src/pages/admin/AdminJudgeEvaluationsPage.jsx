@@ -11,13 +11,13 @@ import { Skeleton } from '@/components/ui/Skeleton.jsx'
 const JURY_STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
 const JURY_STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not Qualified' }
 
-/** Total + max + per-criterion breakdown for one evaluation, from its snapshot. */
-function marksOf(ev) {
-  if (!ev?.scores || typeof ev.scores !== 'object') return null
-  const entries = Object.entries(ev.scores).filter(([, v]) => Number.isFinite(Number(v)))
+/** Total + max + per-criterion breakdown for one rubric part, from its snapshot. */
+function marksOfPart(scores, criteria) {
+  if (!scores || typeof scores !== 'object') return null
+  const entries = Object.entries(scores).filter(([, v]) => Number.isFinite(Number(v)))
   if (entries.length === 0) return null
   const total = entries.reduce((a, [, v]) => a + Number(v), 0)
-  const crit = Array.isArray(ev.evaluationCriteria) ? ev.evaluationCriteria : []
+  const crit = Array.isArray(criteria) ? criteria : []
   const critByKey = new Map(crit.map((c) => [c.key, c]))
   const max = crit.length
     ? crit.reduce((s, c) => s + (Number(c.maxScore) > 0 ? Number(c.maxScore) : 10), 0)
@@ -29,6 +29,32 @@ function marksOf(ev) {
     max: Number(critByKey.get(k)?.maxScore) > 0 ? Number(critByKey.get(k).maxScore) : 10,
   }))
   return { total: Math.round(total * 10) / 10, max, breakdown, pct: max > 0 ? Math.round((total / max) * 1000) / 10 : 0 }
+}
+
+/**
+ * Total + breakdown for one evaluation, from its snapshot.
+ *
+ * Two-part (Finals 50:50) evaluations return `{ twoPart: true, partA, partB,
+ * labelA, labelB, weightA, weightB, finalScorePct }` instead of a single
+ * total/max/breakdown, since Part A and Part B use independent rubrics.
+ */
+function marksOf(ev) {
+  if (ev?.scoringMode === 'twoPart') {
+    const partA = marksOfPart(ev.scoresA, ev.evaluationCriteriaA)
+    const partB = marksOfPart(ev.scoresB, ev.evaluationCriteriaB)
+    if (!partA && !partB) return null
+    return {
+      twoPart: true,
+      partA,
+      partB,
+      labelA: ev.partALabel || 'Part A',
+      labelB: ev.partBLabel || 'Part B',
+      weightA: ev.partAWeight ?? 50,
+      weightB: ev.partBWeight ?? 50,
+      finalScorePct: typeof ev.finalScorePct === 'number' ? ev.finalScorePct : null,
+    }
+  }
+  return marksOfPart(ev?.scores, ev?.evaluationCriteria)
 }
 
 function fmtDate(v) {
@@ -169,15 +195,21 @@ export function AdminJudgeEvaluationsPage() {
                   </div>
                   <div className="flex items-start gap-3">
                     <div className="text-right">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">Total marks</p>
-                      {marks ? (
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                        {marks?.twoPart ? 'Final Score' : 'Total marks'}
+                      </p>
+                      {marks?.twoPart ? (
+                        <p className="font-display text-2xl font-bold text-ink-900">
+                          {marks.finalScorePct != null ? `${marks.finalScorePct}%` : '—'}
+                        </p>
+                      ) : marks ? (
                         <p className="font-display text-2xl font-bold text-ink-900">
                           {marks.total}<span className="text-base font-medium text-ink-400"> / {marks.max}</span>
                         </p>
                       ) : (
                         <p className="font-display text-xl font-bold text-ink-400">—</p>
                       )}
-                      {marks ? <p className="text-xs text-brand-600">{marks.pct}%</p> : null}
+                      {marks && !marks.twoPart ? <p className="text-xs text-brand-600">{marks.pct}%</p> : null}
                     </div>
                     <button
                       type="button"
@@ -191,7 +223,60 @@ export function AdminJudgeEvaluationsPage() {
                 </div>
 
                 {/* Per-criterion breakdown */}
-                {marks?.breakdown?.length ? (
+                {marks?.twoPart ? (
+                  <div className="space-y-4">
+                    {[['A', marks.labelA, marks.weightA, marks.partA], ['B', marks.labelB, marks.weightB, marks.partB]].map(
+                      ([part, label, weight, p]) => (
+                        <div key={part}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-ink-700">
+                              {label} <span className="text-ink-400">({weight}%)</span>
+                            </p>
+                            {p ? (
+                              <span className="font-mono text-xs font-semibold text-ink-900">{p.total} / {p.max} ({p.pct}%)</span>
+                            ) : (
+                              <span className="text-xs text-ink-400">No scores recorded.</span>
+                            )}
+                          </div>
+                          {p?.breakdown?.length ? (
+                            <div className="mt-2 overflow-x-auto rounded-xl border border-[rgb(var(--border))]">
+                              <table className="w-full text-left text-sm">
+                                <thead className="bg-[rgb(var(--surface-muted))] text-xs uppercase tracking-wide text-ink-500">
+                                  <tr>
+                                    <th className="px-3 py-2 font-medium">Criterion</th>
+                                    <th className="px-3 py-2 font-medium text-right">Score</th>
+                                    <th className="px-3 py-2 font-medium">Bar</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[rgb(var(--border))]">
+                                  {p.breakdown.map((b) => (
+                                    <tr key={b.key}>
+                                      <td className="px-3 py-2 text-ink-800">{b.label}</td>
+                                      <td className="px-3 py-2 text-right font-mono text-ink-900">{b.value} / {b.max}</td>
+                                      <td className="px-3 py-2">
+                                        <div className="h-2 w-full max-w-[200px] overflow-hidden rounded-full bg-[rgb(var(--surface-muted))]">
+                                          <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400" style={{ width: `${b.max > 0 ? Math.min(100, (b.value / b.max) * 100) : 0}%` }} />
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+                          {(part === 'A' ? ev.feedbackA : ev.feedbackB) ? (
+                            <div className="mt-2 rounded-xl bg-[rgb(var(--surface-muted))]/40 p-3">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">Judge remarks — {label}</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700">
+                                {part === 'A' ? ev.feedbackA : ev.feedbackB}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ) : marks?.breakdown?.length ? (
                   <div className="overflow-x-auto rounded-xl border border-[rgb(var(--border))]">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-[rgb(var(--surface-muted))] text-xs uppercase tracking-wide text-ink-500">
@@ -220,8 +305,8 @@ export function AdminJudgeEvaluationsPage() {
                   <p className="text-sm text-ink-400">No scores recorded.</p>
                 )}
 
-                {/* Feedback + meta */}
-                {ev.feedback ? (
+                {/* Feedback + meta (single-rubric mode only — two-part remarks render above per part) */}
+                {!marks?.twoPart && ev.feedback ? (
                   <div className="rounded-xl bg-[rgb(var(--surface-muted))]/40 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">Judge remarks</p>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700">{ev.feedback}</p>

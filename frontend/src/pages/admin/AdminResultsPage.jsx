@@ -12,27 +12,24 @@ import { downloadCsv } from '@/utils/csvExport.js'
 const STATUS_TONE = { qualified: 'success', waitlist: 'warn', not_qualified: 'danger' }
 const STATUS_LABEL = { qualified: 'Qualified', waitlist: 'Waitlist', not_qualified: 'Not qualified' }
 
-/**
- * Per-criterion breakdown for one evaluation, using its stored criteria snapshot.
- * Returns items [{label, score, max}], total, maxTotal, and normalized pct (0–100).
- */
-function evalBreakdown(ev) {
-  const crit = Array.isArray(ev?.evaluationCriteria) && ev.evaluationCriteria.length > 0 ? ev.evaluationCriteria : null
-  const scores = ev?.scores && typeof ev.scores === 'object' ? ev.scores : {}
+/** Per-criterion breakdown for one rubric part: items [{label, score, max}], total, maxTotal, pct. */
+function partBreakdown(criteria, scores) {
+  const crit = Array.isArray(criteria) && criteria.length > 0 ? criteria : null
+  const s = scores && typeof scores === 'object' ? scores : {}
   const items = []
   let total = 0
   let maxTotal = 0
   if (crit) {
     for (const c of crit) {
       const max = Number(c.maxScore) > 0 ? Number(c.maxScore) : 10
-      const raw = Number(scores[c.key])
+      const raw = Number(s[c.key])
       const val = Number.isFinite(raw) ? raw : 0
       items.push({ key: c.key, label: c.label || c.key, score: val, max })
       total += val
       maxTotal += max
     }
   } else {
-    for (const [k, v] of Object.entries(scores)) {
+    for (const [k, v] of Object.entries(s)) {
       const val = Number(v)
       if (!Number.isFinite(val)) continue
       items.push({ key: k, label: k, score: val, max: 10 })
@@ -42,6 +39,33 @@ function evalBreakdown(ev) {
   }
   const pct = maxTotal > 0 ? Math.round((total / maxTotal) * 1000) / 10 : 0
   return { items, total: Math.round(total * 10) / 10, maxTotal, pct }
+}
+
+/**
+ * Breakdown for one evaluation, using its stored criteria snapshot.
+ *
+ * Two shapes are supported:
+ * - Single-rubric (legacy/default): one `items`/`total`/`maxTotal`/`pct`.
+ * - Two-part (Finals 50:50): `partA`/`partB` breakdowns plus a weighted
+ *   `pct` (the Final Score %) taken from the server-computed `finalScorePct`.
+ */
+function evalBreakdown(ev) {
+  if (ev?.scoringMode === 'twoPart') {
+    const partA = partBreakdown(ev.evaluationCriteriaA, ev.scoresA)
+    const partB = partBreakdown(ev.evaluationCriteriaB, ev.scoresB)
+    const pct = typeof ev.finalScorePct === 'number' ? ev.finalScorePct : Math.round(((partA.pct + partB.pct) / 2) * 10) / 10
+    return {
+      twoPart: true,
+      partA,
+      partB,
+      labelA: ev.partALabel || 'Part A',
+      labelB: ev.partBLabel || 'Part B',
+      weightA: ev.partAWeight ?? 50,
+      weightB: ev.partBWeight ?? 50,
+      pct,
+    }
+  }
+  return { twoPart: false, ...partBreakdown(ev?.evaluationCriteria, ev?.scores) }
 }
 
 export function AdminResultsPage() {
@@ -123,6 +147,8 @@ export function AdminResultsPage() {
           judgeId: e.judgeId || '',
           judgeLabel: judgeById.get(e.judgeId) || e.judgeId || 'Judge',
           feedback: typeof e.feedback === 'string' ? e.feedback : '',
+          feedbackA: typeof e.feedbackA === 'string' ? e.feedbackA : '',
+          feedbackB: typeof e.feedbackB === 'string' ? e.feedbackB : '',
           ...evalBreakdown(e),
         }))
         const avg = evaluations.length
@@ -566,30 +592,77 @@ export function AdminResultsPage() {
                                     <div className="flex items-center gap-2">
                                       <Gavel className="h-3.5 w-3.5 text-brand-600" />
                                       <span className="text-sm font-medium text-ink-900">{ev.judgeLabel}</span>
+                                      {ev.twoPart ? <Badge tone="brand" className="text-[10px]">Two-part</Badge> : null}
                                     </div>
                                     <span className="font-mono text-xs font-semibold text-ink-900">
-                                      {ev.total} / {ev.maxTotal} <span className="text-brand-600">({ev.pct}%)</span>
+                                      {ev.twoPart ? (
+                                        <>Final Score <span className="text-brand-600">({ev.pct}%)</span></>
+                                      ) : (
+                                        <>{ev.total} / {ev.maxTotal} <span className="text-brand-600">({ev.pct}%)</span></>
+                                      )}
                                     </span>
                                   </div>
 
-                                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                                    {ev.items.map((it) => (
-                                      <div
-                                        key={it.key}
-                                        className="flex items-center justify-between gap-2 rounded-lg bg-[rgb(var(--surface-muted))]/50 px-2.5 py-1.5"
-                                      >
-                                        <span className="text-xs text-ink-600">{it.label}</span>
-                                        <span className="font-mono text-xs font-semibold text-ink-900">{it.score} / {it.max}</span>
+                                  {ev.twoPart ? (
+                                    <div className="mt-2 space-y-3">
+                                      {[['A', ev.labelA, ev.weightA, ev.partA], ['B', ev.labelB, ev.weightB, ev.partB]].map(
+                                        ([part, label, weight, breakdown]) => (
+                                          <div key={part}>
+                                            <div className="flex items-center justify-between">
+                                              <p className="text-[11px] font-semibold text-ink-600">
+                                                {label} <span className="text-ink-400">({weight}%)</span>
+                                              </p>
+                                              <span className="font-mono text-[11px] font-semibold text-ink-900">
+                                                {breakdown.total} / {breakdown.maxTotal} ({breakdown.pct}%)
+                                              </span>
+                                            </div>
+                                            <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                                              {breakdown.items.map((it) => (
+                                                <div
+                                                  key={it.key}
+                                                  className="flex items-center justify-between gap-2 rounded-lg bg-[rgb(var(--surface-muted))]/50 px-2.5 py-1.5"
+                                                >
+                                                  <span className="text-xs text-ink-600">{it.label}</span>
+                                                  <span className="font-mono text-xs font-semibold text-ink-900">{it.score} / {it.max}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                            <div className="mt-1">
+                                              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                                                Remarks — {label}
+                                              </p>
+                                              <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-700">
+                                                {(part === 'A' ? ev.feedbackA : ev.feedbackB)?.trim()
+                                                  ? (part === 'A' ? ev.feedbackA : ev.feedbackB)
+                                                  : '—'}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                                        {ev.items.map((it) => (
+                                          <div
+                                            key={it.key}
+                                            className="flex items-center justify-between gap-2 rounded-lg bg-[rgb(var(--surface-muted))]/50 px-2.5 py-1.5"
+                                          >
+                                            <span className="text-xs text-ink-600">{it.label}</span>
+                                            <span className="font-mono text-xs font-semibold text-ink-900">{it.score} / {it.max}</span>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
-                                  </div>
 
-                                  <div className="mt-2">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Remarks</p>
-                                    <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-700">
-                                      {ev.feedback?.trim() ? ev.feedback : '—'}
-                                    </p>
-                                  </div>
+                                      <div className="mt-2">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Remarks</p>
+                                        <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-700">
+                                          {ev.feedback?.trim() ? ev.feedback : '—'}
+                                        </p>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               ))}
                             </div>

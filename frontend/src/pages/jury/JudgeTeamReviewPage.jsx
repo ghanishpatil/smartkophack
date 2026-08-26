@@ -10,6 +10,8 @@ import {
   Lock,
   Send,
   Save,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
@@ -53,9 +55,84 @@ function buildScoresPayload(criteria, scores) {
   return o
 }
 
+/** Sum of awarded + max possible for a rubric part, for a live score readout. */
+function partTotal(criteria, scores) {
+  let total = 0
+  let max = 0
+  for (const c of criteria) {
+    const m = typeof c.maxScore === 'number' && c.maxScore > 0 ? c.maxScore : 10
+    max += m
+    const v = Number(scores[c.key])
+    total += Number.isFinite(v) ? v : 0
+  }
+  return { total, max }
+}
+
 function httpsUrl(url) {
   const u = String(url || '').trim()
   return u.startsWith('https://') ? u : ''
+}
+
+/** One rubric block — a set of sliders for a criteria list. */
+function RubricSliders({ criteria, scores, onChange, canEdit }) {
+  return (
+    <div className="space-y-6">
+      {criteria.map(({ key, label, hint, maxScore }) => {
+        const m = typeof maxScore === 'number' && maxScore > 0 ? maxScore : 10
+        const step = m <= 10 ? 0.5 : 1
+        const raw = scores[key]
+        const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : Math.round((m / 2) * 10) / 10
+        const hintText = hint?.trim() ? hint : `Score from 0 to ${m}.`
+        return (
+          <div key={key}>
+            <label className="flex justify-between gap-2 text-sm font-medium text-ink-800" htmlFor={`score-${key}`}>
+              <span>{label}</span>
+              <span className="font-mono text-brand-600">
+                {value} / {m}
+              </span>
+            </label>
+            <p className="text-[11px] text-ink-500">{hintText}</p>
+            <input
+              id={`score-${key}`}
+              type="range"
+              min={0}
+              max={m}
+              step={step}
+              disabled={!canEdit}
+              value={value}
+              onChange={(e) => onChange(key, Number(e.target.value))}
+              className="mt-2 w-full accent-brand-600 disabled:opacity-50"
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Two-step progress strip shown at the top of the rubric card in two-part mode. */
+function TwoEvalStepper({ labelA, labelB, statusA, statusB }) {
+  const steps = [
+    { n: 1, label: `Evaluation 1 — ${labelA}`, done: statusA === 'submitted' },
+    { n: 2, label: `Evaluation 2 — ${labelB}`, done: statusB === 'submitted' },
+  ]
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
+      {steps.map((s) => (
+        <div key={s.n} className="flex items-center gap-2">
+          {s.done ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+          ) : (
+            <Circle className="h-4 w-4 shrink-0 text-ink-300" />
+          )}
+          <span className={`text-sm ${s.done ? 'text-ink-500 line-through' : 'font-medium text-ink-900'}`}>
+            {s.label}
+          </span>
+          {s.done ? <Badge tone="success" className="ml-auto text-[10px]">Submitted</Badge> : null}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function JudgeTeamReviewPage() {
@@ -69,9 +146,26 @@ export function JudgeTeamReviewPage() {
   const [submission, setSubmission] = useState(null)
   const [evaluation, setEvaluation] = useState(null)
   const [edition, setEdition] = useState(null)
+
+  // Single-mode state (legacy / default rubric — one evaluation per team)
   const [criteria, setCriteria] = useState(FALLBACK_CRITERIA)
   const [scores, setScores] = useState(() => defaultScoresFromCriteria(FALLBACK_CRITERIA))
   const [feedback, setFeedback] = useState('')
+
+  // Two-part mode state (Finals — judge submits TWO separate evaluations
+  // for the team: Evaluation 1 = Part A, Evaluation 2 = Part B)
+  const [twoPart, setTwoPart] = useState(false)
+  const [criteriaA, setCriteriaA] = useState([])
+  const [criteriaB, setCriteriaB] = useState([])
+  const [scoresA, setScoresA] = useState({})
+  const [scoresB, setScoresB] = useState({})
+  const [feedbackA, setFeedbackA] = useState('')
+  const [feedbackB, setFeedbackB] = useState('')
+  const [labelA, setLabelA] = useState('Part A')
+  const [labelB, setLabelB] = useState('Part B')
+  const [statusA, setStatusA] = useState('pending')
+  const [statusB, setStatusB] = useState('pending')
+
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [lastAutosave, setLastAutosave] = useState(null)
@@ -94,13 +188,41 @@ export function JudgeTeamReviewPage() {
       setSubmission(data.submission)
       setEvaluation(data.evaluation)
       setEdition(data.edition)
-      const crit =
-        Array.isArray(data.evaluationCriteria) && data.evaluationCriteria.length > 0 ? data.evaluationCriteria : FALLBACK_CRITERIA
-      setCriteria(crit)
-      const base = defaultScoresFromCriteria(crit)
-      const prev = data.evaluation?.scores && typeof data.evaluation.scores === 'object' ? data.evaluation.scores : {}
-      setScores({ ...base, ...prev })
-      setFeedback(data.evaluation?.feedback ?? '')
+
+      const isTwoPart = data.edition?.scoringMode === 'twoPart'
+      setTwoPart(isTwoPart)
+
+      if (isTwoPart) {
+        const critA = Array.isArray(data.edition?.evaluationCriteriaA) && data.edition.evaluationCriteriaA.length > 0
+          ? data.edition.evaluationCriteriaA
+          : FALLBACK_CRITERIA
+        const critB = Array.isArray(data.edition?.evaluationCriteriaB) && data.edition.evaluationCriteriaB.length > 0
+          ? data.edition.evaluationCriteriaB
+          : FALLBACK_CRITERIA
+        setCriteriaA(critA)
+        setCriteriaB(critB)
+        setLabelA(data.edition?.partALabel || 'Part A')
+        setLabelB(data.edition?.partBLabel || 'Part B')
+        setStatusA(data.evaluation?.statusA || 'pending')
+        setStatusB(data.evaluation?.statusB || 'pending')
+
+        const baseA = defaultScoresFromCriteria(critA)
+        const baseB = defaultScoresFromCriteria(critB)
+        const prevA = data.evaluation?.scoresA && typeof data.evaluation.scoresA === 'object' ? data.evaluation.scoresA : {}
+        const prevB = data.evaluation?.scoresB && typeof data.evaluation.scoresB === 'object' ? data.evaluation.scoresB : {}
+        setScoresA({ ...baseA, ...prevA })
+        setScoresB({ ...baseB, ...prevB })
+        setFeedbackA(data.evaluation?.feedbackA ?? '')
+        setFeedbackB(data.evaluation?.feedbackB ?? '')
+      } else {
+        const crit =
+          Array.isArray(data.evaluationCriteria) && data.evaluationCriteria.length > 0 ? data.evaluationCriteria : FALLBACK_CRITERIA
+        setCriteria(crit)
+        const base = defaultScoresFromCriteria(crit)
+        const prev = data.evaluation?.scores && typeof data.evaluation.scores === 'object' ? data.evaluation.scores : {}
+        setScores({ ...base, ...prev })
+        setFeedback(data.evaluation?.feedback ?? '')
+      }
     } catch (e) {
       setError(e.message || 'Could not load review')
       setTeam(null)
@@ -121,14 +243,60 @@ export function JudgeTeamReviewPage() {
     return 'pending'
   }, [evaluation])
 
-  const canEdit = Boolean(edition?.evaluationOpen && uiStatus !== 'submitted' && uiStatus !== 'locked')
+  const canEditAtAll = Boolean(edition?.evaluationOpen && uiStatus !== 'submitted' && uiStatus !== 'locked')
 
+  // Which of the two evaluations is currently active (the judge fills these
+  // in strict order: Evaluation 1 first, then Evaluation 2 unlocks).
+  const activeStep = useMemo(() => {
+    if (!twoPart) return null
+    if (statusA !== 'submitted') return 'A'
+    if (statusB !== 'submitted') return 'B'
+    return 'done'
+  }, [twoPart, statusA, statusB])
+
+  const canEditA = canEditAtAll && activeStep === 'A'
+  const canEditB = canEditAtAll && activeStep === 'B'
+
+  // Totals for the read-only summary of a completed part.
+  const totalsA = useMemo(() => partTotal(criteriaA, scoresA), [criteriaA, scoresA])
+  const totalsB = useMemo(() => partTotal(criteriaB, scoresB), [criteriaB, scoresB])
+
+  function buildSinglePayload(draft) {
+    return {
+      teamId,
+      scores: buildScoresPayload(criteria, scores),
+      feedback,
+      draft,
+      ...(draft ? {} : { status: juryStatus }),
+    }
+  }
+
+  function buildPartPayload(part, draft) {
+    const isA = part === 'A'
+    return {
+      teamId,
+      part,
+      scores: buildScoresPayload(isA ? criteriaA : criteriaB, isA ? scoresA : scoresB),
+      feedback: isA ? feedbackA : feedbackB,
+      draft,
+      // Team status is only required/sent with the FINAL (Part B) submission —
+      // that's the point at which the whole evaluation is complete.
+      ...(!draft && !isA ? { status: juryStatus } : {}),
+    }
+  }
+
+  // Autosave the currently-active step's draft only.
   useEffect(() => {
-    if (!teamId || !canEdit || !dirty.current) return
+    if (!teamId || !dirty.current) return
+    if (twoPart ? !canEditAtAll || activeStep === 'done' : !canEditAtAll) return
     const id = setTimeout(async () => {
       setSaving(true)
       try {
-        await api.submitEvaluation({ teamId, scores: buildScoresPayload(criteria, scores), feedback, draft: true })
+        if (twoPart) {
+          await api.submitEvaluation(buildPartPayload(activeStep, true))
+        } else {
+          await api.submitEvaluation(buildSinglePayload(true))
+        }
         setLastAutosave(Date.now())
       } catch {
         /* offline / phase — silent */
@@ -137,22 +305,58 @@ export function JudgeTeamReviewPage() {
       }
     }, 900)
     return () => clearTimeout(id)
-  }, [api, teamId, scores, feedback, canEdit, criteria])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, teamId, scores, scoresA, scoresB, feedback, feedbackA, feedbackB, canEditAtAll, twoPart, activeStep])
 
-  async function submitFinal() {
-    if (!teamId || !canEdit) return
+  async function submitSingleFinal() {
+    if (!teamId || !canEditAtAll) return
     setMsg('')
     if (!juryStatus) {
       setMsg('Please set the team status (Qualified / Waitlist / Not Qualified) before submitting.')
       return
     }
     try {
-      await api.submitEvaluation({ teamId, scores: buildScoresPayload(criteria, scores), feedback, draft: false, status: juryStatus })
+      await api.submitEvaluation(buildSinglePayload(false))
       dirty.current = false
       setMsg('Evaluation submitted. Thank you.')
       await load()
     } catch (e) {
       setMsg(e.message || 'Submit failed')
+    }
+  }
+
+  async function submitPart(part) {
+    if (!teamId || !canEditAtAll) return
+    setMsg('')
+    if (part === 'B' && !juryStatus) {
+      setMsg('Please set the team status (Qualified / Waitlist / Not Qualified) before submitting Evaluation 2.')
+      return
+    }
+    try {
+      await api.submitEvaluation(buildPartPayload(part, false))
+      dirty.current = false
+      setMsg(part === 'A' ? 'Evaluation 1 submitted. Evaluation 2 is now unlocked.' : 'Evaluation 2 submitted. Final Score computed — thank you.')
+      await load()
+    } catch (e) {
+      setMsg(e.message || 'Submit failed')
+    }
+  }
+
+  async function saveDraftNow() {
+    if (!teamId) return
+    setSaving(true)
+    try {
+      if (twoPart) {
+        await api.submitEvaluation(buildPartPayload(activeStep, true))
+      } else {
+        await api.submitEvaluation(buildSinglePayload(true))
+      }
+      setLastAutosave(Date.now())
+      setMsg('Draft saved.')
+    } catch (e) {
+      setMsg(e.message || 'Save failed')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -175,9 +379,29 @@ export function JudgeTeamReviewPage() {
     setScores((s) => ({ ...s, [key]: value }))
   }
 
+  function updateScoreA(key, value) {
+    dirty.current = true
+    setScoresA((s) => ({ ...s, [key]: value }))
+  }
+
+  function updateScoreB(key, value) {
+    dirty.current = true
+    setScoresB((s) => ({ ...s, [key]: value }))
+  }
+
   function updateFeedback(v) {
     dirty.current = true
     setFeedback(v)
+  }
+
+  function updateFeedbackA(v) {
+    dirty.current = true
+    setFeedbackA(v)
+  }
+
+  function updateFeedbackB(v) {
+    dirty.current = true
+    setFeedbackB(v)
   }
 
   if (loading) {
@@ -228,37 +452,13 @@ export function JudgeTeamReviewPage() {
               {team.id}
             </Badge>
             <Badge tone={uiStatus === 'submitted' ? 'success' : uiStatus === 'locked' ? 'warn' : 'brand'}>{uiStatus}</Badge>
+            {twoPart ? <Badge tone="brand">Finals — 2 evaluations required</Badge> : null}
             {!edition?.evaluationOpen ? <Badge tone="warn">Evaluations closed</Badge> : null}
-          </div>
-
-          {/* Team status — required before submitting (Qualified / Waitlist / Not Qualified). */}
-          <div className="mt-4">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-              Team status <span className="text-red-500">*</span>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
-                const active = juryStatus === val
-                return (
-                  <Button
-                    key={val}
-                    type="button"
-                    size="sm"
-                    variant={active ? 'primary' : 'secondary'}
-                    disabled={statusBusy || !canEdit}
-                    onClick={() => updateJuryStatus(active ? '' : val)}
-                  >
-                    {label}{active ? ' ✓' : ''}
-                  </Button>
-                )
-              })}
-            </div>
-            <p className="mt-1 text-[11px] text-ink-400">Required before you can submit your evaluation.</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
           {saving ? <span>Saving draft…</span> : null}
-          {lastAutosave && canEdit ? <span>Autosaved {new Date(lastAutosave).toLocaleTimeString()}</span> : null}
+          {lastAutosave && canEditAtAll ? <span>Autosaved {new Date(lastAutosave).toLocaleTimeString()}</span> : null}
         </div>
       </div>
 
@@ -371,90 +571,214 @@ export function JudgeTeamReviewPage() {
           <Card className="lg:sticky lg:top-24">
             <div className="flex items-center gap-2">
               <Lock className="h-4 w-4 text-ink-400" />
-              <h2 className="font-display text-lg font-semibold text-ink-900">Rubric & remarks</h2>
+              <h2 className="font-display text-lg font-semibold text-ink-900">
+                {twoPart ? 'Evaluations (2 required)' : 'Rubric & remarks'}
+              </h2>
             </div>
-            <p className="mt-2 text-xs text-ink-500">
-              Tab through sliders, type remarks, drafts autosave. Final submit locks your sheet from further edits.
-            </p>
 
             {msg ? <p className="mt-3 text-sm text-brand-700">{msg}</p> : null}
 
-            <div className="mt-6 space-y-6">
-              {criteria.map(({ key, label, hint, maxScore }) => {
-                const max = typeof maxScore === 'number' && maxScore > 0 ? maxScore : 10
-                const step = max <= 10 ? 0.5 : 1
-                const raw = scores[key]
-                const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : Math.round((max / 2) * 10) / 10
-                const hintText = hint?.trim() ? hint : `Score from 0 to ${max}.`
-                return (
-                  <div key={key}>
-                    <label
-                      className="flex justify-between gap-2 text-sm font-medium text-ink-800"
-                      htmlFor={`score-${key}`}
-                    >
-                      <span>{label}</span>
-                      <span className="font-mono text-brand-600">
-                        {value} / {max}
-                      </span>
-                    </label>
-                    <p className="text-[11px] text-ink-500">{hintText}</p>
-                    <input
-                      id={`score-${key}`}
-                      type="range"
-                      min={0}
-                      max={max}
-                      step={step}
-                      disabled={!canEdit}
-                      value={value}
-                      onChange={(e) => updateScore(key, Number(e.target.value))}
-                      className="mt-2 w-full accent-brand-600 disabled:opacity-50"
-                    />
+            {twoPart ? (
+              <div className="mt-4 space-y-6">
+                <p className="text-xs text-ink-500">
+                  This is a Grand Finale team — you must submit <strong>two separate evaluations</strong> for it:
+                  first for the existing project, then for the new challenge. Evaluation 2 unlocks only after
+                  Evaluation 1 is submitted, and cannot be edited afterwards.
+                </p>
+
+                <TwoEvalStepper labelA={labelA} labelB={labelB} statusA={statusA} statusB={statusB} />
+
+                {/* Evaluation 1 summary once submitted — read-only recap */}
+                {statusA === 'submitted' ? (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-ink-900">Evaluation 1 — {labelA} ✓ submitted</p>
+                      <span className="font-mono text-xs font-semibold text-ink-900">{totalsA.total} / {totalsA.max}</span>
+                    </div>
+                    {feedbackA ? <p className="mt-1 text-xs text-ink-600">“{feedbackA}”</p> : null}
                   </div>
-                )
-              })}
-            </div>
+                ) : null}
 
-            <div className="mt-6">
-              <Textarea
-                label="Remarks for organizers / finalists"
-                value={feedback}
-                disabled={!canEdit}
-                onChange={(e) => updateFeedback(e.target.value)}
-                rows={5}
-              />
-            </div>
+                {/* Active: Evaluation 1 form */}
+                {activeStep === 'A' ? (
+                  <div>
+                    <h3 className="font-display text-base font-semibold text-ink-900">
+                      Evaluation 1 of 2 — {labelA}
+                    </h3>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      Score the project that qualified this team for the finals.
+                    </p>
+                    <div className="mt-4">
+                      <RubricSliders criteria={criteriaA} scores={scoresA} onChange={updateScoreA} canEdit={canEditA} />
+                    </div>
+                    <div className="mt-4">
+                      <Textarea
+                        label={`Remarks — ${labelA}`}
+                        value={feedbackA}
+                        disabled={!canEditA}
+                        onChange={(e) => updateFeedbackA(e.target.value)}
+                        rows={4}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <Button variant="secondary" type="button" disabled={!canEditA} className="gap-2" onClick={saveDraftNow}>
+                        <Save className="h-4 w-4" />
+                        Save draft now
+                      </Button>
+                      <Button variant="primary" type="button" disabled={!canEditA} className="gap-2" onClick={() => submitPart('A')}>
+                        <Send className="h-4 w-4" />
+                        Submit Evaluation 1
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
 
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-              <Button
-                variant="secondary"
-                type="button"
-                disabled={!canEdit}
-                className="gap-2"
-                onClick={async () => {
-                  if (!teamId) return
-                  setSaving(true)
-                  try {
-                    await api.submitEvaluation({ teamId, scores: buildScoresPayload(criteria, scores), feedback, draft: true })
-                    setLastAutosave(Date.now())
-                    setMsg('Draft saved.')
-                  } catch (e) {
-                    setMsg(e.message || 'Save failed')
-                  } finally {
-                    setSaving(false)
-                  }
-                }}
-              >
-                <Save className="h-4 w-4" />
-                Save draft now
-              </Button>
-              <Button variant="primary" type="button" disabled={!canEdit || !juryStatus} className="gap-2" onClick={submitFinal}>
-                <Send className="h-4 w-4" />
-                Submit final
-              </Button>
-            </div>
-            {canEdit && !juryStatus ? (
-              <p className="mt-2 text-xs text-amber-600">Set the team status above (Qualified / Waitlist / Not Qualified) to enable submission.</p>
-            ) : null}
+                {/* Active: Evaluation 2 form (unlocked only after Evaluation 1 is submitted) */}
+                {activeStep === 'B' ? (
+                  <div className="border-t border-[rgb(var(--border))] pt-6">
+                    <h3 className="font-display text-base font-semibold text-ink-900">
+                      Evaluation 2 of 2 — {labelB}
+                    </h3>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      Score the team&apos;s response to the new problem statement / challenge.
+                    </p>
+                    <div className="mt-4">
+                      <RubricSliders criteria={criteriaB} scores={scoresB} onChange={updateScoreB} canEdit={canEditB} />
+                    </div>
+                    <div className="mt-4">
+                      <Textarea
+                        label={`Remarks — ${labelB}`}
+                        value={feedbackB}
+                        disabled={!canEditB}
+                        onChange={(e) => updateFeedbackB(e.target.value)}
+                        rows={4}
+                      />
+                    </div>
+
+                    {/* Team status — required before this final submission completes the evaluation. */}
+                    <div className="mt-4">
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                        Team status <span className="text-red-500">*</span>
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
+                          const active = juryStatus === val
+                          return (
+                            <Button
+                              key={val}
+                              type="button"
+                              size="sm"
+                              variant={active ? 'primary' : 'secondary'}
+                              disabled={statusBusy || !canEditB}
+                              onClick={() => updateJuryStatus(active ? '' : val)}
+                            >
+                              {label}{active ? ' ✓' : ''}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                      <p className="mt-1 text-[11px] text-ink-400">Required before you can submit Evaluation 2.</p>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <Button variant="secondary" type="button" disabled={!canEditB} className="gap-2" onClick={saveDraftNow}>
+                        <Save className="h-4 w-4" />
+                        Save draft now
+                      </Button>
+                      <Button variant="primary" type="button" disabled={!canEditB || !juryStatus} className="gap-2" onClick={() => submitPart('B')}>
+                        <Send className="h-4 w-4" />
+                        Submit Evaluation 2 (final)
+                      </Button>
+                    </div>
+                    {canEditB && !juryStatus ? (
+                      <p className="mt-2 text-xs text-amber-600">Set the team status above to enable the final submission.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Both done */}
+                {activeStep === 'done' ? (
+                  <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">Final Score</p>
+                    <p className="mt-1 font-display text-3xl font-bold text-brand-700">
+                      {evaluation?.finalScorePct != null ? `${evaluation.finalScorePct}%` : '—'}
+                    </p>
+                    <p className="mt-2 text-[11px] text-ink-500">
+                      {labelA}: {totalsA.total} / {totalsA.max} · {labelB}: {totalsB.total} / {totalsB.max}
+                    </p>
+                    {feedbackB ? (
+                      <div className="mt-3 border-t border-brand-500/20 pt-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                          Remarks — {labelB}
+                        </p>
+                        <p className="mt-0.5 text-xs text-ink-700">{feedbackB}</p>
+                      </div>
+                    ) : null}
+                    <p className="mt-3 text-xs text-emerald-700">
+                      Both evaluations are submitted and locked. Thank you.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <p className="mt-2 text-xs text-ink-500">
+                  Tab through sliders, type remarks, drafts autosave. Final submit locks your sheet from further edits.
+                </p>
+
+                <div className="mt-4">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                    Team status <span className="text-red-500">*</span>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
+                      const active = juryStatus === val
+                      return (
+                        <Button
+                          key={val}
+                          type="button"
+                          size="sm"
+                          variant={active ? 'primary' : 'secondary'}
+                          disabled={statusBusy || !canEditAtAll}
+                          onClick={() => updateJuryStatus(active ? '' : val)}
+                        >
+                          {label}{active ? ' ✓' : ''}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-400">Required before you can submit your evaluation.</p>
+                </div>
+
+                <div className="mt-6">
+                  <RubricSliders criteria={criteria} scores={scores} onChange={updateScore} canEdit={canEditAtAll} />
+                </div>
+
+                <div className="mt-6">
+                  <Textarea
+                    label="Remarks for organizers / finalists"
+                    value={feedback}
+                    disabled={!canEditAtAll}
+                    onChange={(e) => updateFeedback(e.target.value)}
+                    rows={5}
+                  />
+                </div>
+
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                  <Button variant="secondary" type="button" disabled={!canEditAtAll} className="gap-2" onClick={saveDraftNow}>
+                    <Save className="h-4 w-4" />
+                    Save draft now
+                  </Button>
+                  <Button variant="primary" type="button" disabled={!canEditAtAll || !juryStatus} className="gap-2" onClick={submitSingleFinal}>
+                    <Send className="h-4 w-4" />
+                    Submit final
+                  </Button>
+                </div>
+                {canEditAtAll && !juryStatus ? (
+                  <p className="mt-2 text-xs text-amber-600">Set the team status above (Qualified / Waitlist / Not Qualified) to enable submission.</p>
+                ) : null}
+              </>
+            )}
           </Card>
         </div>
       </div>

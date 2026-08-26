@@ -188,6 +188,12 @@ export function createApi(getToken, getEventId = () => '') {
       authReq(`/api/admin/chats/${type}/${encodeURIComponent(teamId)}/messages?limit=${limit}`),
     deleteAdminEvaluation: (id) =>
       authReq(`/api/admin/evaluations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    // Archive the current round's evaluations and clear the live ones so a new
+    // round (e.g. Finals) starts fresh. Old scores are preserved in the archive.
+    archiveAdminEvaluations: (label = 'round-2') =>
+      authReq('/api/admin/evaluations/archive', { method: 'POST', body: { label } }),
+    listAdminArchivedEvaluations: (label = '') =>
+      authReq(`/api/admin/evaluations/archived${label ? `?label=${encodeURIComponent(label)}` : ''}`),
     patchAdminTeam: (teamId, body) =>
       authReq(`/api/admin/teams/${encodeURIComponent(teamId)}`, { method: 'PATCH', body }),
     deleteAdminTeamRegistration: (teamId) =>

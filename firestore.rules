@@ -234,6 +234,15 @@ service cloud.firestore {
       allow create, update: if false; // Server-only
     }
 
+    // ─── Archived Evaluations ────────────────────────────────────────
+    // Snapshots of past-round evaluations (e.g. Round 2) preserved before a
+    // new round starts. Admin-read only; all writes go through the backend
+    // Admin SDK (which bypasses these rules), so client writes are denied.
+    match /evaluationsArchive/{id} {
+      allow read: if signedIn() && isAdmin();
+      allow write: if false; // Server-only
+    }
+
     // ─── Mentor Notes ────────────────────────────────────────────────
     match /mentorNotes/{id} {
       allow read: if signedIn() && (isAdmin() || resource.data.mentorId == request.auth.uid);
