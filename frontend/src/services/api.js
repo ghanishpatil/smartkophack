@@ -381,6 +381,16 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/reg-desk/attendance', { method: 'POST', body: { memberId, present } }),
     regDeskMarkTeam: (teamId, present) =>
       authReq('/api/reg-desk/attendance/team', { method: 'POST', body: { teamId, present } }),
+    regDeskExportAttendance: async () => {
+      const token = await getToken()
+      const eventId = getEventId()
+      const params = new URLSearchParams()
+      if (eventId) params.append('eventId', eventId)
+      const url = `${API_BASE}/api/reg-desk/export${params.toString() ? `?${params}` : ''}`
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      if (!response.ok) throw new Error('Export failed')
+      return await response.blob()
+    },
     // Hero slideshow settings (banners are uploaded via multipart in the page)
     updateHeroSettings: (body) =>
       authReq('/api/hero-banners/settings', { method: 'PUT', body }),

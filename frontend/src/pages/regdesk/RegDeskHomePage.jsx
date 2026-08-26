@@ -96,7 +96,10 @@ export function RegDeskHomePage() {
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600"><ClipboardCheck className="h-5 w-5" /></div>
             <div>
-              <h1 className="font-display text-2xl font-bold text-ink-900">Check-in Desk</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-display text-2xl font-bold text-ink-900">Check-in Desk</h1>
+                <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-semibold text-brand-700">Grand Finale</span>
+              </div>
               <p className="text-sm text-ink-500">{me?.displayName || me?.email}</p>
             </div>
           </div>

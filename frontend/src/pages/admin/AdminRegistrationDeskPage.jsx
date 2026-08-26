@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users } from 'lucide-react'
+import { ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users, Download } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 
@@ -60,6 +60,22 @@ export function AdminRegistrationDeskPage() {
     catch (e) { setMsg(e.message) } finally { setBusy('') }
   }
 
+  async function exportAttendance() {
+    setBusy('export'); setMsg('')
+    try {
+      const blob = await api.regDeskExportAttendance()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `registration-desk-attendance-${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setMsg('Attendance data exported successfully.')
+    } catch (e) { setMsg(e.message) } finally { setBusy('') }
+  }
+
   const t = stats?.totals || { present: 0, absent: 0, total: 0, teams: 0, teamsFullyIn: 0 }
   const pieData = useMemo(() => ([{ name: 'Present', value: t.present }, { name: 'Absent', value: t.absent }]), [t.present, t.absent])
   const pct = t.total ? Math.round((t.present / t.total) * 100) : 0
@@ -74,7 +90,10 @@ export function AdminRegistrationDeskPage() {
           <h1 className="font-display text-2xl font-bold text-ink-900">Registration Desk</h1>
           <p className="text-sm text-ink-500">Invite check-in staff, assign domains, and track live attendance.</p>
         </div>
-        <button type="button" onClick={() => load(true)} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]"><RefreshCw className="h-4 w-4" /> Refresh</button>
+        <div className="ml-auto flex gap-2">
+          <button type="button" disabled={busy === 'export'} onClick={exportAttendance} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-50"><Download className="h-4 w-4" /> Export</button>
+          <button type="button" onClick={() => load(true)} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]"><RefreshCw className="h-4 w-4" /> Refresh</button>
+        </div>
       </div>
 
       {msg && <p className="mt-4 rounded-lg bg-brand-500/10 px-4 py-2 text-sm text-brand-700">{msg}</p>}
@@ -82,7 +101,10 @@ export function AdminRegistrationDeskPage() {
       {/* Live attendance dashboard */}
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
         <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
-          <h2 className="font-display text-sm font-bold text-ink-900">Overall attendance</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-sm font-bold text-ink-900">Overall attendance</h2>
+            <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-semibold text-brand-700">Grand Finale Only</span>
+          </div>
           <div className="relative mt-2 h-52">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

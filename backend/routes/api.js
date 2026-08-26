@@ -5087,6 +5087,8 @@ export function registrationDeskRouter() {
     const teams = []
     tSnap.forEach((d) => {
       const t = d.data()
+      // Only teams that QUALIFIED for the Grand Finale (shortlisted) are checked in.
+      if (!t.shortlisted) return
       const ps = psMap[t.problemStatementId] || { domain: '', track: '', title: '' }
       if (allowed && !allowed.includes(ps.domain)) return
       teams.push({ id: d.id, name: t.name || '', domain: ps.domain || '', track: ps.track || '', psTitle: ps.title || '' })
@@ -5186,6 +5188,43 @@ export function registrationDeskRouter() {
       snap.forEach((d) => batch.set(d.ref, { present: Boolean(present), attendanceAt: FieldValue.serverTimestamp(), attendanceBy: req.user.uid }, { merge: true }))
       await batch.commit()
       res.json({ ok: true, updated: snap.size })
+    } catch (e) { next(e) }
+  })
+
+  router.get('/export', async (req, res, next) => {
+    try {
+      const teams = await loadTeams(req)
+      const rows = []
+      rows.push(['Team Name', 'Domain', 'Track', 'Problem Statement', 'Member Name', 'Email', 'Is Leader', 'Present', 'Total Present', 'Total Members', 'Attendance %'])
+      
+      for (const t of teams) {
+        const pct = t.totalMembers > 0 ? Math.round((t.presentCount / t.totalMembers) * 100) : 0
+        if (t.members.length === 0) {
+          rows.push([t.name, t.domain, t.track, t.psTitle, '', '', '', '', t.presentCount, t.totalMembers, pct])
+        } else {
+          for (let i = 0; i < t.members.length; i++) {
+            const m = t.members[i]
+            rows.push([
+              i === 0 ? t.name : '',
+              i === 0 ? t.domain : '',
+              i === 0 ? t.track : '',
+              i === 0 ? t.psTitle : '',
+              m.name,
+              m.email,
+              m.isLeader ? 'Yes' : 'No',
+              m.present ? 'Yes' : 'No',
+              i === 0 ? t.presentCount : '',
+              i === 0 ? t.totalMembers : '',
+              i === 0 ? pct : ''
+            ])
+          }
+        }
+      }
+
+      const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="registration-desk-attendance-${new Date().toISOString().split('T')[0]}.csv"`)
+      res.send(csv)
     } catch (e) { next(e) }
   })
 
