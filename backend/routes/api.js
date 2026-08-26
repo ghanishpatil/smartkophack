@@ -5228,6 +5228,29 @@ export function registrationDeskRouter() {
     } catch (e) { next(e) }
   })
 
+  // Admin-only: Clear all attendance records (for testing/reset)
+  router.delete('/attendance/clear', async (req, res, next) => {
+    try {
+      if (!isAdmin(req)) return res.status(403).json({ error: 'Admin access required.' })
+      
+      const snap = await db().collection('memberRegistrations').get()
+      const batch = db().batch()
+      let count = 0
+      
+      snap.forEach((d) => {
+        batch.set(d.ref, { 
+          present: false, 
+          attendanceAt: FieldValue.delete(), 
+          attendanceBy: FieldValue.delete() 
+        }, { merge: true })
+        count++
+      })
+      
+      await batch.commit()
+      res.json({ ok: true, cleared: count })
+    } catch (e) { next(e) }
+  })
+
   return router
 }
 

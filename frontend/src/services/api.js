@@ -391,6 +391,8 @@ export function createApi(getToken, getEventId = () => '') {
       if (!response.ok) throw new Error('Export failed')
       return await response.blob()
     },
+    regDeskClearAttendance: () =>
+      authReq('/api/reg-desk/attendance/clear', { method: 'DELETE' }),
     // Hero slideshow settings (banners are uploaded via multipart in the page)
     updateHeroSettings: (body) =>
       authReq('/api/hero-banners/settings', { method: 'PUT', body }),

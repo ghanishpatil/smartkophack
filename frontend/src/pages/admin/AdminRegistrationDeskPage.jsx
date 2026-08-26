@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users, Download } from 'lucide-react'
+import { ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users, Download, Trash2 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 
@@ -76,6 +76,16 @@ export function AdminRegistrationDeskPage() {
     } catch (e) { setMsg(e.message) } finally { setBusy('') }
   }
 
+  async function clearAttendance() {
+    if (!window.confirm('Clear ALL attendance records? This will reset all check-ins to absent. This action cannot be undone.')) return
+    setBusy('clear'); setMsg('')
+    try {
+      const r = await api.regDeskClearAttendance()
+      setMsg(`Cleared ${r.cleared} attendance records.`)
+      load()
+    } catch (e) { setMsg(e.message) } finally { setBusy('') }
+  }
+
   const t = stats?.totals || { present: 0, absent: 0, total: 0, teams: 0, teamsFullyIn: 0 }
   const pieData = useMemo(() => ([{ name: 'Present', value: t.present }, { name: 'Absent', value: t.absent }]), [t.present, t.absent])
   const pct = t.total ? Math.round((t.present / t.total) * 100) : 0
@@ -91,6 +101,7 @@ export function AdminRegistrationDeskPage() {
           <p className="text-sm text-ink-500">Invite check-in staff, assign domains, and track live attendance.</p>
         </div>
         <div className="ml-auto flex gap-2">
+          <button type="button" disabled={busy === 'clear'} onClick={clearAttendance} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Clear All</button>
           <button type="button" disabled={busy === 'export'} onClick={exportAttendance} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-50"><Download className="h-4 w-4" /> Export</button>
           <button type="button" onClick={() => load(true)} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]"><RefreshCw className="h-4 w-4" /> Refresh</button>
         </div>
