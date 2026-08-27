@@ -149,6 +149,9 @@ const AdminHeroPage = lazy(() =>
 const AdminRegistrationDeskPage = lazy(() =>
   import('@/pages/admin/AdminRegistrationDeskPage.jsx').then((m) => ({ default: m.AdminRegistrationDeskPage })),
 )
+const AdminRegDeskDetailPage = lazy(() =>
+  import('@/pages/admin/AdminRegDeskDetailPage.jsx').then((m) => ({ default: m.AdminRegDeskDetailPage })),
+)
 const RegDeskHomePage = lazy(() =>
   import('@/pages/regdesk/RegDeskHomePage.jsx').then((m) => ({ default: m.RegDeskHomePage })),
 )
@@ -412,6 +415,7 @@ export default function App() {
             <Route path="/admin/sponsors" element={<AdminSponsorsPage />} />
             <Route path="/admin/hero" element={<AdminHeroPage />} />
             <Route path="/admin/registration-desk" element={<AdminRegistrationDeskPage />} />
+            <Route path="/admin/registration-desk/:uid" element={<AdminRegDeskDetailPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route path="/admin/health" element={<AdminHealthPage />} />
             <Route path="/admin/security" element={<AdminSecurityPage />} />

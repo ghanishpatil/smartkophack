@@ -5241,7 +5241,19 @@ export function registrationDeskRouter() {
   })
 
   router.get('/teams', async (req, res, next) => {
-    try { res.json({ ok: true, teams: await loadTeams(req) }) } catch (e) { next(e) }
+    try {
+      // Admin may inspect a single desk's scope via ?deskUid=... (desk detail page).
+      let override
+      let desk = null
+      if (isAdmin(req) && req.query.deskUid) {
+        const uid = String(req.query.deskUid)
+        const dsnap = await db().doc(`users/${uid}`).get()
+        const dd = dsnap.exists ? dsnap.data() : {}
+        override = Array.isArray(dd.assignedDomains) ? dd.assignedDomains : []
+        desk = { uid, email: dd.email || '', displayName: dd.displayName || '', assignedDomains: override }
+      }
+      res.json({ ok: true, teams: await loadTeams(req, override), desk })
+    } catch (e) { next(e) }
   })
 
   router.get('/stats', async (req, res, next) => {

@@ -375,7 +375,7 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/registration-desk/assign-domains', { method: 'POST', body: { uid, domains } }),
     // Registration Desk — desk + admin check-in data
     regDeskMe: () => authReq('/api/reg-desk/me'),
-    regDeskTeams: () => authReq('/api/reg-desk/teams'),
+    regDeskTeams: (deskUid) => authReq(`/api/reg-desk/teams${deskUid ? `?deskUid=${encodeURIComponent(deskUid)}` : ''}`),
     regDeskStats: () => authReq('/api/reg-desk/stats'),
     regDeskAnalytics: () => authReq('/api/admin/registration-desk/analytics'),
     regDeskMarkMember: (memberId, present) =>

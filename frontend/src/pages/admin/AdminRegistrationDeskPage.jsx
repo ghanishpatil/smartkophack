@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
 import {
   ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users, Download, Trash2,
-  Activity, Layers, CircleUser, TrendingUp,
+  Activity, Layers, CircleUser, TrendingUp, ArrowRight,
 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -196,15 +197,16 @@ export function AdminRegistrationDeskPage() {
             return (
               <div key={a.uid} className="rounded-xl border border-[rgb(var(--border))] p-4">
                 <div className="flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 flex-1">
+                  <Link to={`/admin/registration-desk/${a.uid}`} className="group -m-1 min-w-0 flex-1 rounded-lg p-1 transition-colors hover:bg-brand-500/[0.04]">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-ink-900">{a.email}</p>
+                      <p className="truncate text-sm font-semibold text-ink-900 group-hover:text-brand-700">{a.email}</p>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${st.tone}`}>{st.label}</span>
+                      <ArrowRight className="h-3.5 w-3.5 text-ink-300 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600" />
                     </div>
                     <p className="mt-0.5 text-xs text-ink-500">
-                      {a.teams} teams · {a.marksMade} members checked in by this desk
+                      {a.teams} teams · {a.marksMade} members checked in · <span className="font-semibold text-brand-600 group-hover:underline">view team details</span>
                     </p>
-                  </div>
+                  </Link>
                   <div className="flex gap-2">
                     <button type="button" disabled={busy === `export-${a.uid}` || (a.assignedDomains || []).length === 0} onClick={() => downloadCsv(a.uid, (a.email || 'desk').split('@')[0])}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-40">
