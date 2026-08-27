@@ -9,7 +9,7 @@ import { usePageSeo } from '@/hooks/usePageSeo.js'
 
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '')
 
-export function AdminRegDeskDetailPage() {
+export function AdminRegDeskDetailPage({ basePath = '/admin/registration-desk' }) {
   const { uid } = useParams()
   const api = useApi()
   const [desk, setDesk] = useState(null)
@@ -77,7 +77,7 @@ export function AdminRegDeskDetailPage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
       {/* Back + header */}
-      <Link to="/admin/registration-desk" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 hover:text-brand-600">
+      <Link to={basePath} className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-500 hover:text-brand-600">
         <ArrowLeft className="h-4 w-4" /> Registration Desk
       </Link>
 

@@ -155,6 +155,9 @@ const AdminRegDeskDetailPage = lazy(() =>
 const RegDeskHomePage = lazy(() =>
   import('@/pages/regdesk/RegDeskHomePage.jsx').then((m) => ({ default: m.RegDeskHomePage })),
 )
+const RegDeskAnalyticsPage = lazy(() =>
+  import('@/pages/regdesk/RegDeskAnalyticsPage.jsx').then((m) => ({ default: m.RegDeskAnalyticsPage })),
+)
 const JudgeHomePage = lazy(() => import('@/pages/jury/JudgeHomePage.jsx').then((m) => ({ default: m.JudgeHomePage })))
 const JudgeAssignmentsPage = lazy(() =>
   import('@/pages/jury/JudgeAssignmentsPage.jsx').then((m) => ({ default: m.JudgeAssignmentsPage })),
@@ -447,6 +450,14 @@ export default function App() {
         <Route element={<ProtectedRoute roles={[ROLES.REGISTRATION_DESK]} />}>
           <Route element={<DashboardLayout variant="regdesk" />}>
             <Route path="/reg-desk" element={<RegDeskHomePage />} />
+            <Route path="/reg-desk/analytics" element={<RegDeskAnalyticsPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute roles={[ROLES.REGISTRATION_DESK_INCHARGE]} />}>
+          <Route element={<DashboardLayout variant="regdesk-incharge" />}>
+            <Route path="/regdesk-incharge" element={<AdminRegistrationDeskPage basePath="/regdesk-incharge" showClearAll={false} showInchargeInvite={false} />} />
+            <Route path="/regdesk-incharge/:uid" element={<AdminRegDeskDetailPage basePath="/regdesk-incharge" />} />
           </Route>
         </Route>
 

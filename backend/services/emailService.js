@@ -595,6 +595,20 @@ const CREDENTIALS_ROLE_COPY = {
     fallbackIntro: 'as an observer (read-only)',
     attachPdf: false,
   },
+  registration_desk: {
+    defaultName: 'Registration Desk',
+    introLine: 'You have been added to the Registration Desk',
+    subtitleLine: 'and check in teams for your assigned domains at the venue.',
+    fallbackIntro: 'as registration desk staff',
+    attachPdf: false,
+  },
+  registration_desk_incharge: {
+    defaultName: 'Registration Desk Incharge',
+    introLine: 'You have been added as Registration Desk Incharge',
+    subtitleLine: 'and oversee all desks, domains &amp; live attendance analytics.',
+    fallbackIntro: 'as the registration desk incharge',
+    attachPdf: false,
+  },
 }
 
 export async function sendCredentialsEmail({ to, name, tempPassword, eventName, role = 'participant' }) {

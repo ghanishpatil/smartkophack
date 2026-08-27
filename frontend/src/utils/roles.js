@@ -7,6 +7,8 @@ export const ROLES = {
   VIEWER: 'viewer',
   // On-ground attendance check-in for assigned domains.
   REGISTRATION_DESK: 'registration_desk',
+  // Supervises all registration desks: full analytics + management (no clear-all).
+  REGISTRATION_DESK_INCHARGE: 'registration_desk_incharge',
 }
 
 export function roleHome(role) {
@@ -21,6 +23,8 @@ export function roleHome(role) {
       return '/mentor'
     case ROLES.REGISTRATION_DESK:
       return '/reg-desk'
+    case ROLES.REGISTRATION_DESK_INCHARGE:
+      return '/regdesk-incharge'
     default:
       return '/dashboard'
   }

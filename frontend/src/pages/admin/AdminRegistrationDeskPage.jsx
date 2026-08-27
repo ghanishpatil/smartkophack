@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   ClipboardCheck, Mail, RefreshCw, Check, UserCheck, Users, Download, Trash2,
-  Activity, Layers, CircleUser, TrendingUp, ArrowRight,
+  Activity, Layers, CircleUser, TrendingUp, ArrowRight, UserCog,
 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -23,12 +23,17 @@ function statusOf(a) {
   return { label: 'Invited', tone: 'bg-amber-500/10 text-amber-700' }
 }
 
-export function AdminRegistrationDeskPage() {
+export function AdminRegistrationDeskPage({
+  basePath = '/admin/registration-desk',
+  showClearAll = true,
+  showInchargeInvite = true,
+}) {
   usePageSeo({ title: 'Registration Desk', description: 'Invite desk staff, assign domains, and track live attendance analytics.' })
   const api = useApi()
   const [data, setData] = useState(null) // { desks, byDomain, overall }
   const [drafts, setDrafts] = useState({})
   const [emails, setEmails] = useState('')
+  const [inchargeEmails, setInchargeEmails] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState('')
   const [loading, setLoading] = useState(true)
@@ -54,6 +59,17 @@ export function AdminRegistrationDeskPage() {
       const r = await api.bulkInviteRegDesk(list)
       setMsg(`Invited: ${r.summary.created} created, ${r.summary.skipped} skipped, ${r.summary.failed} failed.`)
       setEmails(''); load()
+    } catch (e) { setMsg(e.message) } finally { setBusy('') }
+  }
+
+  async function inviteIncharge() {
+    const list = inchargeEmails.split(/[\s,;]+/).filter(Boolean)
+    if (!list.length) return
+    setBusy('invite-incharge'); setMsg('')
+    try {
+      const r = await api.inviteRegDeskIncharge(list)
+      setMsg(`Incharge invited: ${r.summary.created} created, ${r.summary.skipped} skipped, ${r.summary.failed} failed.`)
+      setInchargeEmails('')
     } catch (e) { setMsg(e.message) } finally { setBusy('') }
   }
 
@@ -112,7 +128,9 @@ export function AdminRegistrationDeskPage() {
           <p className="text-sm text-ink-500">Invite desk staff, assign domains, and track live check-in analytics.</p>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
-          <button type="button" disabled={busy === 'clear'} onClick={clearAttendance} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Clear All</button>
+          {showClearAll && (
+            <button type="button" disabled={busy === 'clear'} onClick={clearAttendance} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Clear All</button>
+          )}
           <button type="button" disabled={busy === 'export'} onClick={() => downloadCsv(null, 'all-domains')} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-50"><Download className="h-4 w-4" /> Export all</button>
           <button type="button" onClick={() => load(true)} className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]"><RefreshCw className="h-4 w-4" /> Refresh</button>
         </div>
@@ -197,7 +215,7 @@ export function AdminRegistrationDeskPage() {
             return (
               <div key={a.uid} className="rounded-xl border border-[rgb(var(--border))] p-4">
                 <div className="flex flex-wrap items-start gap-3">
-                  <Link to={`/admin/registration-desk/${a.uid}`} className="group -m-1 min-w-0 flex-1 rounded-lg p-1 transition-colors hover:bg-brand-500/[0.04]">
+                  <Link to={`${basePath}/${a.uid}`} className="group -m-1 min-w-0 flex-1 rounded-lg p-1 transition-colors hover:bg-brand-500/[0.04]">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-ink-900 group-hover:text-brand-700">{a.email}</p>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${st.tone}`}>{st.label}</span>
@@ -259,6 +277,25 @@ export function AdminRegistrationDeskPage() {
           <Mail className="h-4 w-4" /> Send invites
         </button>
       </div>
+
+      {/* Invite Registration Desk Incharge — admin only */}
+      {showInchargeInvite && (
+        <div className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5 shadow-card">
+          <div className="flex items-center gap-2">
+            <UserCog className="h-4 w-4 text-indigo-600" />
+            <h2 className="font-display text-sm font-bold text-ink-900">Invite Registration Desk Incharge</h2>
+          </div>
+          <p className="mt-1 text-xs text-ink-500">
+            Incharges get the full registration-desk dashboard — all desks, analytics, invites and exports — but cannot clear attendance. Comma, space, or newline separated emails.
+          </p>
+          <textarea value={inchargeEmails} onChange={(e) => setInchargeEmails(e.target.value)} rows={2} placeholder="incharge@example.com"
+            className="mt-3 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+          <button type="button" disabled={busy === 'invite-incharge'} onClick={inviteIncharge}
+            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50">
+            <UserCog className="h-4 w-4" /> Invite incharge
+          </button>
+        </div>
+      )}
     </div>
   )
 }

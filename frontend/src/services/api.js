@@ -368,16 +368,16 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/viewers/status'),
     // Registration Desk — admin management
     bulkInviteRegDesk: (emails) =>
-      authReq('/api/admin/registration-desk/bulk-invite', { method: 'POST', body: { emails } }),
-    regDeskInviteStatus: () =>
-      authReq('/api/admin/registration-desk/status'),
+      authReq('/api/reg-desk/invite', { method: 'POST', body: { emails } }),
+    inviteRegDeskIncharge: (emails) =>
+      authReq('/api/reg-desk/invite-incharge', { method: 'POST', body: { emails } }),
     assignRegDeskDomains: (uid, domains) =>
-      authReq('/api/admin/registration-desk/assign-domains', { method: 'POST', body: { uid, domains } }),
+      authReq('/api/reg-desk/assign-domains', { method: 'POST', body: { uid, domains } }),
     // Registration Desk — desk + admin check-in data
     regDeskMe: () => authReq('/api/reg-desk/me'),
     regDeskTeams: (deskUid) => authReq(`/api/reg-desk/teams${deskUid ? `?deskUid=${encodeURIComponent(deskUid)}` : ''}`),
     regDeskStats: () => authReq('/api/reg-desk/stats'),
-    regDeskAnalytics: () => authReq('/api/admin/registration-desk/analytics'),
+    regDeskAnalytics: () => authReq('/api/reg-desk/analytics'),
     regDeskMarkMember: (memberId, present) =>
       authReq('/api/reg-desk/attendance', { method: 'POST', body: { memberId, present } }),
     regDeskMarkTeam: (teamId, present) =>

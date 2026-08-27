@@ -5134,9 +5134,16 @@ export function registrationDeskRouter() {
     'Waste Management', 'Agriculture', 'Industry & MSME Innovation', 'Open Innovation',
   ]
 
-  router.use(verifyFirebaseToken, loadUserRole, attachEventContext, requireRole('registration_desk', 'admin'))
+  router.use(verifyFirebaseToken, loadUserRole, attachEventContext, requireRole('registration_desk', 'registration_desk_incharge', 'admin'))
 
   const isAdmin = (req) => req.profile?.role === 'admin'
+  // Admin and Registration Desk Incharge are "privileged": they see EVERY domain
+  // and every desk's data, and can manage desk accounts. Regular desk staff are
+  // scoped to their own assigned domains. Only admins may clear all attendance.
+  const isPrivileged = (req) => {
+    const r = req.profile?.role
+    return r === 'admin' || r === 'registration_desk_incharge'
+  }
 
   // Desk staff may edit a member's attendance for 5 minutes after the FIRST mark.
   // After that the record is locked (admins are exempt and re-anchor the window).
@@ -5145,7 +5152,7 @@ export function registrationDeskRouter() {
 
   // null => all domains (admin); array => the desk account's assigned domains
   async function scopeDomains(req) {
-    if (isAdmin(req)) return null
+    if (isPrivileged(req)) return null
     const snap = await db().doc(`users/${req.user.uid}`).get()
     return snap.exists && Array.isArray(snap.data().assignedDomains) ? snap.data().assignedDomains : []
   }
@@ -5232,7 +5239,7 @@ export function registrationDeskRouter() {
       res.json({
         ok: true,
         role: req.profile?.role,
-        assignedDomains: isAdmin(req) ? DOMAINS : (Array.isArray(d.assignedDomains) ? d.assignedDomains : []),
+        assignedDomains: isPrivileged(req) ? DOMAINS : (Array.isArray(d.assignedDomains) ? d.assignedDomains : []),
         displayName: d.displayName || '',
         email: d.email || req.user.email || '',
         lockWindowMs: LOCK_MS,
@@ -5245,7 +5252,7 @@ export function registrationDeskRouter() {
       // Admin may inspect a single desk's scope via ?deskUid=... (desk detail page).
       let override
       let desk = null
-      if (isAdmin(req) && req.query.deskUid) {
+      if (isPrivileged(req) && req.query.deskUid) {
         const uid = String(req.query.deskUid)
         const dsnap = await db().doc(`users/${uid}`).get()
         const dd = dsnap.exists ? dsnap.data() : {}
@@ -5286,7 +5293,7 @@ export function registrationDeskRouter() {
       const snap = await ref.get()
       if (!snap.exists) return res.status(404).json({ error: 'Member not found.' })
       const data = snap.data()
-      const admin = isAdmin(req)
+      const admin = isPrivileged(req)
       if (!admin) {
         const allowed = await scopeDomains(req)
         if (allowed) {
@@ -5310,7 +5317,7 @@ export function registrationDeskRouter() {
     try {
       const { teamId, present } = req.body || {}
       if (!teamId) return res.status(400).json({ error: 'teamId required' })
-      const admin = isAdmin(req)
+      const admin = isPrivileged(req)
       if (!admin) {
         const allowed = await scopeDomains(req)
         if (allowed) {
@@ -5340,7 +5347,7 @@ export function registrationDeskRouter() {
       // Admin may export a single desk's scope via ?deskUid=... (desk-wise export).
       let override
       let label = 'all-domains'
-      if (isAdmin(req) && req.query.deskUid) {
+      if (isPrivileged(req) && req.query.deskUid) {
         const dsnap = await db().doc(`users/${String(req.query.deskUid)}`).get()
         const dd = dsnap.exists ? dsnap.data() : {}
         override = Array.isArray(dd.assignedDomains) ? dd.assignedDomains : []
@@ -5405,6 +5412,137 @@ export function registrationDeskRouter() {
       
       await batch.commit()
       res.json({ ok: true, cleared: count })
+    } catch (e) { next(e) }
+  })
+
+  // ── Management endpoints — privileged (admin + incharge), except invite-incharge (admin only) ──
+
+  // List registration-desk accounts with onboarding status + assigned domains.
+  async function listRegDeskAccounts() {
+    const snap = await db().collection('users').where('staffRole', '==', 'registration_desk').limit(1000).get()
+    const rows = snap.docs.map((d) => {
+      const x = d.data()
+      return {
+        uid: d.id,
+        email: x.email || '',
+        displayName: x.displayName || '',
+        assignedDomains: Array.isArray(x.assignedDomains) ? x.assignedDomains : [],
+        passwordSet: x.mustChangePassword === false,
+        loggedIn: false,
+      }
+    })
+    try {
+      const { getAuth } = await import('firebase-admin/auth')
+      const auth = getAuth()
+      for (let i = 0; i < rows.length; i += 100) {
+        const chunk = rows.slice(i, i + 100)
+        const result = await auth.getUsers(chunk.map((r) => ({ uid: r.uid })))
+        const byUid = new Map(result.users.map((u) => [u.uid, u]))
+        for (const r of chunk) r.loggedIn = Boolean(byUid.get(r.uid)?.metadata?.lastSignInTime)
+      }
+    } catch (e) { console.warn('[reg-desk analytics] auth enrich failed:', e.message) }
+    rows.sort((a, b) => (a.email || '').localeCompare(b.email || ''))
+    return rows
+  }
+
+  // Full analytics: per-desk progress (scoped to assigned domains), per-domain
+  // attendance, overall totals, and members checked in by each desk.
+  router.get('/analytics', async (req, res, next) => {
+    try {
+      if (!isPrivileged(req)) return res.status(403).json({ error: 'Forbidden.' })
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+
+      const psCol = db().collection('problemStatements')
+      const psSnap = await (eventId ? psCol.where('eventId', '==', eventId).get() : psCol.get())
+      const psDomain = {}
+      psSnap.forEach((d) => { psDomain[d.id] = d.data().theme || 'Unassigned' })
+
+      const tCol = db().collection('teams')
+      const tSnap = await (eventId ? tCol.where('eventId', '==', eventId).get() : tCol.get())
+      const teamDomainMap = {}
+      const teamIds = []
+      tSnap.forEach((d) => {
+        const t = d.data()
+        if (t.juryStatus !== 'qualified') return
+        teamDomainMap[d.id] = psDomain[t.problemStatementId] || 'Unassigned'
+        teamIds.push(d.id)
+      })
+
+      const byDomain = {}
+      const markCountByUid = {}
+      for (let i = 0; i < teamIds.length; i += 10) {
+        const chunk = teamIds.slice(i, i + 10)
+        if (!chunk.length) break
+        const snap = await db().collection('memberRegistrations').where('teamId', 'in', chunk).get()
+        snap.forEach((doc) => {
+          const x = doc.data()
+          const dom = teamDomainMap[x.teamId] || 'Unassigned'
+          byDomain[dom] ||= { domain: dom, present: 0, total: 0, teamsSet: new Set() }
+          byDomain[dom].total += 1
+          byDomain[dom].teamsSet.add(x.teamId)
+          if (x.present) byDomain[dom].present += 1
+          if (x.attendanceBy) markCountByUid[x.attendanceBy] = (markCountByUid[x.attendanceBy] || 0) + 1
+        })
+      }
+      const domainStats = {}
+      Object.values(byDomain).forEach((b) => { domainStats[b.domain] = { domain: b.domain, present: b.present, total: b.total, teams: b.teamsSet.size } })
+
+      const accounts = await listRegDeskAccounts()
+      const desks = accounts.map((p) => {
+        const doms = p.assignedDomains || []
+        let present = 0, total = 0, teams = 0
+        doms.forEach((dom) => { const s = domainStats[dom]; if (s) { present += s.present; total += s.total; teams += s.teams } })
+        return { ...p, present, total, teams, pct: total ? Math.round((present / total) * 100) : 0, marksMade: markCountByUid[p.uid] || 0 }
+      })
+
+      let oPresent = 0, oTotal = 0, oTeams = 0
+      Object.values(domainStats).forEach((s) => { oPresent += s.present; oTotal += s.total; oTeams += s.teams })
+
+      res.json({
+        ok: true,
+        desks,
+        byDomain: Object.values(domainStats).sort((a, b) => a.domain.localeCompare(b.domain)),
+        overall: { present: oPresent, absent: oTotal - oPresent, total: oTotal, teams: oTeams, pct: oTotal ? Math.round((oPresent / oTotal) * 100) : 0 },
+      })
+    } catch (e) { next(e) }
+  })
+
+  // Invite registration-desk staff (bulk).
+  router.post('/invite', async (req, res, next) => {
+    try {
+      if (!isPrivileged(req)) return res.status(403).json({ error: 'Forbidden.' })
+      const emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'registration_desk')
+      res.json({ ok: true, ...result })
+    } catch (e) { next(e) }
+  })
+
+  // Assign check-in domains to a registration-desk account.
+  router.post('/assign-domains', async (req, res, next) => {
+    try {
+      if (!isPrivileged(req)) return res.status(403).json({ error: 'Forbidden.' })
+      const { uid, domains } = req.body || {}
+      if (!uid) return res.status(400).json({ error: 'uid required' })
+      const list = Array.isArray(domains) ? domains.filter((d) => DOMAINS.includes(d)) : []
+      const userRef = db().doc(`users/${String(uid)}`)
+      const snap = await userRef.get()
+      if (!snap.exists) return res.status(404).json({ error: 'User not found.' })
+      if (snap.data().role !== 'registration_desk') return res.status(400).json({ error: 'User is not a Registration Desk account.' })
+      await userRef.set({ assignedDomains: list, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      res.json({ ok: true })
+    } catch (e) { next(e) }
+  })
+
+  // Invite Registration Desk Incharge accounts — ADMIN ONLY (assigns the incharge role).
+  router.post('/invite-incharge', async (req, res, next) => {
+    try {
+      if (!isAdmin(req)) return res.status(403).json({ error: 'Admin access required.' })
+      const emails = Array.isArray(req.body?.emails) ? req.body.emails : []
+      const { bulkInviteLeaders } = await import('../services/leaderAccounts.js')
+      const result = await bulkInviteLeaders(emails, 'registration_desk_incharge')
+      res.json({ ok: true, ...result })
     } catch (e) { next(e) }
   })
 

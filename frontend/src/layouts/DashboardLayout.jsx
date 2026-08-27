@@ -92,6 +92,10 @@ const nav = {
   ],
   regdesk: [
     { to: '/reg-desk', label: 'Check-in Desk', icon: ClipboardCheck, end: true },
+    { to: '/reg-desk/analytics', label: 'Analytics', icon: BarChart3 },
+  ],
+  'regdesk-incharge': [
+    { to: '/regdesk-incharge', label: 'Registration Desk', icon: ClipboardCheck, end: true },
   ],
   // Observer (read-only) — a curated, view-only subset of the admin nav.
   // Only pages that are fully read-only for Observers are exposed here.
@@ -118,6 +122,7 @@ const roleLabels = {
   [ROLES.MENTOR]: 'Mentor',
   [ROLES.VIEWER]: 'Observer (Read-only)',
   [ROLES.REGISTRATION_DESK]: 'Registration Desk',
+  [ROLES.REGISTRATION_DESK_INCHARGE]: 'Registration Desk Incharge',
 }
 
 const roleBadgeColors = {
@@ -127,6 +132,7 @@ const roleBadgeColors = {
   [ROLES.MENTOR]: 'bg-emerald-500/15 text-emerald-600',
   [ROLES.VIEWER]: 'bg-slate-500/15 text-slate-600',
   [ROLES.REGISTRATION_DESK]: 'bg-cyan-500/15 text-cyan-600',
+  [ROLES.REGISTRATION_DESK_INCHARGE]: 'bg-indigo-500/15 text-indigo-600',
 }
 
 export function DashboardLayout({ variant = 'default' }) {
