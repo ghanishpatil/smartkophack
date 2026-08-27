@@ -3475,6 +3475,88 @@ export function adminRouter() {
   })
 
   /**
+   * Admin: full Registration Desk analytics — per-desk progress (scoped to each
+   * desk's assigned domains), per-domain attendance, and overall totals. Also
+   * attributes how many members each desk account personally checked in.
+   */
+  router.get('/registration-desk/analytics', async (req, res, next) => {
+    try {
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+
+      // Problem statement -> domain (theme).
+      const psCol = db().collection('problemStatements')
+      const psSnap = await (eventId ? psCol.where('eventId', '==', eventId).get() : psCol.get())
+      const psDomain = {}
+      psSnap.forEach((d) => { psDomain[d.id] = d.data().theme || 'Unassigned' })
+
+      // Grand Finale qualified teams (juryStatus === 'qualified') -> domain.
+      const tCol = db().collection('teams')
+      const tSnap = await (eventId ? tCol.where('eventId', '==', eventId).get() : tCol.get())
+      const teamDomainMap = {}
+      const teamIds = []
+      tSnap.forEach((d) => {
+        const t = d.data()
+        // Grand Finale qualifiers only — same source as the public Results page.
+        if (t.juryStatus !== 'qualified') return
+        teamDomainMap[d.id] = psDomain[t.problemStatementId] || 'Unassigned'
+        teamIds.push(d.id)
+      })
+
+      // Aggregate member attendance by domain + attribute marks to the desk uid.
+      const byDomain = {}
+      const markCountByUid = {}
+      for (let i = 0; i < teamIds.length; i += 10) {
+        const chunk = teamIds.slice(i, i + 10)
+        if (!chunk.length) break
+        const snap = await db().collection('memberRegistrations').where('teamId', 'in', chunk).get()
+        snap.forEach((doc) => {
+          const x = doc.data()
+          const dom = teamDomainMap[x.teamId] || 'Unassigned'
+          byDomain[dom] ||= { domain: dom, present: 0, total: 0, teamsSet: new Set() }
+          byDomain[dom].total += 1
+          byDomain[dom].teamsSet.add(x.teamId)
+          if (x.present) byDomain[dom].present += 1
+          if (x.attendanceBy) markCountByUid[x.attendanceBy] = (markCountByUid[x.attendanceBy] || 0) + 1
+        })
+      }
+      const domainStats = {}
+      Object.values(byDomain).forEach((b) => {
+        domainStats[b.domain] = { domain: b.domain, present: b.present, total: b.total, teams: b.teamsSet.size }
+      })
+
+      // Desk accounts + assigned domains.
+      const staff = await buildStaffInviteStatus('registration_desk')
+      const ids = staff.participants.map((p) => p.uid)
+      const domainByUid = {}
+      for (let i = 0; i < ids.length; i += 10) {
+        const chunk = ids.slice(i, i + 10)
+        const snaps = await Promise.all(chunk.map((id) => db().doc(`users/${id}`).get()))
+        snaps.forEach((s) => { if (s.exists) domainByUid[s.id] = Array.isArray(s.data().assignedDomains) ? s.data().assignedDomains : [] })
+      }
+
+      const desks = staff.participants.map((p) => {
+        const doms = domainByUid[p.uid] || []
+        let present = 0, total = 0, teams = 0
+        doms.forEach((dom) => { const s = domainStats[dom]; if (s) { present += s.present; total += s.total; teams += s.teams } })
+        return { ...p, assignedDomains: doms, present, total, teams, pct: total ? Math.round((present / total) * 100) : 0, marksMade: markCountByUid[p.uid] || 0 }
+      })
+
+      let oPresent = 0, oTotal = 0, oTeams = 0
+      Object.values(domainStats).forEach((s) => { oPresent += s.present; oTotal += s.total; oTeams += s.teams })
+
+      res.json({
+        ok: true,
+        desks,
+        byDomain: Object.values(domainStats).sort((a, b) => a.domain.localeCompare(b.domain)),
+        overall: { present: oPresent, absent: oTotal - oPresent, total: oTotal, teams: oTeams, pct: oTotal ? Math.round((oPresent / oTotal) * 100) : 0 },
+      })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
    * Admin: Bulk-invite Observers (read-only viewer role) — creates accounts +
    * emails credentials. Observers can view the admin dashboard but cannot make
    * any changes (enforced by the read-only guard on this router).
@@ -5056,6 +5138,11 @@ export function registrationDeskRouter() {
 
   const isAdmin = (req) => req.profile?.role === 'admin'
 
+  // Desk staff may edit a member's attendance for 5 minutes after the FIRST mark.
+  // After that the record is locked (admins are exempt and re-anchor the window).
+  const LOCK_MS = 5 * 60 * 1000
+  const toMs = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : (v && v._seconds ? v._seconds * 1000 : 0))
+
   // null => all domains (admin); array => the desk account's assigned domains
   async function scopeDomains(req) {
     if (isAdmin(req)) return null
@@ -5072,10 +5159,13 @@ export function registrationDeskRouter() {
     return psSnap.exists ? (psSnap.data().theme || '') : ''
   }
 
-  async function loadTeams(req) {
+  // domainFilter: undefined => use the requester's own scope; array => explicit
+  // override (used by admin desk-wise export). Only Grand Finale qualified teams
+  // (juryStatus === 'qualified') are ever returned.
+  async function loadTeams(req, domainFilter) {
     const activeEvent = await getActiveEvent()
     const eventId = req.eventId || activeEvent?.id || ''
-    const allowed = await scopeDomains(req)
+    const allowed = domainFilter !== undefined ? domainFilter : await scopeDomains(req)
 
     const psCol = db().collection('problemStatements')
     const psSnap = await (eventId ? psCol.where('eventId', '==', eventId).get() : psCol.get())
@@ -5087,8 +5177,9 @@ export function registrationDeskRouter() {
     const teams = []
     tSnap.forEach((d) => {
       const t = d.data()
-      // Only teams that QUALIFIED for the Grand Finale (shortlisted) are checked in.
-      if (!t.shortlisted) return
+      // Only teams QUALIFIED for the Grand Finale are checked in. This mirrors the
+      // public Results page, which lists teams with juryStatus === 'qualified'.
+      if (t.juryStatus !== 'qualified') return
       const ps = psMap[t.problemStatementId] || { domain: '', track: '', title: '' }
       if (allowed && !allowed.includes(ps.domain)) return
       teams.push({ id: d.id, name: t.name || '', domain: ps.domain || '', track: ps.track || '', psTitle: ps.title || '' })
@@ -5103,9 +5194,18 @@ export function registrationDeskRouter() {
       snap.forEach((d) => {
         const x = d.data()
         ;(regByTeam[x.teamId] ||= []).push({
-          id: d.id, name: x.name || '', email: x.email || '',
-          isLeader: Boolean(x.isLeader), order: typeof x.order === 'number' ? x.order : 0,
+          id: d.id,
+          name: x.name || '',
+          email: x.email || '',
+          phone: x.phone || '',
+          college: x.institute || x.college || '',
+          collegeLocation: x.collegeLocation || '',
+          yearOfStudy: x.yearOfStudy || '',
+          department: x.department || '',
+          isLeader: Boolean(x.isLeader),
+          order: typeof x.order === 'number' ? x.order : 0,
           present: Boolean(x.present),
+          attendanceAtMs: toMs(x.attendanceAt) || null,
         })
       })
     }
@@ -5113,7 +5213,15 @@ export function registrationDeskRouter() {
     return teams.map((t) => {
       const members = (regByTeam[t.id] || []).sort((a, b) => a.order - b.order)
       const presentCount = members.filter((m) => m.present).length
-      return { ...t, members, presentCount, totalMembers: members.length }
+      const leader = members.find((m) => m.isLeader) || members[0] || null
+      return {
+        ...t,
+        members,
+        presentCount,
+        totalMembers: members.length,
+        college: leader?.college || '',
+        collegeLocation: leader?.collegeLocation || '',
+      }
     }).sort((a, b) => a.domain.localeCompare(b.domain) || a.name.localeCompare(b.name))
   }
 
@@ -5127,6 +5235,7 @@ export function registrationDeskRouter() {
         assignedDomains: isAdmin(req) ? DOMAINS : (Array.isArray(d.assignedDomains) ? d.assignedDomains : []),
         displayName: d.displayName || '',
         email: d.email || req.user.email || '',
+        lockWindowMs: LOCK_MS,
       })
     } catch (e) { next(e) }
   })
@@ -5164,12 +5273,23 @@ export function registrationDeskRouter() {
       const ref = db().collection('memberRegistrations').doc(String(memberId))
       const snap = await ref.get()
       if (!snap.exists) return res.status(404).json({ error: 'Member not found.' })
-      const allowed = await scopeDomains(req)
-      if (allowed) {
-        const domain = await teamDomain(snap.data().teamId)
-        if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+      const data = snap.data()
+      const admin = isAdmin(req)
+      if (!admin) {
+        const allowed = await scopeDomains(req)
+        if (allowed) {
+          const domain = await teamDomain(data.teamId)
+          if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+        }
+        const anchoredMs = toMs(data.attendanceAt)
+        if (anchoredMs && Date.now() - anchoredMs > LOCK_MS) {
+          return res.status(423).json({ error: 'Editing window closed — attendance locks 5 minutes after the first mark. Ask an admin to change it.' })
+        }
       }
-      await ref.set({ present: Boolean(present), attendanceAt: FieldValue.serverTimestamp(), attendanceBy: req.user.uid }, { merge: true })
+      const update = { present: Boolean(present), attendanceBy: req.user.uid, attendanceUpdatedAt: FieldValue.serverTimestamp() }
+      // Anchor the 5-minute window on the first mark; admins re-anchor to reopen editing.
+      if (admin || !toMs(data.attendanceAt)) update.attendanceAt = FieldValue.serverTimestamp()
+      await ref.set(update, { merge: true })
       res.json({ ok: true })
     } catch (e) { next(e) }
   })
@@ -5178,52 +5298,77 @@ export function registrationDeskRouter() {
     try {
       const { teamId, present } = req.body || {}
       if (!teamId) return res.status(400).json({ error: 'teamId required' })
-      const allowed = await scopeDomains(req)
-      if (allowed) {
-        const domain = await teamDomain(String(teamId))
-        if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+      const admin = isAdmin(req)
+      if (!admin) {
+        const allowed = await scopeDomains(req)
+        if (allowed) {
+          const domain = await teamDomain(String(teamId))
+          if (!allowed.includes(domain)) return res.status(403).json({ error: 'This team is outside your assigned domains.' })
+        }
       }
       const snap = await db().collection('memberRegistrations').where('teamId', '==', String(teamId)).get()
+      const now = Date.now()
       const batch = db().batch()
-      snap.forEach((d) => batch.set(d.ref, { present: Boolean(present), attendanceAt: FieldValue.serverTimestamp(), attendanceBy: req.user.uid }, { merge: true }))
+      let updated = 0, locked = 0
+      snap.forEach((d) => {
+        const anchoredMs = toMs(d.data().attendanceAt)
+        if (!admin && anchoredMs && now - anchoredMs > LOCK_MS) { locked += 1; return }
+        const update = { present: Boolean(present), attendanceBy: req.user.uid, attendanceUpdatedAt: FieldValue.serverTimestamp() }
+        if (admin || !anchoredMs) update.attendanceAt = FieldValue.serverTimestamp()
+        batch.set(d.ref, update, { merge: true })
+        updated += 1
+      })
       await batch.commit()
-      res.json({ ok: true, updated: snap.size })
+      res.json({ ok: true, updated, locked })
     } catch (e) { next(e) }
   })
 
   router.get('/export', async (req, res, next) => {
     try {
-      const teams = await loadTeams(req)
+      // Admin may export a single desk's scope via ?deskUid=... (desk-wise export).
+      let override
+      let label = 'all-domains'
+      if (isAdmin(req) && req.query.deskUid) {
+        const dsnap = await db().doc(`users/${String(req.query.deskUid)}`).get()
+        const dd = dsnap.exists ? dsnap.data() : {}
+        override = Array.isArray(dd.assignedDomains) ? dd.assignedDomains : []
+        label = String(dd.email || 'desk').split('@')[0].replace(/[^a-z0-9]+/gi, '-') || 'desk'
+      }
+      const teams = await loadTeams(req, override)
       const rows = []
-      rows.push(['Team Name', 'Domain', 'Track', 'Problem Statement', 'Member Name', 'Email', 'Is Leader', 'Present', 'Total Present', 'Total Members', 'Attendance %'])
-      
+      rows.push(['Team Name', 'Domain', 'Track', 'Problem Statement', 'College', 'College Location', 'Member Name', 'Email', 'Phone', 'Year', 'Department', 'Is Leader', 'Attendance', 'Team Present', 'Team Size', 'Team %'])
+
       for (const t of teams) {
         const pct = t.totalMembers > 0 ? Math.round((t.presentCount / t.totalMembers) * 100) : 0
         if (t.members.length === 0) {
-          rows.push([t.name, t.domain, t.track, t.psTitle, '', '', '', '', t.presentCount, t.totalMembers, pct])
+          rows.push([t.name, t.domain, t.track, t.psTitle, t.college, t.collegeLocation, '', '', '', '', '', '', '', t.presentCount, t.totalMembers, pct])
         } else {
-          for (let i = 0; i < t.members.length; i++) {
-            const m = t.members[i]
+          t.members.forEach((m, i) => {
             rows.push([
               i === 0 ? t.name : '',
               i === 0 ? t.domain : '',
               i === 0 ? t.track : '',
               i === 0 ? t.psTitle : '',
+              m.college,
+              m.collegeLocation,
               m.name,
               m.email,
+              m.phone,
+              m.yearOfStudy,
+              m.department,
               m.isLeader ? 'Yes' : 'No',
-              m.present ? 'Yes' : 'No',
+              m.present ? 'Present' : 'Absent',
               i === 0 ? t.presentCount : '',
               i === 0 ? t.totalMembers : '',
-              i === 0 ? pct : ''
+              i === 0 ? pct : '',
             ])
-          }
+          })
         }
       }
 
       const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
       res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-      res.setHeader('Content-Disposition', `attachment; filename="registration-desk-attendance-${new Date().toISOString().split('T')[0]}.csv"`)
+      res.setHeader('Content-Disposition', `attachment; filename="attendance-${label}-${new Date().toISOString().split('T')[0]}.csv"`)
       res.send(csv)
     } catch (e) { next(e) }
   })

@@ -377,16 +377,19 @@ export function createApi(getToken, getEventId = () => '') {
     regDeskMe: () => authReq('/api/reg-desk/me'),
     regDeskTeams: () => authReq('/api/reg-desk/teams'),
     regDeskStats: () => authReq('/api/reg-desk/stats'),
+    regDeskAnalytics: () => authReq('/api/admin/registration-desk/analytics'),
     regDeskMarkMember: (memberId, present) =>
       authReq('/api/reg-desk/attendance', { method: 'POST', body: { memberId, present } }),
     regDeskMarkTeam: (teamId, present) =>
       authReq('/api/reg-desk/attendance/team', { method: 'POST', body: { teamId, present } }),
-    regDeskExportAttendance: async () => {
+    // Export attendance as CSV. Pass a deskUid (admin only) for a desk-wise export.
+    regDeskExportAttendance: async (deskUid) => {
       const token = await getToken()
       const eventId = getEventId()
       const params = new URLSearchParams()
       if (eventId) params.append('eventId', eventId)
-      const url = `${API_BASE}/api/reg-desk/export${params.toString() ? `?${params}` : ''}`
+      if (deskUid) params.append('deskUid', deskUid)
+      const url = `${base}/api/reg-desk/export${params.toString() ? `?${params}` : ''}`
       const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       if (!response.ok) throw new Error('Export failed')
       return await response.blob()
