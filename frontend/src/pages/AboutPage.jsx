@@ -138,7 +138,6 @@ export function AboutPage() {
 
 /* ─── SDG Section ─── */
 const sdgImg = (id) => `/sdg/goal-${String(id).padStart(2, '0')}.png`
-const alignedCount = SDG_GOALS.filter((g) => g.skh).length
 
 function SDGSection() {
   const [active, setActive] = useState(null)
@@ -154,45 +153,10 @@ function SDGSection() {
 
       <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
-          eyebrow="SKH × Global Goals"
+          eyebrow="Global Goals"
           title="SKH and the UN Sustainable Development Goals"
-          description={`SKH's 8 domains map directly to ${alignedCount} of the 17 UN SDGs — building solutions that contribute to the 2030 Agenda. Tap any goal to see how it connects.`}
+          description="The United Nations' 17 Sustainable Development Goals are a shared global blueprint for peace and prosperity by 2030. Tap any goal to learn more about it."
         />
-
-        {/* SDG 17 spotlight */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          className="relative mx-auto mb-14 max-w-4xl overflow-hidden rounded-3xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6 shadow-card sm:p-8"
-        >
-          <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: '#19486A' }} />
-          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full blur-3xl" style={{ background: '#19486A18' }} />
-          <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-            <motion.img
-              src={sdgImg(17)}
-              alt="UN Sustainable Development Goal 17 — Partnerships for the Goals"
-              loading="lazy"
-              initial={{ scale: 0.85, rotate: -4, opacity: 0 }}
-              whileInView={{ scale: 1, rotate: 0, opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-              className="h-28 w-28 shrink-0 rounded-2xl shadow-lg ring-1 ring-black/5 sm:h-32 sm:w-32"
-            />
-            <div className="text-center sm:text-left">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.15em] text-brand-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-brand-600" /> Our umbrella goal
-              </span>
-              <h3 className="mt-3 font-display text-2xl font-bold text-ink-900">Partnerships for the Goals</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-600">
-                SKH is a living example of <strong className="text-ink-900">SDG 17</strong> — a multi-stakeholder partnership uniting government,
-                academia, industry, and civil society to build real solutions for Kopargaon Taluka. Every team that participates strengthens
-                this ecosystem.
-              </p>
-            </div>
-          </div>
-        </motion.div>
 
         {/* Goal grid — official UN icons */}
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 md:gap-4">
@@ -223,23 +187,13 @@ function SDGSection() {
                 />
                 {/* hover sheen */}
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/0 to-white/25 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                {/* SKH-aligned badge */}
-                {g.skh && (
-                  <span className="absolute right-1.5 top-1.5 rounded-md bg-white/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-brand-700 shadow-sm backdrop-blur-sm sm:text-[9px]">
-                    SKH
-                  </span>
-                )}
               </motion.button>
             )
           })}
         </div>
 
-        {/* Legend + attribution */}
-        <div className="mt-6 flex flex-col items-center justify-between gap-3 text-xs text-ink-500 sm:flex-row">
-          <span className="inline-flex items-center gap-2">
-            <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-brand-700 shadow-sm ring-1 ring-[rgb(var(--border))]">SKH</span>
-            Directly aligned with an SKH domain
-          </span>
+        {/* Attribution */}
+        <div className="mt-6 flex justify-center text-xs text-ink-500 sm:justify-end">
           <a
             href="https://www.un.org/sustainabledevelopment/"
             target="_blank"
@@ -272,12 +226,6 @@ function SDGSection() {
                   <p className="font-display text-xs font-bold uppercase tracking-wide" style={{ color: selected.color }}>Goal {selected.id}</p>
                   <h4 className="mt-0.5 font-display text-lg font-bold text-ink-900">{selected.title}</h4>
                   <p className="mt-1.5 text-sm leading-relaxed text-ink-600">{selected.desc}</p>
-                  {selected.skh && (
-                    <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1 text-xs font-bold text-brand-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />
-                      Linked to SKH domain: {selected.skh}
-                    </p>
-                  )}
                 </div>
                 <button
                   type="button"
