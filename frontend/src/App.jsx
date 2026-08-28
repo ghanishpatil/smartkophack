@@ -62,6 +62,9 @@ const ParticipantChatPage = lazy(() =>
 const ParticipantMentorChatPage = lazy(() =>
   import('@/pages/dashboard/participant/ParticipantMentorChatPage.jsx').then((m) => ({ default: m.ParticipantMentorChatPage })),
 )
+const ParticipantChallengesPage = lazy(() =>
+  import('@/pages/dashboard/participant/ParticipantChallengesPage.jsx').then((m) => ({ default: m.ParticipantChallengesPage })),
+)
 const AdminOverviewPage = lazy(() =>
   import('@/pages/admin/AdminOverviewPage.jsx').then((m) => ({ default: m.AdminOverviewPage })),
 )
@@ -97,6 +100,15 @@ const AdminJudgeEvaluationsPage = lazy(() =>
 )
 const AdminResultsPage = lazy(() =>
   import('@/pages/admin/AdminResultsPage.jsx').then((m) => ({ default: m.AdminResultsPage })),
+)
+const AdminChallengesPage = lazy(() =>
+  import('@/pages/admin/AdminChallengesPage.jsx').then((m) => ({ default: m.AdminChallengesPage })),
+)
+const AdminFinalistsPage = lazy(() =>
+  import('@/pages/admin/AdminFinalistsPage.jsx').then((m) => ({ default: m.AdminFinalistsPage })),
+)
+const AdminFinalsEvaluationsPage = lazy(() =>
+  import('@/pages/admin/AdminFinalsEvaluationsPage.jsx').then((m) => ({ default: m.AdminFinalsEvaluationsPage })),
 )
 const AdminSearchPage = lazy(() =>
   import('@/pages/admin/AdminSearchPage.jsx').then((m) => ({ default: m.AdminSearchPage })),
@@ -382,6 +394,7 @@ export default function App() {
             <Route path="/dashboard/problems" element={<ParticipantProblemsPage />} />
             <Route path="/dashboard/problems/:psId" element={<ParticipantProblemDetailPage />} />
             <Route path="/dashboard/submission" element={<SubmissionPage />} />
+            <Route path="/dashboard/challenges" element={<ParticipantChallengesPage />} />
             <Route path="/dashboard/chat" element={<ParticipantChatPage />} />
             <Route path="/dashboard/mentor-chat" element={<ParticipantMentorChatPage />} />
             <Route path="/dashboard/announcements" element={<ParticipantAnnouncementsPage />} />
@@ -407,6 +420,9 @@ export default function App() {
             <Route path="/admin/evaluations" element={<AdminEvaluationsPage />} />
             <Route path="/admin/evaluations/judge/:judgeId" element={<AdminJudgeEvaluationsPage />} />
             <Route path="/admin/results" element={<AdminResultsPage />} />
+            <Route path="/admin/challenges" element={<AdminChallengesPage />} />
+            <Route path="/admin/finalists" element={<AdminFinalistsPage />} />
+            <Route path="/admin/finals-evaluations" element={<AdminFinalsEvaluationsPage />} />
             <Route path="/admin/chats" element={<AdminChatsPage />} />
             <Route path="/admin/shortlisting" element={<AdminShortlistingPage />} />
             <Route path="/admin/phases" element={<AdminPhasesPage />} />

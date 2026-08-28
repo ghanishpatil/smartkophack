@@ -156,6 +156,57 @@ export function buildProblemStatementTemplate() {
   return lines.join('\n')
 }
 
+/**
+ * Generate a downloadable CSV template specifically for "Super PS" — the
+ * flagship / high-priority problem statements. Same column schema as the
+ * regular template (so the bulk-import parser is shared), but with Super-PS
+ * themed example rows so it's clear these are a separate, curated tier.
+ */
+export function buildSuperPsTemplate() {
+  // Note: `id` is intentionally omitted — system auto-assigns sequential IDs (skh001, skh002, ...).
+  // `track` accepts: Software | Hardware
+  // `domain` accepts: Health | Education | Transportation | Food Safety & Security |
+  //                   Waste Management | Agriculture | Industry & MSME Innovation | Open Innovation
+  const headers = ['title', 'organization', 'department', 'track', 'domain', 'description', 'published', 'maxTeams', 'order']
+  const example1 = [
+    'National-scale disaster response platform',
+    'State Disaster Management Authority',
+    'Emergency Operations',
+    'Software',
+    'Transportation',
+    'Flagship challenge: build a real-time, multi-agency coordination platform for large-scale disaster response.',
+    'true',
+    '3',
+    '1',
+  ]
+  const example2 = [
+    'AI-assisted early cancer screening kit',
+    'Apex Medical Research Institute',
+    'Oncology',
+    'Hardware',
+    'Health',
+    'High-impact challenge: an affordable point-of-care device for early screening in rural clinics.',
+    'true',
+    '3',
+    '2',
+  ]
+
+  function escape(v) {
+    const s = String(v ?? '')
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    return s
+  }
+
+  const lines = [
+    headers.join(','),
+    example1.map(escape).join(','),
+    example2.map(escape).join(','),
+  ]
+  return lines.join('\n')
+}
+
 /** Trigger CSV download in the browser. */
 export function downloadCSV(filename, content) {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })

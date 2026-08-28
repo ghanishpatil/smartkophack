@@ -81,6 +81,9 @@ async function mergedPublicSnapshot(eventId) {
     razorpayKeyId: rz ? getRazorpayPublicKeyId() : null,
     competitionPhases: phases,
     activePhase: getActivePhase({ competitionPhases: phases }),
+    // Finals: per-domain finalist target counts + the finalists-only judging gate.
+    finalistsPerDomain: merged.finalistsPerDomain && typeof merged.finalistsPerDomain === 'object' ? merged.finalistsPerDomain : {},
+    finalistsOnly: merged.finalistsOnly === true,
   }
 }
 
@@ -287,6 +290,88 @@ r.get('/problem-statements', async (req, res, next) => {
         .filter((p) => p.visibility !== 'private')
     })
     res.json(data)
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * Public: challenge content that "drops" to participants on an admin-controlled
+ * schedule (default every 2 hours). ONLY released challenges are returned —
+ * upcoming ones are never exposed. The countdown is driven by `nextDropAt`, and
+ * `serverTime` lets the client correct for clock skew.
+ */
+r.get('/challenges', async (req, res, next) => {
+  const emptyPayload = {
+    enabled: false,
+    intervalMinutes: 120,
+    startAt: null,
+    nextDropAt: null,
+    total: 0,
+    releasedCount: 0,
+    upcomingCount: 0,
+    serverTime: new Date().toISOString(),
+    challenges: [],
+  }
+  try {
+    const db = getDb()
+    if (!db) return res.json(emptyPayload)
+    const activeEvent = await getActiveEvent()
+    const eventId = activeEvent?.id
+    if (!eventId) return res.json(emptyPayload)
+
+    const merged = await getActiveEventConfig()
+    const enabled = merged.challengesEnabled === true
+    const intervalMinutes =
+      typeof merged.challengesIntervalMinutes === 'number' && merged.challengesIntervalMinutes > 0
+        ? Math.floor(merged.challengesIntervalMinutes)
+        : 120
+    const intervalMs = intervalMinutes * 60000
+    const startDate =
+      merged.challengesStartAt && typeof merged.challengesStartAt.toDate === 'function'
+        ? merged.challengesStartAt.toDate()
+        : null
+    const startMs = startDate ? startDate.getTime() : null
+    const now = Date.now()
+
+    let snap
+    try {
+      snap = await db.collection('challenges').where('eventId', '==', eventId).orderBy('order', 'asc').get()
+    } catch {
+      snap = await db.collection('challenges').where('eventId', '==', eventId).get()
+    }
+    const all = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
+    const total = all.length
+
+    let releasedCount = 0
+    let nextDropAt = null
+    if (enabled && startMs != null && total > 0) {
+      releasedCount = now >= startMs ? Math.min(total, Math.floor((now - startMs) / intervalMs) + 1) : 0
+      if (releasedCount < total) nextDropAt = startMs + releasedCount * intervalMs
+    }
+
+    const challenges = all.slice(0, releasedCount).map((c, i) => ({
+      id: c.id,
+      order: typeof c.order === 'number' ? c.order : i,
+      title: c.title || '',
+      description: c.description || '',
+      whyUniversal: c.whyUniversal || '',
+      whatToShow: c.whatToShow || '',
+    }))
+
+    res.json({
+      enabled,
+      intervalMinutes,
+      startAt: startMs != null ? new Date(startMs).toISOString() : null,
+      nextDropAt: nextDropAt != null ? new Date(nextDropAt).toISOString() : null,
+      total,
+      releasedCount,
+      upcomingCount: Math.max(0, total - releasedCount),
+      serverTime: new Date().toISOString(),
+      challenges,
+    })
   } catch (e) {
     next(e)
   }
@@ -705,6 +790,8 @@ export function adminRouter() {
         scoringMode: merged.scoringMode === 'twoPart' ? 'twoPart' : 'single',
         criteriaA: normalizeCriteriaList(Array.isArray(merged.evaluationCriteriaA) ? merged.evaluationCriteriaA : []),
         criteriaB: normalizeCriteriaList(Array.isArray(merged.evaluationCriteriaB) ? merged.evaluationCriteriaB : []),
+        // Shared "Universal Challenge" rubric — scored inside both Part A and Part B.
+        criteriaU: normalizeCriteriaList(Array.isArray(merged.evaluationCriteriaU) ? merged.evaluationCriteriaU : []),
         partAWeight: typeof merged.partAWeight === 'number' ? merged.partAWeight : 50,
         partBWeight: typeof merged.partBWeight === 'number' ? merged.partBWeight : 50,
         partALabel: typeof merged.partALabel === 'string' && merged.partALabel ? merged.partALabel : 'Part A',
@@ -776,7 +863,7 @@ export function adminRouter() {
       if (typeof body.slug === 'string') patch.slug = body.slug.slice(0, 80)
       if (typeof body.listedPublic === 'boolean') patch.listedPublic = body.listedPublic
       if (body.lifecyclePhase != null && isValidLifecyclePhase(body.lifecyclePhase)) patch.lifecyclePhase = body.lifecyclePhase
-      const boolKeys = ['registrationOpen', 'submissionsOpen', 'evaluationsOpen', 'resultsPublished', 'entryFeeEnabled', 'matchmakingEnabled']
+      const boolKeys = ['registrationOpen', 'submissionsOpen', 'evaluationsOpen', 'resultsPublished', 'entryFeeEnabled', 'matchmakingEnabled', 'challengesEnabled', 'finalistsOnly']
       for (const k of boolKeys) {
         if (typeof body[k] === 'boolean') patch[k] = body[k]
       }
@@ -800,6 +887,14 @@ export function adminRouter() {
       const s = parseOptionalTimestamp(body.submissionDeadline)
       if (s) patch.submissionDeadline = s
       if (body.submissionDeadline === null) patch.submissionDeadline = FieldValue.delete()
+
+      // Challenges schedule: when the first challenge drops + cadence (minutes).
+      const cs = parseOptionalTimestamp(body.challengesStartAt)
+      if (cs) patch.challengesStartAt = cs
+      if (body.challengesStartAt === null) patch.challengesStartAt = FieldValue.delete()
+      if (typeof body.challengesIntervalMinutes === 'number' && body.challengesIntervalMinutes > 0) {
+        patch.challengesIntervalMinutes = Math.min(100000, Math.floor(body.challengesIntervalMinutes))
+      }
 
       if (body.evaluationCriteria !== undefined) {
         if (body.evaluationCriteria === null) {
@@ -835,10 +930,38 @@ export function adminRouter() {
           patch.evaluationCriteriaB = parsedB.criteria
         }
       }
+      // Shared "Universal Challenge" rubric — scored inside BOTH parts.
+      if (body.evaluationCriteriaU !== undefined) {
+        if (body.evaluationCriteriaU === null) {
+          patch.evaluationCriteriaU = FieldValue.delete()
+        } else {
+          const parsedU = parseEvaluationCriteriaPayload(body.evaluationCriteriaU)
+          if (!parsedU.ok) return res.status(400).json({ error: `Universal Challenge: ${parsedU.error}` })
+          patch.evaluationCriteriaU = parsedU.criteria
+        }
+      }
       if (typeof body.partAWeight === 'number' && body.partAWeight >= 0) patch.partAWeight = Math.min(1000, body.partAWeight)
       if (typeof body.partBWeight === 'number' && body.partBWeight >= 0) patch.partBWeight = Math.min(1000, body.partBWeight)
       if (typeof body.partALabel === 'string') patch.partALabel = body.partALabel.trim().slice(0, 80)
       if (typeof body.partBLabel === 'string') patch.partBLabel = body.partBLabel.trim().slice(0, 80)
+
+      // Finals: per-domain finalist target counts (manual, different per domain).
+      // Stored as a map { domain: count }. Purely advisory — selection is hand-picked.
+      if (body.finalistsPerDomain !== undefined) {
+        if (body.finalistsPerDomain === null) {
+          patch.finalistsPerDomain = FieldValue.delete()
+        } else if (typeof body.finalistsPerDomain === 'object' && !Array.isArray(body.finalistsPerDomain)) {
+          const clean = {}
+          for (const [k, v] of Object.entries(body.finalistsPerDomain)) {
+            const key = String(k).slice(0, 120)
+            const n = Number(v)
+            if (key && Number.isFinite(n) && n >= 0) clean[key] = Math.min(1000, Math.floor(n))
+          }
+          patch.finalistsPerDomain = clean
+        } else {
+          return res.status(400).json({ error: 'finalistsPerDomain must be an object map of domain -> count' })
+        }
+      }
 
       await ref.set(patch, { merge: true })
       // Phase 8: Set as active event if requested
@@ -1687,6 +1810,46 @@ export function adminRouter() {
     }
   })
 
+  // Finals: hand-pick finalists. Sets the dedicated `finalist` boolean on the
+  // given teams. Deliberately kept SEPARATE from shortlisting (`shortlisted` /
+  // `shortlistedPhases`) and from `juryStatus` — this touches only `finalist`.
+  // Body: { teamIds: string[], finalist: boolean }  (or { teamId, finalist }).
+  router.post('/finalists/set', async (req, res, next) => {
+    try {
+      const body = req.body || {}
+      const finalist = body.finalist === true
+      let ids = []
+      if (Array.isArray(body.teamIds)) ids = body.teamIds
+      else if (typeof body.teamId === 'string') ids = [body.teamId]
+      ids = [...new Set(ids.map((x) => String(x || '').trim()).filter(Boolean))]
+      if (!ids.length) return res.status(400).json({ error: 'Provide teamIds (array) or teamId.' })
+      if (ids.length > 500) return res.status(400).json({ error: 'Too many teams in one request (max 500).' })
+      const invalid = ids.filter((id) => !isValidDocId(id))
+      if (invalid.length) return res.status(400).json({ error: `Invalid team ID(s): ${invalid.slice(0, 5).join(', ')}` })
+
+      const batch = db().batch()
+      for (const id of ids) {
+        batch.set(
+          db().doc(`teams/${id}`),
+          { finalist, updatedAt: FieldValue.serverTimestamp() },
+          { merge: true }
+        )
+      }
+      await batch.commit()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: finalist ? 'finalist.add' : 'finalist.remove',
+        targetType: 'team',
+        targetId: ids.length === 1 ? ids[0] : `${ids.length} teams`,
+        metadata: { teamIds: ids.slice(0, 50), finalist, count: ids.length },
+      })
+      res.json({ ok: true, count: ids.length, finalist })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /**
    * Admin listing of problem statements — includes drafts AND private
    * participant-authored Open Innovation entries (which the public endpoint
@@ -1751,6 +1914,9 @@ export function adminRouter() {
       const theme = typeof body.theme === 'string' ? body.theme.trim().slice(0, 120) : ''
       const description = typeof body.description === 'string' ? body.description.trim().slice(0, 20000) : ''
       const published = body.published !== false
+      // Origin/type: admins may only create curated ('') or 'super_ps' problem
+      // statements. 'open_innovation' is reserved for participant submissions.
+      const origin = body.origin === 'super_ps' ? 'super_ps' : ''
       let maxTeams
       if (typeof body.maxTeams === 'number' && body.maxTeams >= 0) maxTeams = Math.min(1_000_000, Math.floor(body.maxTeams))
 
@@ -1790,6 +1956,7 @@ export function adminRouter() {
         ...(department ? { department } : {}),
         ...(category ? { category } : {}),
         ...(theme ? { theme } : {}),
+        ...(origin ? { origin } : {}),
         description,
         published,
         order,
@@ -1829,6 +1996,9 @@ export function adminRouter() {
       if (items.length > 200) {
         return res.status(400).json({ error: 'Maximum 200 problem statements per bulk import' })
       }
+      // Optional batch type: mark this whole import as 'super_ps'. Anything else
+      // (including absent) is treated as a regular curated import.
+      const batchOrigin = req.body?.origin === 'super_ps' ? 'super_ps' : ''
 
       const activeEvent = await getActiveEvent()
       const eventId = activeEvent?.id
@@ -1994,6 +2164,7 @@ export function adminRouter() {
             ...(department ? { department } : {}),
             ...(category ? { category } : {}),
             ...(theme ? { theme } : {}),
+            ...(batchOrigin ? { origin: batchOrigin } : {}),
             description,
             published,
             order,
@@ -2054,6 +2225,12 @@ export function adminRouter() {
         patch.visibility = 'private'
       } else if (typeof body.published === 'boolean') {
         patch.published = body.published
+      }
+      // Type/origin changes are only allowed for admin-curated PS. Open Innovation
+      // entries are participant-authored and their origin stays locked.
+      if (!isOpenInnovationPs && typeof body.origin === 'string') {
+        if (body.origin === 'super_ps') patch.origin = 'super_ps'
+        else if (body.origin === '' || body.origin === 'curated') patch.origin = FieldValue.delete()
       }
       if (body.maxTeams === null) patch.maxTeams = FieldValue.delete()
       else if (typeof body.maxTeams === 'number' && body.maxTeams >= 0) patch.maxTeams = body.maxTeams
@@ -2144,6 +2321,275 @@ export function adminRouter() {
         targetType: 'problemStatement',
         targetId: psId,
         eventId: ped || evScope,
+        metadata: {},
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  // ─── Challenges (admin CRUD + bulk import) ───────────────────────────
+  // Challenges are content items that "drop" to participants on the schedule
+  // configured on the event (challengesEnabled / challengesStartAt /
+  // challengesIntervalMinutes — set via PATCH /events). Stored in the
+  // `challenges` collection, event-scoped, ordered by `order`.
+  router.get('/challenges', async (req, res, next) => {
+    try {
+      const activeEvent = await getActiveEvent()
+      const eventId = String(req.query.eventId || req.eventId || activeEvent?.id || '').trim()
+      const merged = await getActiveEventConfig()
+
+      let q = db().collection('challenges')
+      if (eventId) q = q.where('eventId', '==', eventId)
+      let snap
+      try {
+        snap = await q.orderBy('order', 'asc').get()
+      } catch {
+        snap = await q.get()
+      }
+      const challenges = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
+
+      const enabled = merged.challengesEnabled === true
+      const intervalMinutes =
+        typeof merged.challengesIntervalMinutes === 'number' && merged.challengesIntervalMinutes > 0
+          ? Math.floor(merged.challengesIntervalMinutes)
+          : 120
+      const startDate =
+        merged.challengesStartAt && typeof merged.challengesStartAt.toDate === 'function'
+          ? merged.challengesStartAt.toDate()
+          : null
+      const startMs = startDate ? startDate.getTime() : null
+      const now = Date.now()
+      const total = challenges.length
+      let releasedCount = 0
+      let nextDropAt = null
+      if (enabled && startMs != null && total > 0) {
+        releasedCount = now >= startMs ? Math.min(total, Math.floor((now - startMs) / (intervalMinutes * 60000)) + 1) : 0
+        if (releasedCount < total) nextDropAt = startMs + releasedCount * intervalMinutes * 60000
+      }
+
+      res.json({
+        eventId,
+        challenges,
+        schedule: {
+          enabled,
+          intervalMinutes,
+          startAt: startMs != null ? new Date(startMs).toISOString() : null,
+        },
+        status: {
+          total,
+          releasedCount,
+          upcomingCount: Math.max(0, total - releasedCount),
+          nextDropAt: nextDropAt != null ? new Date(nextDropAt).toISOString() : null,
+          serverTime: new Date().toISOString(),
+        },
+      })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  router.post('/challenges', async (req, res, next) => {
+    try {
+      const body = req.body || {}
+      const activeEvent = await getActiveEvent()
+      const eventId = activeEvent?.id
+      if (!eventId) return res.status(503).json({ error: 'Hackathon is starting up. Try again in a moment.' })
+
+      const title = typeof body.title === 'string' ? body.title.trim().slice(0, 200) : ''
+      if (!title) return res.status(400).json({ error: 'title is required' })
+      const description = typeof body.description === 'string' ? body.description.trim().slice(0, 20000) : ''
+      const whyUniversal = typeof body.whyUniversal === 'string' ? body.whyUniversal.trim().slice(0, 20000) : ''
+      const whatToShow = typeof body.whatToShow === 'string' ? body.whatToShow.trim().slice(0, 20000) : ''
+
+      let order = typeof body.order === 'number' && Number.isFinite(body.order) ? Math.round(body.order) : null
+      if (order == null) {
+        let maxO = -1
+        try {
+          const q = await db().collection('challenges').where('eventId', '==', eventId).orderBy('order', 'desc').limit(1).get()
+          if (!q.empty) {
+            const o = q.docs[0].data().order
+            if (typeof o === 'number' && o > maxO) maxO = o
+          }
+        } catch {
+          const q = await db().collection('challenges').where('eventId', '==', eventId).limit(500).get()
+          for (const d of q.docs) {
+            const o = d.data().order
+            if (typeof o === 'number' && o > maxO) maxO = o
+          }
+        }
+        order = maxO + 1
+      }
+
+      const ref = db().collection('challenges').doc()
+      await ref.set({
+        eventId,
+        title,
+        description,
+        whyUniversal,
+        whatToShow,
+        order,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: req.user.uid,
+        updatedBy: req.user.uid,
+      })
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'challenge.create',
+        targetType: 'challenge',
+        targetId: ref.id,
+        eventId,
+        metadata: { title: title.slice(0, 80) },
+      })
+      res.json({ ok: true, id: ref.id, eventId })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Bulk import challenges from parsed CSV rows: { title, description, order? } */
+  router.post('/challenges/bulk-import', async (req, res, next) => {
+    try {
+      const items = Array.isArray(req.body?.items) ? req.body.items : []
+      if (items.length === 0) return res.status(400).json({ error: 'items array required (parsed CSV rows)' })
+      if (items.length > 200) return res.status(400).json({ error: 'Maximum 200 challenges per bulk import' })
+      const activeEvent = await getActiveEvent()
+      const eventId = activeEvent?.id
+      if (!eventId) return res.status(503).json({ error: 'Hackathon is starting up. Try again in a moment.' })
+
+      let nextOrder = 0
+      try {
+        const q = await db().collection('challenges').where('eventId', '==', eventId).orderBy('order', 'desc').limit(1).get()
+        if (!q.empty) {
+          const o = q.docs[0].data().order
+          if (typeof o === 'number') nextOrder = o + 1
+        }
+      } catch {
+        const q = await db().collection('challenges').where('eventId', '==', eventId).limit(500).get()
+        let maxO = -1
+        for (const d of q.docs) {
+          const o = d.data().order
+          if (typeof o === 'number' && o > maxO) maxO = o
+        }
+        nextOrder = maxO + 1
+      }
+
+      const results = { success: 0, failed: 0, errors: [], created: [] }
+      let batch = db().batch()
+      let ops = 0
+      for (let i = 0; i < items.length; i++) {
+        const row = items[i] || {}
+        const lineNum = i + 2
+        const title = typeof row.title === 'string' ? row.title.trim().slice(0, 200) : ''
+        if (!title) {
+          results.failed += 1
+          results.errors.push({ line: lineNum, error: 'Missing required field: title' })
+          continue
+        }
+        const description = typeof row.description === 'string' ? row.description.trim().slice(0, 20000) : ''
+        // Accept snake_case (from CSV headers, which are lower-cased) or camelCase.
+        const whyRaw = row.whyUniversal ?? row.why_universal ?? row.whyuniversal
+        const showRaw = row.whatToShow ?? row.what_to_show ?? row.whattoshow
+        const whyUniversal = typeof whyRaw === 'string' ? whyRaw.trim().slice(0, 20000) : ''
+        const whatToShow = typeof showRaw === 'string' ? showRaw.trim().slice(0, 20000) : ''
+        let order = nextOrder
+        if (row.order !== undefined && row.order !== null && row.order !== '') {
+          const n = Number(row.order)
+          if (!Number.isNaN(n) && Number.isFinite(n)) order = Math.round(n)
+          else nextOrder += 1
+        } else {
+          nextOrder += 1
+        }
+        const ref = db().collection('challenges').doc()
+        batch.set(ref, {
+          eventId,
+          title,
+          description,
+          whyUniversal,
+          whatToShow,
+          order,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          createdBy: req.user.uid,
+          updatedBy: req.user.uid,
+        })
+        ops += 1
+        results.success += 1
+        results.created.push({ id: ref.id, title })
+        if (ops >= 400) {
+          // eslint-disable-next-line no-await-in-loop
+          await batch.commit()
+          batch = db().batch()
+          ops = 0
+        }
+      }
+      if (ops > 0) await batch.commit()
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'challenge.bulk_import',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: { total: items.length, success: results.success, failed: results.failed },
+      })
+      res.json({ ok: true, ...results, eventId })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  router.patch('/challenges/:id', async (req, res, next) => {
+    try {
+      const { id } = req.params
+      if (!isValidDocId(id)) return res.status(400).json({ error: 'Invalid challenge id.' })
+      const body = req.body || {}
+      const ref = db().doc(`challenges/${id}`)
+      const snap = await ref.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Challenge not found' })
+      const patch = { updatedAt: FieldValue.serverTimestamp(), updatedBy: req.user.uid }
+      if (typeof body.title === 'string') {
+        const t = body.title.trim().slice(0, 200)
+        if (!t) return res.status(400).json({ error: 'title cannot be empty' })
+        patch.title = t
+      }
+      if (typeof body.description === 'string') patch.description = body.description.trim().slice(0, 20000)
+      if (typeof body.whyUniversal === 'string') patch.whyUniversal = body.whyUniversal.trim().slice(0, 20000)
+      if (typeof body.whatToShow === 'string') patch.whatToShow = body.whatToShow.trim().slice(0, 20000)
+      if (typeof body.order === 'number' && Number.isFinite(body.order)) patch.order = Math.round(body.order)
+      await ref.set(patch, { merge: true })
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'challenge.patch',
+        targetType: 'challenge',
+        targetId: id,
+        eventId: snap.data().eventId || '',
+        metadata: { keys: Object.keys(patch).filter((k) => !['updatedAt', 'updatedBy'].includes(k)) },
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  router.delete('/challenges/:id', async (req, res, next) => {
+    try {
+      const { id } = req.params
+      if (!isValidDocId(id)) return res.status(400).json({ error: 'Invalid challenge id.' })
+      const ref = db().doc(`challenges/${id}`)
+      const snap = await ref.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Challenge not found' })
+      const eventId = snap.data().eventId || ''
+      await ref.delete()
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'challenge.delete',
+        targetType: 'challenge',
+        targetId: id,
+        eventId,
         metadata: {},
       })
       res.json({ ok: true })
@@ -4282,8 +4728,12 @@ export function judgesRouter() {
         evaluationCriteria: scoringConfig.mode === 'twoPart' ? scoringConfig.criteriaA : scoringConfig.criteria,
         ...(scoringConfig.mode === 'twoPart'
           ? {
-              evaluationCriteriaA: scoringConfig.criteriaA,
-              evaluationCriteriaB: scoringConfig.criteriaB,
+              // Project-only criteria per part; the shared Universal Challenge is
+              // sent separately so the judge UI shows it as its own block inside
+              // BOTH parts. Combined (project + challenge) lists live server-side.
+              evaluationCriteriaA: scoringConfig.projectA,
+              evaluationCriteriaB: scoringConfig.projectB,
+              challengeCriteria: scoringConfig.challenge,
               partAWeight: scoringConfig.rawWeightA,
               partBWeight: scoringConfig.rawWeightB,
               partALabel: scoringConfig.labelA,
@@ -4328,6 +4778,10 @@ export function judgesRouter() {
       const teamsFiltered = teamsSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((t) => {
+          // Finals gate: when finalistsOnly is on, only hand-picked finalists
+          // (team.finalist === true) are evaluable — checked before any
+          // assignment short-circuit so non-finalists never appear in the queue.
+          if (merged.finalistsOnly === true && t.finalist !== true) return false
           // Direct team assignment (team.judgeIds) — include regardless of PS.
           if (Array.isArray(t.judgeIds) && t.judgeIds.includes(uid)) return true
           if (!t.problemStatementId) return false
@@ -4413,6 +4867,10 @@ export function judgesRouter() {
 
       const evtId = teamRaw.eventId || req.eventId || null
       const merged = await getActiveEventConfig()
+      // Finals gate: when finalistsOnly is on, only hand-picked finalists are reviewable.
+      if (merged.finalistsOnly === true && teamRaw.finalist !== true) {
+        return res.status(403).json({ error: 'Finals judging is restricted to selected finalists.' })
+      }
       const { getEvaluationPhase: getEvalPhaseReview } = await import('../services/competitionPhases.js')
       const evalPhaseReview = getEvalPhaseReview(merged)
       const scoringConfig = resolveScoringConfig(merged, evalPhaseReview)
@@ -4424,8 +4882,10 @@ export function judgesRouter() {
         evaluationCriteria: scoringConfig.mode === 'twoPart' ? scoringConfig.criteriaA : scoringConfig.criteria,
         ...(scoringConfig.mode === 'twoPart'
           ? {
-              evaluationCriteriaA: scoringConfig.criteriaA,
-              evaluationCriteriaB: scoringConfig.criteriaB,
+              // Project-only per part; shared challenge sent separately (see /assignments).
+              evaluationCriteriaA: scoringConfig.projectA,
+              evaluationCriteriaB: scoringConfig.projectB,
+              challengeCriteria: scoringConfig.challenge,
               partAWeight: scoringConfig.rawWeightA,
               partBWeight: scoringConfig.rawWeightB,
               partALabel: scoringConfig.labelA,
@@ -4516,6 +4976,11 @@ export function judgesRouter() {
       const merged = await getActiveEventConfig()
       if (!evaluationPhaseAllowsJudge(merged)) {
         return res.status(403).json({ error: 'Evaluations are not open for this event phase.' })
+      }
+
+      // Finals gate: when finalistsOnly is on, only hand-picked finalists can be scored.
+      if (merged.finalistsOnly === true && team.finalist !== true) {
+        return res.status(403).json({ error: 'Finals judging is restricted to selected finalists.' })
       }
 
       if (req.eventId && team.eventId && team.eventId !== req.eventId) {
@@ -4633,6 +5098,10 @@ export function judgesRouter() {
           payload.partBWeight = scoringConfig.rawWeightB
           payload.partALabel = scoringConfig.labelA
           payload.partBLabel = scoringConfig.labelB
+          // Snapshot the shared Universal Challenge rubric too, so the admin
+          // "Finals Evaluations" view can split project vs challenge scores
+          // even if the rubric is edited after submission.
+          payload.challengeCriteria = Array.isArray(scoringConfig.challenge) ? scoringConfig.challenge : []
           // Clear any legacy single-mode fields in case this doc was previously
           // scored under single mode and the phase was switched to twoPart.
           if (prev && prev.scoringMode !== 'twoPart') {

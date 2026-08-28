@@ -76,6 +76,9 @@ export const publicApi = {
     ),
   // Home hero slideshow — public read of admin-managed banners + settings.
   getHeroBanners: () => cachedRequest('/api/hero-banners'),
+  // Challenges that "drop" to participants on a schedule — only released ones
+  // are returned. Uncached so drops appear promptly.
+  getChallenges: () => request('/api/challenges'),
 }
 
 export function createApi(getToken, getEventId = () => '') {
@@ -216,13 +219,34 @@ export function createApi(getToken, getEventId = () => '') {
     patchAdminProblemStatement: (psId, body) =>
       authReq(`/api/admin/problem-statements/${encodeURIComponent(psId)}`, { method: 'PATCH', body }),
     createAdminProblemStatement: (body) => authReq('/api/admin/problem-statements', { method: 'POST', body }),
-    bulkImportProblemStatements: (items) =>
-      authReq('/api/admin/problem-statements/bulk-import', { method: 'POST', body: { items } }),
+    bulkImportProblemStatements: (items, origin) =>
+      authReq('/api/admin/problem-statements/bulk-import', {
+        method: 'POST',
+        body: { items, ...(origin ? { origin } : {}) },
+      }),
     deleteAdminProblemStatement: (psId) =>
       authReq(`/api/admin/problem-statements/${encodeURIComponent(psId)}`, { method: 'DELETE' }),
     // Admin listing includes drafts + private Open Innovation entries
     listAdminProblemStatements: (eventId) =>
       authReq(`/api/admin/problem-statements${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
+    // Challenges (scheduled "drops"). Schedule config is set via patchAdminEvent.
+    listAdminChallenges: (eventId) =>
+      authReq(`/api/admin/challenges${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
+    createAdminChallenge: (body) => authReq('/api/admin/challenges', { method: 'POST', body }),
+    patchAdminChallenge: (id, body) =>
+      authReq(`/api/admin/challenges/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+    deleteAdminChallenge: (id) =>
+      authReq(`/api/admin/challenges/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    bulkImportChallenges: (items) =>
+      authReq('/api/admin/challenges/bulk-import', { method: 'POST', body: { items } }),
+    // Finals: hand-pick finalists. Sets the dedicated `finalist` flag on teams
+    // (separate from shortlisting). Per-domain target counts + the finalistsOnly
+    // gate are stored on the event via patchAdminEvent (finalistsPerDomain / finalistsOnly).
+    setFinalists: (teamIds, finalist) =>
+      authReq('/api/admin/finalists/set', {
+        method: 'POST',
+        body: { teamIds: Array.isArray(teamIds) ? teamIds : [teamIds], finalist: finalist === true },
+      }),
     adminSystemHealth: () => authReq('/api/admin/system-health'),
     // Security Center
     listPlatformActivity: (limit = 300) => authReq(`/api/admin/security/activity?limit=${limit}`),

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
+  ArrowRight,
   ExternalLink,
   FileText,
   Github,
@@ -11,7 +12,7 @@ import {
   Send,
   Save,
   CheckCircle2,
-  Circle,
+  Zap,
 } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
@@ -76,22 +77,33 @@ function httpsUrl(url) {
 /** One rubric block — a set of sliders for a criteria list. */
 function RubricSliders({ criteria, scores, onChange, canEdit }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {criteria.map(({ key, label, hint, maxScore }) => {
         const m = typeof maxScore === 'number' && maxScore > 0 ? maxScore : 10
-        const step = m <= 10 ? 0.5 : 1
+        // Small scales (e.g. the 0–3 Universal Challenge items) step by whole
+        // points; mid scales allow half points; large scales step by 1.
+        const step = m <= 3 ? 1 : m <= 10 ? 0.5 : 1
         const raw = scores[key]
         const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : Math.round((m / 2) * 10) / 10
         const hintText = hint?.trim() ? hint : `Score from 0 to ${m}.`
+        const pct = m > 0 ? Math.round((value / m) * 100) : 0
         return (
-          <div key={key}>
-            <label className="flex justify-between gap-2 text-sm font-medium text-ink-800" htmlFor={`score-${key}`}>
-              <span>{label}</span>
-              <span className="font-mono text-brand-600">
-                {value} / {m}
+          <div
+            key={key}
+            className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3.5 transition-colors hover:border-brand-500/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <label htmlFor={`score-${key}`} className="block text-sm font-semibold text-ink-900">
+                  {label}
+                </label>
+                <p className="mt-0.5 text-[11px] leading-snug text-ink-500">{hintText}</p>
+              </div>
+              <span className="shrink-0 rounded-lg bg-brand-500/10 px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-brand-700">
+                {value}
+                <span className="text-brand-400"> / {m}</span>
               </span>
-            </label>
-            <p className="text-[11px] text-ink-500">{hintText}</p>
+            </div>
             <input
               id={`score-${key}`}
               type="range"
@@ -101,8 +113,14 @@ function RubricSliders({ criteria, scores, onChange, canEdit }) {
               disabled={!canEdit}
               value={value}
               onChange={(e) => onChange(key, Number(e.target.value))}
-              className="mt-2 w-full accent-brand-600 disabled:opacity-50"
+              aria-valuetext={`${value} out of ${m}`}
+              className="mt-3 h-1.5 w-full cursor-pointer accent-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
             />
+            <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium text-ink-400">
+              <span>0</span>
+              <span aria-hidden="true" className="tabular-nums text-brand-500">{pct}%</span>
+              <span>{m}</span>
+            </div>
           </div>
         )
       })}
@@ -110,27 +128,47 @@ function RubricSliders({ criteria, scores, onChange, canEdit }) {
   )
 }
 
-/** Two-step progress strip shown at the top of the rubric card in two-part mode. */
-function TwoEvalStepper({ labelA, labelB, statusA, statusB }) {
-  const steps = [
-    { n: 1, label: `Evaluation 1 — ${labelA}`, done: statusA === 'submitted' },
-    { n: 2, label: `Evaluation 2 — ${labelB}`, done: statusB === 'submitted' },
-  ]
+/**
+ * Ordered progress strip. `position` is the 1-based current step; steps with
+ * n < position render as done, n === position as the active step. Used for the
+ * 4-step finals flow (Part A project → Part A challenge → Part B project →
+ * Part B challenge), or the 2-step flow when no challenge rubric exists.
+ */
+function StepStrip({ steps, position }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
-      {steps.map((s) => (
-        <div key={s.n} className="flex items-center gap-2">
-          {s.done ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-          ) : (
-            <Circle className="h-4 w-4 shrink-0 text-ink-300" />
-          )}
-          <span className={`text-sm ${s.done ? 'text-ink-500 line-through' : 'font-medium text-ink-900'}`}>
-            {s.label}
-          </span>
-          {s.done ? <Badge tone="success" className="ml-auto text-[10px]">Submitted</Badge> : null}
-        </div>
-      ))}
+    <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
+      {steps.map((s, i) => {
+        const done = position > s.n
+        const current = position === s.n
+        return (
+          <div key={s.n}>
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                  done
+                    ? 'bg-emerald-500 text-white'
+                    : current
+                      ? 'bg-brand-500 text-white'
+                      : 'border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-ink-500'
+                }`}
+              >
+                {done ? <CheckCircle2 className="h-4 w-4" /> : s.n}
+              </span>
+              <span className={`text-sm ${current ? 'font-semibold text-ink-900' : done ? 'text-ink-500' : 'text-ink-600'}`}>
+                {s.label}
+              </span>
+              {done ? (
+                <Badge tone="success" className="ml-auto text-[10px]">Done</Badge>
+              ) : current ? (
+                <Badge tone="brand" className="ml-auto text-[10px]">Current</Badge>
+              ) : null}
+            </div>
+            {i < steps.length - 1 ? (
+              <span className="ml-[13px] block h-3 w-px bg-[rgb(var(--border))]" aria-hidden="true" />
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -157,6 +195,8 @@ export function JudgeTeamReviewPage() {
   const [twoPart, setTwoPart] = useState(false)
   const [criteriaA, setCriteriaA] = useState([])
   const [criteriaB, setCriteriaB] = useState([])
+  // Shared "Universal Challenge" rubric — scored inside BOTH parts (may be empty).
+  const [criteriaU, setCriteriaU] = useState([])
   const [scoresA, setScoresA] = useState({})
   const [scoresB, setScoresB] = useState({})
   const [feedbackA, setFeedbackA] = useState('')
@@ -165,6 +205,10 @@ export function JudgeTeamReviewPage() {
   const [labelB, setLabelB] = useState('Part B')
   const [statusA, setStatusA] = useState('pending')
   const [statusB, setStatusB] = useState('pending')
+  // Within the active part the judge fills two ordered sub-steps: the project
+  // rubric first, then the shared Universal Challenge. Only used when a
+  // challenge rubric exists; otherwise the part is a single step.
+  const [microStep, setMicroStep] = useState('project') // 'project' | 'challenge'
 
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
@@ -199,15 +243,20 @@ export function JudgeTeamReviewPage() {
         const critB = Array.isArray(data.edition?.evaluationCriteriaB) && data.edition.evaluationCriteriaB.length > 0
           ? data.edition.evaluationCriteriaB
           : FALLBACK_CRITERIA
+        // Shared Universal Challenge — scored inside BOTH parts (may be empty).
+        const critU = Array.isArray(data.edition?.challengeCriteria) ? data.edition.challengeCriteria : []
         setCriteriaA(critA)
         setCriteriaB(critB)
+        setCriteriaU(critU)
         setLabelA(data.edition?.partALabel || 'Part A')
         setLabelB(data.edition?.partBLabel || 'Part B')
         setStatusA(data.evaluation?.statusA || 'pending')
         setStatusB(data.evaluation?.statusB || 'pending')
 
-        const baseA = defaultScoresFromCriteria(critA)
-        const baseB = defaultScoresFromCriteria(critB)
+        // Seed defaults from each part's COMBINED criteria (project + challenge)
+        // so the challenge sliders have values even before a server snapshot.
+        const baseA = defaultScoresFromCriteria([...critA, ...critU])
+        const baseB = defaultScoresFromCriteria([...critB, ...critU])
         const prevA = data.evaluation?.scoresA && typeof data.evaluation.scoresA === 'object' ? data.evaluation.scoresA : {}
         const prevB = data.evaluation?.scoresB && typeof data.evaluation.scoresB === 'object' ? data.evaluation.scoresB : {}
         setScoresA({ ...baseA, ...prevA })
@@ -257,9 +306,20 @@ export function JudgeTeamReviewPage() {
   const canEditA = canEditAtAll && activeStep === 'A'
   const canEditB = canEditAtAll && activeStep === 'B'
 
+  // When we advance to a different part (A → B), restart at its first sub-step.
+  useEffect(() => {
+    setMicroStep('project')
+  }, [activeStep])
+
   // Totals for the read-only summary of a completed part.
-  const totalsA = useMemo(() => partTotal(criteriaA, scoresA), [criteriaA, scoresA])
-  const totalsB = useMemo(() => partTotal(criteriaB, scoresB), [criteriaB, scoresB])
+  const totalsA = useMemo(
+    () => partTotal(criteriaU.length ? [...criteriaA, ...criteriaU] : criteriaA, scoresA),
+    [criteriaA, criteriaU, scoresA],
+  )
+  const totalsB = useMemo(
+    () => partTotal(criteriaU.length ? [...criteriaB, ...criteriaU] : criteriaB, scoresB),
+    [criteriaB, criteriaU, scoresB],
+  )
 
   function buildSinglePayload(draft) {
     return {
@@ -273,10 +333,14 @@ export function JudgeTeamReviewPage() {
 
   function buildPartPayload(part, draft) {
     const isA = part === 'A'
+    // Each part's payload includes its project criteria PLUS the shared
+    // Universal Challenge, so the challenge is scored within both parts.
+    const projectCrit = isA ? criteriaA : criteriaB
+    const combinedCrit = criteriaU.length ? [...projectCrit, ...criteriaU] : projectCrit
     return {
       teamId,
       part,
-      scores: buildScoresPayload(isA ? criteriaA : criteriaB, isA ? scoresA : scoresB),
+      scores: buildScoresPayload(combinedCrit, isA ? scoresA : scoresB),
       feedback: isA ? feedbackA : feedbackB,
       draft,
       // Team status is only required/sent with the FINAL (Part B) submission —
@@ -438,6 +502,28 @@ export function JudgeTeamReviewPage() {
   const video = httpsUrl(submission?.videoUrl)
   const gh = httpsUrl(submission?.githubUrl)
 
+  // Ordered finals steps. With a challenge rubric it's four sub-steps
+  // (project + challenge per part); without one it's the plain two-part flow.
+  const hasChallenge = criteriaU.length > 0
+  const stepperSteps = hasChallenge
+    ? [
+        { n: 1, label: `${labelA} · Project` },
+        { n: 2, label: `${labelA} · Challenge` },
+        { n: 3, label: `${labelB} · Project` },
+        { n: 4, label: `${labelB} · Challenge` },
+      ]
+    : [
+        { n: 1, label: `Evaluation 1 — ${labelA}` },
+        { n: 2, label: `Evaluation 2 — ${labelB}` },
+      ]
+  const stepperPosition = hasChallenge
+    ? activeStep === 'A'
+      ? microStep === 'challenge' ? 2 : 1
+      : activeStep === 'B'
+        ? microStep === 'challenge' ? 4 : 3
+        : 5
+    : activeStep === 'A' ? 1 : activeStep === 'B' ? 2 : 3
+
   return (
     <div className="mx-auto max-w-6xl space-y-8 pb-24 lg:pb-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -581,12 +667,14 @@ export function JudgeTeamReviewPage() {
             {twoPart ? (
               <div className="mt-4 space-y-6">
                 <p className="text-xs text-ink-500">
-                  This is a Grand Finale team — you must submit <strong>two separate evaluations</strong> for it:
-                  first for the existing project, then for the new challenge. Evaluation 2 unlocks only after
-                  Evaluation 1 is submitted, and cannot be edited afterwards.
+                  This is a Grand Finale team.{' '}
+                  {hasChallenge
+                    ? `Score it in four ordered steps — the ${labelA} project, then the ${labelA} challenge, then the ${labelB} project, then the ${labelB} challenge.`
+                    : `You submit two separate evaluations — ${labelA}, then ${labelB}.`}{' '}
+                  {labelB} unlocks only after {labelA} is submitted, and submitted evaluations cannot be edited.
                 </p>
 
-                <TwoEvalStepper labelA={labelA} labelB={labelB} statusA={statusA} statusB={statusB} />
+                <StepStrip steps={stepperSteps} position={stepperPosition} />
 
                 {/* Evaluation 1 summary once submitted — read-only recap */}
                 {statusA === 'submitted' ? (
@@ -599,98 +687,182 @@ export function JudgeTeamReviewPage() {
                   </div>
                 ) : null}
 
-                {/* Active: Evaluation 1 form */}
+                {/* Active: Evaluation 1 (Part A) — project first, then the challenge. */}
                 {activeStep === 'A' ? (
                   <div>
                     <h3 className="font-display text-base font-semibold text-ink-900">
                       Evaluation 1 of 2 — {labelA}
                     </h3>
                     <p className="mt-1 text-[11px] text-ink-500">
-                      Score the project that qualified this team for the finals.
+                      {hasChallenge
+                        ? microStep === 'challenge'
+                          ? `Step 2 of 4 — score the Universal Challenge as demonstrated in ${labelA}.`
+                          : 'Step 1 of 4 — score the project that qualified this team for the finals.'
+                        : 'Score the project that qualified this team for the finals.'}
                     </p>
-                    <div className="mt-4">
-                      <RubricSliders criteria={criteriaA} scores={scoresA} onChange={updateScoreA} canEdit={canEditA} />
-                    </div>
-                    <div className="mt-4">
-                      <Textarea
-                        label={`Remarks — ${labelA}`}
-                        value={feedbackA}
-                        disabled={!canEditA}
-                        onChange={(e) => updateFeedbackA(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
+
+                    {!hasChallenge || microStep === 'project' ? (
+                      <div className="mt-4">
+                        <RubricSliders criteria={criteriaA} scores={scoresA} onChange={updateScoreA} canEdit={canEditA} />
+                      </div>
+                    ) : null}
+
+                    {hasChallenge && microStep === 'challenge' ? (
+                      <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+                        <div className="mb-3 flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600">
+                            <Zap className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <h4 className="font-display text-sm font-semibold text-ink-900">Universal Challenge</h4>
+                            <p className="text-[11px] text-ink-500">Common to all teams · counts inside {labelA}</p>
+                          </div>
+                        </div>
+                        <RubricSliders criteria={criteriaU} scores={scoresA} onChange={updateScoreA} canEdit={canEditA} />
+                      </div>
+                    ) : null}
+
+                    {!hasChallenge || microStep === 'challenge' ? (
+                      <div className="mt-4">
+                        <Textarea
+                          label={`Remarks — ${labelA}`}
+                          value={feedbackA}
+                          disabled={!canEditA}
+                          onChange={(e) => updateFeedbackA(e.target.value)}
+                          rows={4}
+                        />
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <Button variant="secondary" type="button" disabled={!canEditA} className="gap-2" onClick={saveDraftNow}>
                         <Save className="h-4 w-4" />
-                        Save draft now
+                        Save draft
                       </Button>
-                      <Button variant="primary" type="button" disabled={!canEditA} className="gap-2" onClick={() => submitPart('A')}>
-                        <Send className="h-4 w-4" />
-                        Submit Evaluation 1
-                      </Button>
+                      {hasChallenge && microStep === 'project' ? (
+                        <Button variant="primary" type="button" className="gap-2" onClick={() => setMicroStep('challenge')}>
+                          Next: {labelA} Challenge
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <>
+                          {hasChallenge ? (
+                            <Button variant="secondary" type="button" className="gap-2" onClick={() => setMicroStep('project')}>
+                              <ArrowLeft className="h-4 w-4" />
+                              Back
+                            </Button>
+                          ) : null}
+                          <Button variant="primary" type="button" disabled={!canEditA} className="gap-2" onClick={() => submitPart('A')}>
+                            <Send className="h-4 w-4" />
+                            Submit Evaluation 1
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : null}
 
-                {/* Active: Evaluation 2 form (unlocked only after Evaluation 1 is submitted) */}
+                {/* Active: Evaluation 2 (Part B) — project first, then the challenge.
+                    Unlocks only after Evaluation 1 (Part A) is submitted. */}
                 {activeStep === 'B' ? (
                   <div className="border-t border-[rgb(var(--border))] pt-6">
                     <h3 className="font-display text-base font-semibold text-ink-900">
                       Evaluation 2 of 2 — {labelB}
                     </h3>
                     <p className="mt-1 text-[11px] text-ink-500">
-                      Score the team&apos;s response to the new problem statement / challenge.
+                      {hasChallenge
+                        ? microStep === 'challenge'
+                          ? `Step 4 of 4 — score the Universal Challenge as demonstrated in ${labelB}.`
+                          : "Step 3 of 4 — score the team's response to the new / Super problem statement."
+                        : "Score the team's response to the new problem statement / challenge."}
                     </p>
-                    <div className="mt-4">
-                      <RubricSliders criteria={criteriaB} scores={scoresB} onChange={updateScoreB} canEdit={canEditB} />
-                    </div>
-                    <div className="mt-4">
-                      <Textarea
-                        label={`Remarks — ${labelB}`}
-                        value={feedbackB}
-                        disabled={!canEditB}
-                        onChange={(e) => updateFeedbackB(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
 
-                    {/* Team status — required before this final submission completes the evaluation. */}
-                    <div className="mt-4">
-                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-                        Team status <span className="text-red-500">*</span>
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
-                          const active = juryStatus === val
-                          return (
-                            <Button
-                              key={val}
-                              type="button"
-                              size="sm"
-                              variant={active ? 'primary' : 'secondary'}
-                              disabled={statusBusy || !canEditB}
-                              onClick={() => updateJuryStatus(active ? '' : val)}
-                            >
-                              {label}{active ? ' ✓' : ''}
-                            </Button>
-                          )
-                        })}
+                    {!hasChallenge || microStep === 'project' ? (
+                      <div className="mt-4">
+                        <RubricSliders criteria={criteriaB} scores={scoresB} onChange={updateScoreB} canEdit={canEditB} />
                       </div>
-                      <p className="mt-1 text-[11px] text-ink-400">Required before you can submit Evaluation 2.</p>
-                    </div>
+                    ) : null}
+
+                    {hasChallenge && microStep === 'challenge' ? (
+                      <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+                        <div className="mb-3 flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600">
+                            <Zap className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <h4 className="font-display text-sm font-semibold text-ink-900">Universal Challenge</h4>
+                            <p className="text-[11px] text-ink-500">Common to all teams · counts inside {labelB}</p>
+                          </div>
+                        </div>
+                        <RubricSliders criteria={criteriaU} scores={scoresB} onChange={updateScoreB} canEdit={canEditB} />
+                      </div>
+                    ) : null}
+
+                    {!hasChallenge || microStep === 'challenge' ? (
+                      <>
+                        <div className="mt-4">
+                          <Textarea
+                            label={`Remarks — ${labelB}`}
+                            value={feedbackB}
+                            disabled={!canEditB}
+                            onChange={(e) => updateFeedbackB(e.target.value)}
+                            rows={4}
+                          />
+                        </div>
+
+                        {/* Team status — required before this final submission completes the evaluation. */}
+                        <div className="mt-4">
+                          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                            Team status <span className="text-red-500">*</span>
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {[['qualified', 'Qualified'], ['waitlist', 'Waitlist'], ['not_qualified', 'Not Qualified']].map(([val, label]) => {
+                              const active = juryStatus === val
+                              return (
+                                <Button
+                                  key={val}
+                                  type="button"
+                                  size="sm"
+                                  variant={active ? 'primary' : 'secondary'}
+                                  disabled={statusBusy || !canEditB}
+                                  onClick={() => updateJuryStatus(active ? '' : val)}
+                                >
+                                  {label}{active ? ' ✓' : ''}
+                                </Button>
+                              )
+                            })}
+                          </div>
+                          <p className="mt-1 text-[11px] text-ink-400">Required before you can submit Evaluation 2.</p>
+                        </div>
+                      </>
+                    ) : null}
 
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <Button variant="secondary" type="button" disabled={!canEditB} className="gap-2" onClick={saveDraftNow}>
                         <Save className="h-4 w-4" />
-                        Save draft now
+                        Save draft
                       </Button>
-                      <Button variant="primary" type="button" disabled={!canEditB || !juryStatus} className="gap-2" onClick={() => submitPart('B')}>
-                        <Send className="h-4 w-4" />
-                        Submit Evaluation 2 (final)
-                      </Button>
+                      {hasChallenge && microStep === 'project' ? (
+                        <Button variant="primary" type="button" className="gap-2" onClick={() => setMicroStep('challenge')}>
+                          Next: {labelB} Challenge
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <>
+                          {hasChallenge ? (
+                            <Button variant="secondary" type="button" className="gap-2" onClick={() => setMicroStep('project')}>
+                              <ArrowLeft className="h-4 w-4" />
+                              Back
+                            </Button>
+                          ) : null}
+                          <Button variant="primary" type="button" disabled={!canEditB || !juryStatus} className="gap-2" onClick={() => submitPart('B')}>
+                            <Send className="h-4 w-4" />
+                            Submit Evaluation 2 (final)
+                          </Button>
+                        </>
+                      )}
                     </div>
-                    {canEditB && !juryStatus ? (
+                    {canEditB && (!hasChallenge || microStep === 'challenge') && !juryStatus ? (
                       <p className="mt-2 text-xs text-amber-600">Set the team status above to enable the final submission.</p>
                     ) : null}
                   </div>

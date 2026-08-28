@@ -89,18 +89,57 @@ function normalizedWeights(rawA, rawB) {
  * `partALabel`, `partBLabel`. The source can be either a competition phase OR
  * the event config itself (event-level two-part, set from the Evaluations page).
  */
-function buildTwoPartConfig(src) {
-  const criteriaAraw = normalizeCriteriaList(Array.isArray(src.evaluationCriteriaA) ? src.evaluationCriteriaA : [])
-  const criteriaBraw = normalizeCriteriaList(Array.isArray(src.evaluationCriteriaB) ? src.evaluationCriteriaB : [])
-  const criteriaA = criteriaAraw.length > 0 ? criteriaAraw : LEGACY_DEFAULT_CRITERIA
-  const criteriaB = criteriaBraw.length > 0 ? criteriaBraw : LEGACY_DEFAULT_CRITERIA
+/**
+ * Merge a part's own project criteria with the shared "Universal Challenge"
+ * criteria (project first, challenge appended). De-duplicates by key so a
+ * challenge key never collides with a project key (the project criterion wins).
+ */
+function mergeCriteria(base, extra) {
+  if (!Array.isArray(extra) || extra.length === 0) return base
+  const seen = new Set(base.map((c) => c.key))
+  const out = [...base]
+  for (const c of extra) {
+    if (seen.has(c.key)) continue
+    seen.add(c.key)
+    out.push(c)
+  }
+  return out
+}
+
+function buildTwoPartConfig(src, challengeFallback = null) {
+  const projectAraw = normalizeCriteriaList(Array.isArray(src.evaluationCriteriaA) ? src.evaluationCriteriaA : [])
+  const projectBraw = normalizeCriteriaList(Array.isArray(src.evaluationCriteriaB) ? src.evaluationCriteriaB : [])
+  const projectA = projectAraw.length > 0 ? projectAraw : LEGACY_DEFAULT_CRITERIA
+  const projectB = projectBraw.length > 0 ? projectBraw : LEGACY_DEFAULT_CRITERIA
+
+  // Shared "Universal Challenge" rubric — admin-imported via CSV exactly like
+  // the two project rubrics, and scored WITHIN both parts (once per part). If
+  // the driving source (e.g. a phase) has no challenge configured, fall back to
+  // the event-level challenge so it can be set in a single place.
+  let challenge = normalizeCriteriaList(Array.isArray(src.evaluationCriteriaU) ? src.evaluationCriteriaU : [])
+  if (challenge.length === 0 && challengeFallback && challengeFallback !== src) {
+    challenge = normalizeCriteriaList(
+      Array.isArray(challengeFallback.evaluationCriteriaU) ? challengeFallback.evaluationCriteriaU : [],
+    )
+  }
+
+  // Combined per-part criteria = the part's own project criteria + the shared
+  // challenge. Used server-side for score validation, part totals and the
+  // weighted final. When no challenge is configured this equals project-only,
+  // so existing two-part events behave exactly as before.
+  const criteriaA = mergeCriteria(projectA, challenge)
+  const criteriaB = mergeCriteria(projectB, challenge)
+
   const { weightA, weightB } = normalizedWeights(src.partAWeight, src.partBWeight)
   const labelA = typeof src.partALabel === 'string' && src.partALabel.trim() ? src.partALabel.trim().slice(0, 80) : 'Part A'
   const labelB = typeof src.partBLabel === 'string' && src.partBLabel.trim() ? src.partBLabel.trim().slice(0, 80) : 'Part B'
   return {
     mode: 'twoPart',
-    criteriaA,
-    criteriaB,
+    criteriaA, // combined (project A + shared challenge) — used for scoring
+    criteriaB, // combined (project B + shared challenge) — used for scoring
+    projectA, // project-only (for judge UI grouping)
+    projectB, // project-only (for judge UI grouping)
+    challenge, // shared challenge (for judge UI grouping)
     weightA,
     weightB,
     rawWeightA: clampWeight(Number(src.partAWeight)),
@@ -122,8 +161,11 @@ function buildTwoPartConfig(src) {
  *   3. Otherwise, single-rubric scoring.
  */
 export function resolveScoringConfig(merged, phase = null) {
-  if (phase && phase.scoringMode === 'twoPart') return buildTwoPartConfig(phase)
-  if (merged && merged.scoringMode === 'twoPart') return buildTwoPartConfig(merged)
+  // Pass `merged` as the challenge fallback so an admin can configure the shared
+  // Universal Challenge once at the event level and have it apply whether the
+  // active two-part config comes from a phase or from the event itself.
+  if (phase && phase.scoringMode === 'twoPart') return buildTwoPartConfig(phase, merged)
+  if (merged && merged.scoringMode === 'twoPart') return buildTwoPartConfig(merged, merged)
   return { mode: 'single', criteria: resolveEvaluationCriteria(merged, phase) }
 }
 

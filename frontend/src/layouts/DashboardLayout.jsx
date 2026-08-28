@@ -5,7 +5,8 @@ import {
   ClipboardCheck, Target, Bell, Settings, Menu, X, ChevronLeft, ChevronRight,
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
-  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image, Trophy,
+  MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image, Trophy, Swords,
+  Medal, Award,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -35,6 +36,7 @@ const nav = {
     { to: '/dashboard/registration', label: 'Registration', icon: ClipboardCheck },
     { to: '/dashboard/problems', label: 'Problem Statements', icon: Target },
     { to: '/dashboard/submission', label: 'Submission', icon: FileUp },
+    { to: '/dashboard/challenges', label: 'Challenges', icon: Swords },
     { group: 'Communicate' },
     { to: '/dashboard/chat', label: 'Team Storage', icon: FolderLock },
     { to: '/dashboard/mentor-chat', label: 'Mentor Chat', icon: Handshake },
@@ -59,6 +61,9 @@ const nav = {
     { to: '/admin/evaluations', label: 'Evaluations', icon: ClipboardCheck },
     { to: '/admin/shortlisting', label: 'Shortlisting', icon: Star },
     { to: '/admin/results', label: 'Results', icon: Trophy },
+    { to: '/admin/challenges', label: 'Challenges', icon: Swords },
+    { to: '/admin/finalists', label: 'Finalists', icon: Medal },
+    { to: '/admin/finals-evaluations', label: 'Finals Evaluations', icon: Award },
     { group: 'Operations' },
     { to: '/admin/chats', label: 'Chat Monitor', icon: MessageCircle },
     { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },

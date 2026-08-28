@@ -44,6 +44,8 @@ export function AdminEvaluationsPage() {
   const [twoPartOn, setTwoPartOn] = useState(false)
   const [criteriaA, setCriteriaA] = useState([])
   const [criteriaB, setCriteriaB] = useState([])
+  // Shared "Universal Challenge" rubric — scored inside both Part A and Part B.
+  const [criteriaU, setCriteriaU] = useState([])
   const [labelA, setLabelA] = useState('Existing Project')
   const [labelB, setLabelB] = useState('New Problem Statement / Challenge')
   const [weightA, setWeightA] = useState(50)
@@ -102,6 +104,7 @@ export function AdminEvaluationsPage() {
       setTwoPartOn(data?.scoringMode === 'twoPart')
       setCriteriaA(Array.isArray(data?.criteriaA) ? data.criteriaA : [])
       setCriteriaB(Array.isArray(data?.criteriaB) ? data.criteriaB : [])
+      setCriteriaU(Array.isArray(data?.criteriaU) ? data.criteriaU : [])
       if (typeof data?.partALabel === 'string' && data.partALabel) setLabelA(data.partALabel)
       if (typeof data?.partBLabel === 'string' && data.partBLabel) setLabelB(data.partBLabel)
       if (typeof data?.partAWeight === 'number') setWeightA(data.partAWeight)
@@ -222,6 +225,7 @@ export function AdminEvaluationsPage() {
         scoringMode: twoPartOn ? 'twoPart' : 'single',
         evaluationCriteriaA: criteriaA.length ? criteriaA : null,
         evaluationCriteriaB: criteriaB.length ? criteriaB : null,
+        evaluationCriteriaU: criteriaU.length ? criteriaU : null,
         partALabel: labelA,
         partBLabel: labelB,
         partAWeight: Number(weightA) || 50,
@@ -462,6 +466,23 @@ export function AdminEvaluationsPage() {
               </Button>
             }
           />
+        </div>
+
+        {/* Shared Universal Challenge rubric — scored WITHIN both parts */}
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+          <RubricUploader
+            title="Universal Challenge (common to all teams)"
+            criteria={criteriaU}
+            onChange={setCriteriaU}
+            onError={setTwoPartErr}
+            onMessage={setTwoPartMsg}
+            onDownloadTemplate={downloadTemplate}
+          />
+          <p className="mt-2 text-xs text-ink-600">
+            These criteria are the <strong>same for every team</strong> and are scored inside{' '}
+            <strong>both Part A and Part B</strong> (e.g. 5 challenge items × max 3 = 15). Import them once here.
+            Leave empty to disable the challenge block. Each part total = its project criteria + this challenge.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

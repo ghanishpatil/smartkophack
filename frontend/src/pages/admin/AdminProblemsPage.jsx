@@ -17,7 +17,11 @@ import { Button } from '@/components/ui/Button.jsx'
 import { Input, Textarea } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
-import { parseCSV, buildProblemStatementTemplate, downloadCSV } from '@/utils/csvParser.js'
+import { parseCSV, buildProblemStatementTemplate, buildSuperPsTemplate, downloadCSV } from '@/utils/csvParser.js'
+
+// Problem-statement types (origin). Curated is the default (no origin stored).
+// 'super_ps' is the flagship tier; 'open_innovation' is participant-authored.
+const PS_TYPE = { CURATED: 'curated', SUPER: 'super_ps', OPEN_INNOVATION: 'open_innovation' }
 
 // Official SKH track and domain lists
 const TRACK_OPTIONS = ['Software', 'Hardware']
@@ -62,7 +66,11 @@ export function AdminProblemsPage() {
   const [newPublished, setNewPublished] = useState(true)
   const [newMaxTeams, setNewMaxTeams] = useState('')
   const [newOrder, setNewOrder] = useState('')
+  const [newType, setNewType] = useState(PS_TYPE.CURATED)
   const [creating, setCreating] = useState(false)
+
+  // Filter the list by problem-statement type (All / Curated / Super PS / Open Innovation)
+  const [typeFilter, setTypeFilter] = useState('all')
 
   const [openPsIds, setOpenPsIds] = useState(() => new Set())
 
@@ -72,6 +80,8 @@ export function AdminProblemsPage() {
 
   // Bulk import state
   const [bulkOpen, setBulkOpen] = useState(false)
+  // Which tier this import creates: 'curated' (default) or 'super_ps'.
+  const [bulkMode, setBulkMode] = useState(PS_TYPE.CURATED)
   const [bulkRows, setBulkRows] = useState([])
   const [bulkErrors, setBulkErrors] = useState([])
   const [bulkParseError, setBulkParseError] = useState('')
@@ -95,8 +105,11 @@ export function AdminProblemsPage() {
   }
 
   function handleDownloadTemplate() {
-    const csv = buildProblemStatementTemplate()
-    downloadCSV('problem-statements-template.csv', csv)
+    if (bulkMode === PS_TYPE.SUPER) {
+      downloadCSV('super-ps-template.csv', buildSuperPsTemplate())
+    } else {
+      downloadCSV('problem-statements-template.csv', buildProblemStatementTemplate())
+    }
   }
 
   /**
@@ -139,7 +152,13 @@ export function AdminProblemsPage() {
         cell(typeof ps.order === 'number' ? ps.order : '', 'Number'),
         cell(typeof ps.selectionCount === 'number' ? ps.selectionCount : 0, 'Number'),
         cell(Array.isArray(ps.assignedJudgeIds) ? ps.assignedJudgeIds.length : 0, 'Number'),
-        cell(ps.origin === 'open_innovation' ? 'Open Innovation (team-submitted)' : 'Curated'),
+        cell(
+          ps.origin === 'open_innovation'
+            ? 'Open Innovation (team-submitted)'
+            : ps.origin === 'super_ps'
+              ? 'Super PS'
+              : 'Curated',
+        ),
       ]
       return `<Row>${cells.join('')}</Row>`
     }).join('')
@@ -228,10 +247,12 @@ export function AdminProblemsPage() {
     setBulkSubmitting(true)
     setBulkResult(null)
     try {
-      const result = await api.bulkImportProblemStatements(bulkRows)
+      const origin = bulkMode === PS_TYPE.SUPER ? PS_TYPE.SUPER : undefined
+      const result = await api.bulkImportProblemStatements(bulkRows, origin)
       setBulkResult(result)
       if (result.success > 0) {
-        setMsg(`✓ Bulk import: ${result.success} added, ${result.skipped || 0} skipped, ${result.failed || 0} failed.`)
+        const label = bulkMode === PS_TYPE.SUPER ? 'Super PS import' : 'Bulk import'
+        setMsg(`✓ ${label}: ${result.success} added, ${result.skipped || 0} skipped, ${result.failed || 0} failed.`)
         await load()
       }
     } catch (err) {
@@ -298,11 +319,26 @@ export function AdminProblemsPage() {
     })
   }, [rows])
 
-  // Participant-authored Open Innovation submissions are listed separately from
-  // the curated problem bank.
+  // Problem statements are grouped into three tiers:
+  //  • Super PS       (origin === 'super_ps')       — flagship / high-priority
+  //  • Open Innovation(origin === 'open_innovation') — participant-authored, private
+  //  • Curated        (no origin)                    — the standard problem bank
   const isOpenInnovation = (ps) => ps?.origin === 'open_innovation'
-  const curatedRows = useMemo(() => sortedRows.filter((p) => !isOpenInnovation(p)), [sortedRows])
+  const isSuperPs = (ps) => ps?.origin === 'super_ps'
+  const curatedRows = useMemo(
+    () => sortedRows.filter((p) => !isOpenInnovation(p) && !isSuperPs(p)),
+    [sortedRows],
+  )
+  const superRows = useMemo(() => sortedRows.filter(isSuperPs), [sortedRows])
   const openInnovationRows = useMemo(() => sortedRows.filter(isOpenInnovation), [sortedRows])
+  // Admin-managed rows that carry a selection checkbox (curated + super). Open
+  // Innovation entries are managed separately and are not part of select-all.
+  const manageableRows = useMemo(() => [...curatedRows, ...superRows], [curatedRows, superRows])
+
+  // Which sections are visible given the current filter dropdown.
+  const showCurated = typeFilter === 'all' || typeFilter === PS_TYPE.CURATED
+  const showSuper = typeFilter === 'all' || typeFilter === PS_TYPE.SUPER
+  const showOpenInnovation = typeFilter === 'all' || typeFilter === PS_TYPE.OPEN_INNOVATION
 
   function rowTitle(ps) {
     return edits[ps.id]?.title ?? ps.title ?? ''
@@ -324,6 +360,7 @@ export function AdminProblemsPage() {
         patch.domain = e.category === '' ? '' : e.category
       }
       if (e.theme !== undefined) patch.theme = e.theme
+      if (e.origin !== undefined) patch.origin = e.origin === PS_TYPE.SUPER ? PS_TYPE.SUPER : ''
       if (e.description !== undefined) patch.description = e.description
       if (e.published !== undefined) patch.published = e.published
       if (e.order !== undefined && e.order !== '') {
@@ -381,6 +418,7 @@ export function AdminProblemsPage() {
         theme,
         description: newDescription.trim(),
         published: newPublished,
+        ...(newType === PS_TYPE.SUPER ? { origin: PS_TYPE.SUPER } : {}),
       }
       const idSlug = newId.trim()
       if (idSlug) body.id = idSlug
@@ -406,6 +444,7 @@ export function AdminProblemsPage() {
       setNewPublished(true)
       setNewMaxTeams('')
       setNewOrder('')
+      setNewType(PS_TYPE.CURATED)
       await load()
     } catch (err) {
       setMsg(err.message || 'Create failed')
@@ -437,8 +476,8 @@ export function AdminProblemsPage() {
 
   function toggleSelectAll() {
     setSelectedIds((prev) => {
-      if (prev.size === sortedRows.length) return new Set()
-      return new Set(sortedRows.map((r) => r.id))
+      if (prev.size === manageableRows.length && manageableRows.length > 0) return new Set()
+      return new Set(manageableRows.map((r) => r.id))
     })
   }
 
@@ -467,6 +506,213 @@ export function AdminProblemsPage() {
         : `✓ Deleted ${success} problem statement(s).`,
     )
     await load()
+  }
+
+  // Shared renderer for an admin-managed problem-statement card (used by both the
+  // Curated and the Super PS sections — same editor, so they never drift apart).
+  function renderPsCard(ps) {
+    const isOpen = openPsIds.has(ps.id)
+    const orgDisp = displayOrganization(ps)
+    const catDisp = displayCategory(ps)
+    const currentType = edits[ps.id]?.origin ?? (isSuperPs(ps) ? PS_TYPE.SUPER : PS_TYPE.CURATED)
+    return (
+      <Card key={ps.id} className="overflow-hidden p-0">
+        <div className="flex items-center gap-1 px-4 py-3 transition hover:bg-[rgb(var(--surface-muted))]/80">
+          <input
+            type="checkbox"
+            checked={selectedIds.has(ps.id)}
+            onChange={() => toggleSelect(ps.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="mr-2 h-4 w-4 rounded border-[rgb(var(--border))] text-brand-600 focus:ring-brand-500"
+            aria-label={`Select ${ps.title}`}
+          />
+          <button
+            type="button"
+            className="flex flex-1 items-center gap-3 text-left"
+            aria-expanded={isOpen}
+            onClick={() => togglePsOpen(ps.id)}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--surface-muted))] text-ink-500">
+              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="font-semibold text-ink-900">{rowTitle(ps) || ps.title}</span>
+              {!isOpen && (orgDisp || catDisp || displayTheme(ps)) ? (
+                <span className="mt-0.5 block truncate text-xs text-ink-500">
+                  {[catDisp, displayTheme(ps), orgDisp].filter(Boolean).join(' · ') || null}
+                </span>
+              ) : null}
+            </span>
+            {isSuperPs(ps) ? (
+              <Badge tone="brand" className="shrink-0">Super PS</Badge>
+            ) : null}
+            <Badge tone={ps.published !== false ? 'success' : 'neutral'} className="shrink-0">
+              {ps.published !== false ? 'published' : 'draft'}
+            </Badge>
+          </button>
+        </div>
+
+        {isOpen ? (
+          <div className="border-t border-[rgb(var(--border))] px-4 pb-4 pt-2">
+            <p className="mb-4 font-mono text-[11px] text-ink-500">{ps.id}</p>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={(edits[ps.id]?.published ?? ps.published) !== false}
+                  onChange={(e) =>
+                    setEdits((prev) => ({
+                      ...prev,
+                      [ps.id]: { ...prev[ps.id], published: e.target.checked },
+                    }))
+                  }
+                />
+                Published
+              </label>
+              <Button type="button" size="sm" variant="secondary" onClick={() => void deletePs(ps)}>
+                Delete
+              </Button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Name"
+                value={edits[ps.id]?.title ?? ps.title ?? ''}
+                onChange={(e) =>
+                  setEdits((prev) => ({
+                    ...prev,
+                    [ps.id]: { ...prev[ps.id], title: e.target.value },
+                  }))
+                }
+              />
+              <Input
+                label="Organization"
+                value={edits[ps.id]?.organization ?? displayOrganization(ps)}
+                onChange={(e) =>
+                  setEdits((prev) => ({
+                    ...prev,
+                    [ps.id]: { ...prev[ps.id], organization: e.target.value },
+                  }))
+                }
+              />
+            </div>
+            <Input
+              className="mt-3"
+              label="Department"
+              value={edits[ps.id]?.department ?? displayDepartment(ps)}
+              onChange={(e) =>
+                setEdits((prev) => ({
+                  ...prev,
+                  [ps.id]: { ...prev[ps.id], department: e.target.value },
+                }))
+              }
+            />
+            <div className="mt-3">
+              <label className="mb-1.5 block text-sm font-medium text-ink-700">Type</label>
+              <select
+                value={currentType}
+                onChange={(e) =>
+                  setEdits((prev) => ({
+                    ...prev,
+                    [ps.id]: { ...prev[ps.id], origin: e.target.value },
+                  }))
+                }
+                className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              >
+                <option value={PS_TYPE.CURATED}>Curated problem statement</option>
+                <option value={PS_TYPE.SUPER}>Super PS (flagship)</option>
+              </select>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-ink-700">Track</label>
+                <select
+                  value={edits[ps.id]?.category ?? displayCategory(ps) ?? ''}
+                  onChange={(e) =>
+                    setEdits((prev) => ({
+                      ...prev,
+                      [ps.id]: { ...prev[ps.id], category: e.target.value },
+                    }))
+                  }
+                  className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
+                  <option value="">— Select track —</option>
+                  {TRACK_OPTIONS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-ink-700">Domain</label>
+                <select
+                  value={edits[ps.id]?.theme ?? displayTheme(ps) ?? ''}
+                  onChange={(e) =>
+                    setEdits((prev) => ({
+                      ...prev,
+                      [ps.id]: { ...prev[ps.id], theme: e.target.value },
+                    }))
+                  }
+                  className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
+                  <option value="">— Select domain —</option>
+                  {DOMAIN_OPTIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Input
+                label="Sort order"
+                type="number"
+                value={String(edits[ps.id]?.order ?? ps.order ?? '')}
+                onChange={(e) =>
+                  setEdits((prev) => ({
+                    ...prev,
+                    [ps.id]: { ...prev[ps.id], order: e.target.value },
+                  }))
+                }
+              />
+              <Input
+                label="Max teams (empty = no cap)"
+                type="number"
+                min={0}
+                value={String(
+                  edits[ps.id]?.maxTeams !== undefined ? edits[ps.id].maxTeams : (ps.maxTeams ?? ''),
+                )}
+                onChange={(e) =>
+                  setEdits((prev) => ({
+                    ...prev,
+                    [ps.id]: { ...prev[ps.id], maxTeams: e.target.value },
+                  }))
+                }
+              />
+            </div>
+            <Textarea
+              className="mt-3"
+              label="Description"
+              rows={5}
+              value={edits[ps.id]?.description ?? ps.description ?? ''}
+              onChange={(e) =>
+                setEdits((prev) => ({
+                  ...prev,
+                  [ps.id]: { ...prev[ps.id], description: e.target.value },
+                }))
+              }
+            />
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-ink-500">
+              <span>Selections: {typeof ps.selectionCount === 'number' ? ps.selectionCount : 0}</span>
+              {Array.isArray(ps.assignedJudgeIds) && ps.assignedJudgeIds.length > 0 ? (
+                <span>Judges: {ps.assignedJudgeIds.length}</span>
+              ) : null}
+            </div>
+            <Button className="mt-4" size="sm" type="button" onClick={() => saveRow(ps)}>
+              Save changes
+            </Button>
+          </div>
+        ) : null}
+      </Card>
+    )
   }
 
   if (loading || eventLoading) return <Skeleton className="h-96 w-full rounded-2xl" />
@@ -502,11 +748,20 @@ export function AdminProblemsPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => { resetBulkState(); setBulkOpen(true) }}
+            onClick={() => { resetBulkState(); setBulkMode(PS_TYPE.CURATED); setBulkOpen(true) }}
             className="gap-2"
           >
             <FileSpreadsheet className="h-4 w-4" />
             Bulk import (CSV)
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { resetBulkState(); setBulkMode(PS_TYPE.SUPER); setBulkOpen(true) }}
+            className="gap-2 border-indigo-500/40 text-indigo-700 hover:bg-indigo-500/5"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Import Super PS (CSV)
           </Button>
         </div>
       </div>
@@ -542,6 +797,21 @@ export function AdminProblemsPage() {
           disabled={creating}
           onChange={(e) => setNewDepartment(e.target.value)}
         />
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-ink-700">Type</label>
+          <select
+            value={newType}
+            disabled={creating}
+            onChange={(e) => setNewType(e.target.value)}
+            className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+          >
+            <option value={PS_TYPE.CURATED}>Curated problem statement</option>
+            <option value={PS_TYPE.SUPER}>Super PS (flagship)</option>
+          </select>
+          <p className="mt-1 text-xs text-ink-500">
+            Super PS are listed in their own section and use a separate import template.
+          </p>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-ink-700">Track</label>
@@ -607,17 +877,37 @@ export function AdminProblemsPage() {
         </Button>
       </Card>
 
+      {/* Filter problem statements by type (separate dropdown for the PS tab) */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 px-4 py-3">
+        <label htmlFor="ps-type-filter" className="text-sm font-medium text-ink-700">Filter by type</label>
+        <select
+          id="ps-type-filter"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="h-10 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        >
+          <option value="all">All types</option>
+          <option value={PS_TYPE.CURATED}>Curated only</option>
+          <option value={PS_TYPE.SUPER}>Super PS only</option>
+          <option value={PS_TYPE.OPEN_INNOVATION}>Open Innovation only</option>
+        </select>
+        <span className="text-xs text-ink-500">
+          {curatedRows.length} curated · {superRows.length} super PS · {openInnovationRows.length} open innovation
+        </span>
+      </div>
+
+      {showCurated ? (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-semibold text-ink-900">Your problems</h2>
-          {sortedRows.length > 0 ? (
+          <h2 className="font-display text-lg font-semibold text-ink-900">Curated problem statements</h2>
+          {manageableRows.length > 0 ? (
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-ink-600">
                 <input
                   type="checkbox"
-                  checked={selectedIds.size === sortedRows.length && sortedRows.length > 0}
+                  checked={selectedIds.size === manageableRows.length && manageableRows.length > 0}
                   ref={(el) => {
-                    if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < sortedRows.length
+                    if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < manageableRows.length
                   }}
                   onChange={toggleSelectAll}
                   className="h-4 w-4 rounded border-[rgb(var(--border))] text-brand-600 focus:ring-brand-500"
@@ -640,197 +930,39 @@ export function AdminProblemsPage() {
             </div>
           ) : null}
         </div>
-        {curatedRows.map((ps) => {
-          const isOpen = openPsIds.has(ps.id)
-          const orgDisp = displayOrganization(ps)
-          const catDisp = displayCategory(ps)
-          return (
-            <Card key={ps.id} className="overflow-hidden p-0">
-              <div className="flex items-center gap-1 px-4 py-3 transition hover:bg-[rgb(var(--surface-muted))]/80">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(ps.id)}
-                  onChange={() => toggleSelect(ps.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="mr-2 h-4 w-4 rounded border-[rgb(var(--border))] text-brand-600 focus:ring-brand-500"
-                  aria-label={`Select ${ps.title}`}
-                />
-                <button
-                  type="button"
-                  className="flex flex-1 items-center gap-3 text-left"
-                  aria-expanded={isOpen}
-                  onClick={() => togglePsOpen(ps.id)}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--surface-muted))] text-ink-500">
-                    {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="font-semibold text-ink-900">{rowTitle(ps) || ps.title}</span>
-                    {!isOpen && (orgDisp || catDisp || displayTheme(ps)) ? (
-                      <span className="mt-0.5 block truncate text-xs text-ink-500">
-                        {[catDisp, displayTheme(ps), orgDisp].filter(Boolean).join(' · ') || null}
-                      </span>
-                    ) : null}
-                  </span>
-                  <Badge tone={ps.published !== false ? 'success' : 'neutral'} className="shrink-0">
-                    {ps.published !== false ? 'published' : 'draft'}
-                  </Badge>
-                </button>
-              </div>
-
-              {isOpen ? (
-                <div className="border-t border-[rgb(var(--border))] px-4 pb-4 pt-2">
-                  <p className="mb-4 font-mono text-[11px] text-ink-500">{ps.id}</p>
-
-
-                  <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={(edits[ps.id]?.published ?? ps.published) !== false}
-                        onChange={(e) =>
-                          setEdits((prev) => ({
-                            ...prev,
-                            [ps.id]: { ...prev[ps.id], published: e.target.checked },
-                          }))
-                        }
-                      />
-                      Published
-                    </label>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => void deletePs(ps)}>
-                      Delete
-                    </Button>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Input
-                      label="Name"
-                      value={edits[ps.id]?.title ?? ps.title ?? ''}
-                      onChange={(e) =>
-                        setEdits((prev) => ({
-                          ...prev,
-                          [ps.id]: { ...prev[ps.id], title: e.target.value },
-                        }))
-                      }
-                    />
-                    <Input
-                      label="Organization"
-                      value={edits[ps.id]?.organization ?? displayOrganization(ps)}
-                      onChange={(e) =>
-                        setEdits((prev) => ({
-                          ...prev,
-                          [ps.id]: { ...prev[ps.id], organization: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-                  <Input
-                    className="mt-3"
-                    label="Department"
-                    value={edits[ps.id]?.department ?? displayDepartment(ps)}
-                    onChange={(e) =>
-                      setEdits((prev) => ({
-                        ...prev,
-                        [ps.id]: { ...prev[ps.id], department: e.target.value },
-                      }))
-                    }
-                  />
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-ink-700">Track</label>
-                      <select
-                        value={edits[ps.id]?.category ?? displayCategory(ps) ?? ''}
-                        onChange={(e) =>
-                          setEdits((prev) => ({
-                            ...prev,
-                            [ps.id]: { ...prev[ps.id], category: e.target.value },
-                          }))
-                        }
-                        className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        <option value="">— Select track —</option>
-                        {TRACK_OPTIONS.map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-ink-700">Domain</label>
-                      <select
-                        value={edits[ps.id]?.theme ?? displayTheme(ps) ?? ''}
-                        onChange={(e) =>
-                          setEdits((prev) => ({
-                            ...prev,
-                            [ps.id]: { ...prev[ps.id], theme: e.target.value },
-                          }))
-                        }
-                        className="h-11 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 text-sm text-ink-900 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        <option value="">— Select domain —</option>
-                        {DOMAIN_OPTIONS.map((d) => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <Input
-                      label="Sort order"
-                      type="number"
-                      value={String(edits[ps.id]?.order ?? ps.order ?? '')}
-                      onChange={(e) =>
-                        setEdits((prev) => ({
-                          ...prev,
-                          [ps.id]: { ...prev[ps.id], order: e.target.value },
-                        }))
-                      }
-                    />
-                    <Input
-                      label="Max teams (empty = no cap)"
-                      type="number"
-                      min={0}
-                      value={String(
-                        edits[ps.id]?.maxTeams !== undefined ? edits[ps.id].maxTeams : (ps.maxTeams ?? ''),
-                      )}
-                      onChange={(e) =>
-                        setEdits((prev) => ({
-                          ...prev,
-                          [ps.id]: { ...prev[ps.id], maxTeams: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-                  <Textarea
-                    className="mt-3"
-                    label="Description"
-                    rows={5}
-                    value={edits[ps.id]?.description ?? ps.description ?? ''}
-                    onChange={(e) =>
-                      setEdits((prev) => ({
-                        ...prev,
-                        [ps.id]: { ...prev[ps.id], description: e.target.value },
-                      }))
-                    }
-                  />
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-ink-500">
-                    <span>Selections: {typeof ps.selectionCount === 'number' ? ps.selectionCount : 0}</span>
-                    {Array.isArray(ps.assignedJudgeIds) && ps.assignedJudgeIds.length > 0 ? (
-                      <span>Judges: {ps.assignedJudgeIds.length}</span>
-                    ) : null}
-                  </div>
-                  <Button className="mt-4" size="sm" type="button" onClick={() => saveRow(ps)}>
-                    Save changes
-                  </Button>
-                </div>
-              ) : null}
-            </Card>
-          )
-        })}
+        {curatedRows.map(renderPsCard)}
         {curatedRows.length === 0 ? (
           <p className="text-sm text-ink-500">No problems yet — add one above.</p>
         ) : null}
       </div>
+      ) : null}
+
+      {/* ── Super PS: flagship / high-priority problem statements ── */}
+      {showSuper ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-ink-900">
+              <Lightbulb className="h-4 w-4 text-brand-500" />
+              Super PS (flagship)
+            </h2>
+            <span className="text-xs text-ink-500">{superRows.length} problem statement(s)</span>
+          </div>
+          <p className="text-xs text-ink-500">
+            High-priority, flagship problem statements. They use a{' '}
+            <strong>separate import template</strong> and are grouped here so they stand apart from the
+            standard problem bank. Published Super PS still appear on the public Problems page.
+          </p>
+          {superRows.map(renderPsCard)}
+          {superRows.length === 0 ? (
+            <p className="text-sm text-ink-500">
+              No Super PS yet — add one above (set Type to “Super PS”) or use “Import Super PS (CSV)”.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* ── Open Innovation: participant-submitted problem statements ── */}
+      {showOpenInnovation ? (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-ink-900">
@@ -926,6 +1058,7 @@ export function AdminProblemsPage() {
           })
         )}
       </div>
+      ) : null}
 
       {/* Bulk Import Modal */}
       {bulkOpen ? (
@@ -934,9 +1067,13 @@ export function AdminProblemsPage() {
             {/* Header */}
             <div className="flex items-start justify-between gap-3 border-b border-[rgb(var(--border))] p-5">
               <div>
-                <h2 className="font-display text-xl font-bold text-ink-900">Bulk import problem statements</h2>
+                <h2 className="font-display text-xl font-bold text-ink-900">
+                  {bulkMode === PS_TYPE.SUPER ? 'Import Super PS' : 'Bulk import problem statements'}
+                </h2>
                 <p className="mt-1 text-sm text-ink-600">
-                  Upload a CSV file to add multiple problem statements at once.
+                  {bulkMode === PS_TYPE.SUPER
+                    ? 'Upload a CSV to add multiple Super PS (flagship) problem statements at once.'
+                    : 'Upload a CSV file to add multiple problem statements at once.'}
                 </p>
               </div>
               <button
@@ -954,13 +1091,15 @@ export function AdminProblemsPage() {
               {/* Step 1: Download template */}
               <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 1</p>
-                <h3 className="mt-1 font-semibold text-ink-900">Download the CSV template</h3>
+                <h3 className="mt-1 font-semibold text-ink-900">
+                  {bulkMode === PS_TYPE.SUPER ? 'Download the Super PS template' : 'Download the CSV template'}
+                </h3>
                 <p className="mt-1 text-sm text-ink-600">
                   Open it in Excel or Google Sheets, fill in your rows, then save back as <strong>CSV</strong>.
                 </p>
                 <Button type="button" variant="secondary" size="sm" onClick={handleDownloadTemplate} className="mt-3 gap-2">
                   <Download className="h-4 w-4" />
-                  Download template.csv
+                  {bulkMode === PS_TYPE.SUPER ? 'Download super-ps-template.csv' : 'Download template.csv'}
                 </Button>
               </div>
 

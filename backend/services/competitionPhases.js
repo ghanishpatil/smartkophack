@@ -247,6 +247,7 @@ export function normalizePhase(input, existingId = null) {
     scoringMode: input.scoringMode === 'twoPart' ? 'twoPart' : 'single',
     evaluationCriteriaA: [],
     evaluationCriteriaB: [],
+    evaluationCriteriaU: [],
     partAWeight: 50,
     partBWeight: 50,
     partALabel: 'Part A',
@@ -282,6 +283,8 @@ export function normalizePhase(input, existingId = null) {
   // store them regardless so an admin can toggle modes without losing data).
   normalized.evaluationCriteriaA = normalizeCriterionList(input.evaluationCriteriaA)
   normalized.evaluationCriteriaB = normalizeCriterionList(input.evaluationCriteriaB)
+  // Shared Universal Challenge rubric (scored within both parts).
+  normalized.evaluationCriteriaU = normalizeCriterionList(input.evaluationCriteriaU)
 
   const rawA = Number(input.partAWeight)
   const rawB = Number(input.partBWeight)

@@ -159,9 +159,33 @@ export async function getActiveEventConfig() {
     registrationClosesAt: event.registrationClosesAt ?? null,
     submissionDeadline: event.submissionDeadline ?? null,
     evaluationCriteria: event.evaluationCriteria ?? null,
+    // Two-part ("50:50 Finals") scoring config + shared Universal Challenge rubric.
+    scoringMode: event.scoringMode === 'twoPart' ? 'twoPart' : 'single',
+    evaluationCriteriaA: Array.isArray(event.evaluationCriteriaA) ? event.evaluationCriteriaA : null,
+    evaluationCriteriaB: Array.isArray(event.evaluationCriteriaB) ? event.evaluationCriteriaB : null,
+    evaluationCriteriaU: Array.isArray(event.evaluationCriteriaU) ? event.evaluationCriteriaU : null,
+    partAWeight: typeof event.partAWeight === 'number' ? event.partAWeight : 50,
+    partBWeight: typeof event.partBWeight === 'number' ? event.partBWeight : 50,
+    partALabel: typeof event.partALabel === 'string' ? event.partALabel : 'Part A',
+    partBLabel: typeof event.partBLabel === 'string' ? event.partBLabel : 'Part B',
+    // Challenges "drop" schedule (admin-controlled, flexible interval).
+    challengesEnabled: event.challengesEnabled === true,
+    challengesStartAt: event.challengesStartAt ?? null,
+    challengesIntervalMinutes:
+      typeof event.challengesIntervalMinutes === 'number' && event.challengesIntervalMinutes > 0
+        ? event.challengesIntervalMinutes
+        : 120,
     minTeamSize: typeof event.minTeamSize === 'number' ? event.minTeamSize : 1,
     maxTeamSize: typeof event.maxTeamSize === 'number' ? event.maxTeamSize : 4,
     competitionPhases: Array.isArray(event.competitionPhases) ? event.competitionPhases : [],
+    // Finals: admin hand-picks finalists per domain. `finalistsPerDomain` is the
+    // per-domain target count (manual, different per domain). `finalistsOnly`, when
+    // true, restricts finals judging to teams flagged `finalist`.
+    finalistsPerDomain:
+      event.finalistsPerDomain && typeof event.finalistsPerDomain === 'object' && !Array.isArray(event.finalistsPerDomain)
+        ? event.finalistsPerDomain
+        : {},
+    finalistsOnly: event.finalistsOnly === true,
   }
   _activeEventConfigCache = { config, cachedAt: now }
   return config
