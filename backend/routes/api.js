@@ -4594,6 +4594,8 @@ export function judgesRouter() {
     id,
     name: typeof data.name === 'string' ? data.name : 'Team',
     problemStatementId: data.problemStatementId || '',
+    superProblemStatementId: data.superProblemStatementId || '',
+    finalist: data.finalist === true,
     eventId: data.eventId || '',
     shortlisted: Boolean(data.shortlisted),
     submissionLocked: Boolean(data.submissionLocked),
@@ -4903,11 +4905,57 @@ export function judgesRouter() {
           problemStatement = {
             id: psSnap.id,
             title: pd.title || '',
-            domain: pd.domain || '',
+            domain: pd.theme || pd.domain || '',
             description: String(pd.description || '').slice(0, 20000),
           }
         }
       }
+
+      // Finals context: the team's selected Super PS (finals problem statement),
+      // shown alongside the original round-1 PS so a judge can score Part A
+      // (existing project) and Part B (the Super PS) with full context.
+      let superProblemStatement = null
+      const superPsId = teamRaw.superProblemStatementId || ''
+      if (superPsId) {
+        const spSnap = await db().doc(`problemStatements/${superPsId}`).get()
+        if (spSnap.exists) {
+          const sp = spSnap.data()
+          superProblemStatement = {
+            id: spSnap.id,
+            title: sp.title || '',
+            domain: sp.theme || sp.domain || '',
+            description: String(sp.description || '').slice(0, 20000),
+          }
+        }
+      }
+
+      // Universal Challenges — the common scenario challenges every team had to
+      // address. Judges see the full content (scenario + why-universal + what to
+      // show) so they can evaluate the challenge response scored inside both parts.
+      let challenges = []
+      try {
+        let chQuery = db().collection('challenges')
+        if (evtId) chQuery = chQuery.where('eventId', '==', evtId)
+        let chSnap
+        try {
+          chSnap = await chQuery.orderBy('order', 'asc').get()
+        } catch {
+          chSnap = await chQuery.get()
+        }
+        challenges = chSnap.docs
+          .map((d) => {
+            const c = d.data()
+            return {
+              id: d.id,
+              order: typeof c.order === 'number' ? c.order : 9999,
+              title: c.title || '',
+              description: String(c.description || '').slice(0, 20000),
+              whyUniversal: String(c.whyUniversal || '').slice(0, 20000),
+              whatToShow: String(c.whatToShow || '').slice(0, 20000),
+            }
+          })
+          .sort((a, b) => a.order - b.order)
+      } catch { /* challenges are optional */ }
 
       const subSnap = await db().doc(`submissions/${teamId}`).get()
       const rawSub = subSnap.exists ? subSnap.data() : {}
@@ -4929,6 +4977,8 @@ export function judgesRouter() {
       res.json({
         team,
         problemStatement,
+        superProblemStatement,
+        challenges,
         submission,
         evaluation,
         evaluationCriteria: edition.evaluationCriteria,

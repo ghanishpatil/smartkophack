@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage'
 import { Link } from 'react-router-dom'
-import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle, CheckCircle, ChevronDown } from 'lucide-react'
+import { Upload, FileText, Github, Video, ArrowLeft, Lock, AlertTriangle, CheckCircle, ChevronDown, Sparkles } from 'lucide-react'
 import { storage } from '@/firebase/client.js'
 import { useAuth } from '@/context/AuthContext.jsx'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -101,6 +101,8 @@ export function SubmissionPage() {
           paymentStatus: rosterData?.paymentStatus || 'pending',
           paymentChoice: rosterData?.paymentChoice || null,
           shortlistedPhases: Array.isArray(rosterData?.shortlistedPhases) ? rosterData.shortlistedPhases : [],
+          finalist: Boolean(rosterData?.finalist),
+          finalsSubmissionLocked: Boolean(rosterData?.finalsSubmissionLocked),
         })
       } catch {
         // API error — leave state as null
@@ -110,23 +112,38 @@ export function SubmissionPage() {
     return () => { cancelled = true }
   }, [teamId, api])
 
+  // Finals mode: when the event's finalists-only gate is on, the Submission
+  // Center becomes a fresh, independent finals window for hand-picked finalists.
+  // Eligibility is `finalist` (not round-1 shortlisting) and the lock is the
+  // separate `finalsSubmissionLocked`, so round-1's locked state is untouched.
+  const finalsMode = eventCfg?.finalistsOnly === true
+  const isFinalist = Boolean(teamData?.finalist)
+  const finalsLocked = Boolean(teamData?.finalsSubmissionLocked)
+
   // Locked strictly reflects the team's current lock flag. Finalizing sets
   // submissionLocked=true; when an admin unlocks (e.g. for the next round) it
   // becomes false again — so we must NOT also lock on the stale finalizedAt.
-  const locked = teamLocked
+  // In finals mode the relevant lock is the finals-specific one.
+  const locked = finalsMode ? finalsLocked : teamLocked
   const progress = submissionCompleteness(sub)
 
   // Phase-aware logic
   const isPhase1 = activePhase && phases.find((p) => p.id === activePhase.id)?.order === 1
   const teamShortlistedPhases = teamData?.shortlistedPhases || []
-  const teamCanAccessActivePhase = !activePhase || isPhase1 || teamShortlistedPhases.includes(activePhase.id)
+  const teamCanAccessActivePhase = finalsMode
+    ? isFinalist
+    : (!activePhase || isPhase1 || teamShortlistedPhases.includes(activePhase.id))
   // Phase is open if backend would accept a submission. Shared helper keeps this
   // consistent with backend isPhaseSubmissionOpen()/canTeamSubmit() so the UI
   // doesn't grey out uploads while the phase is genuinely open.
   // A phase with no required artifacts (e.g. registration / problem-statements
   // phase) is NOT a submission phase — the Submission Center stays closed.
   const activePhaseIsSubmission = !activePhase || phaseAcceptsSubmissions(activePhase)
-  const phaseSubmissionsOpen = !activePhase || (isPhaseSubmissionOpen(activePhase) && activePhaseIsSubmission)
+  // In finals mode an active, submission-accepting phase is REQUIRED (the finals
+  // window). Outside finals, "no active phase" falls back to event-level flags.
+  const phaseSubmissionsOpen = finalsMode
+    ? Boolean(activePhase && isPhaseSubmissionOpen(activePhase) && activePhaseIsSubmission)
+    : (!activePhase || (isPhaseSubmissionOpen(activePhase) && activePhaseIsSubmission))
   const phaseDeadlinePassed = activePhase?.deadline && new Date(activePhase.deadline).getTime() < Date.now()
   const phaseRequirements = activePhase
     ? (activePhase.requirements || { pptRequired: false, pdfRequired: false, videoRequired: false, githubRequired: false, deployedUrlRequired: false })
@@ -249,7 +266,7 @@ export function SubmissionPage() {
     }
     try {
       await api.finalizeSubmission()
-      setStatus('Submission finalized and locked.')
+      setStatus(finalsMode ? 'Finals submission finalized and locked.' : 'Submission finalized and locked.')
       // HIGH-05: Reload via API instead of direct Firestore reads
       const [versionsData, rosterData] = await Promise.all([
         api.getSubmissionVersions(),
@@ -258,6 +275,11 @@ export function SubmissionPage() {
       const current = versionsData?.current || {}
       setSub((prev) => ({ ...prev, ...current, phases: versionsData?.phases || {} }))
       setTeamLocked(Boolean(rosterData?.submissionLocked))
+      setTeamData((prev) => ({
+        ...prev,
+        submissionLocked: Boolean(rosterData?.submissionLocked),
+        finalsSubmissionLocked: Boolean(rosterData?.finalsSubmissionLocked),
+      }))
     } catch (e) {
       setStatus(e.message || 'Could not finalize')
     }
@@ -293,9 +315,9 @@ export function SubmissionPage() {
   const hasAnyUpload = Boolean(sub?.pptUrl || sub?.pdfUrl || sub?.videoUrl || sub?.githubUrl || sub?.deployedUrl)
 
   let finalizeBlockedReason = ''
-  if (locked) finalizeBlockedReason = 'Your submission is already finalized and locked.'
+  if (locked) finalizeBlockedReason = finalsMode ? 'Your finals submission is already finalized and locked.' : 'Your submission is already finalized and locked.'
   else if (paymentPending) finalizeBlockedReason = 'Complete your payment to unlock submissions.'
-  else if (!teamCanAccessActivePhase) finalizeBlockedReason = 'Your team is not shortlisted for this phase.'
+  else if (!teamCanAccessActivePhase) finalizeBlockedReason = finalsMode ? 'Only selected finalists can submit in the finals round.' : 'Your team is not shortlisted for this phase.'
   else if (phaseDeadlinePassed) finalizeBlockedReason = 'The deadline for the current phase has passed.'
   else if (!phaseSubmissionsOpen) finalizeBlockedReason = 'Submissions are not open for the current phase yet.'
   else if (!hasAnyUpload) finalizeBlockedReason = 'Upload your files before finalizing.'
@@ -326,6 +348,23 @@ export function SubmissionPage() {
             <Badge tone="info">{progress.filled}/{progress.total} files uploaded</Badge>
             {pct > 0 && <Badge tone="warn">Uploading {pct}%</Badge>}
           </div>
+
+          {/* Finals round banner — shown when the event's finalists-only gate is on */}
+          {finalsMode ? (
+            <div className={`mt-5 rounded-2xl border p-4 ${isFinalist ? 'border-amber-500/40 bg-amber-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+              <div className="flex items-start gap-2.5">
+                <Sparkles className={`mt-0.5 h-5 w-5 shrink-0 ${isFinalist ? 'text-amber-500' : 'text-red-500'}`} />
+                <div>
+                  <p className="font-display text-sm font-bold text-ink-900">Finals submission</p>
+                  <p className="mt-0.5 text-xs text-ink-600">
+                    {isFinalist
+                      ? 'This is the finals round. Upload your finals (Super PS / Part B) work below — it is separate from your earlier submission and locks independently once you finalize.'
+                      : 'The finals submission window is open to selected finalists only. Your team is not marked as a finalist.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {/* Phase info */}
           {activePhase && (

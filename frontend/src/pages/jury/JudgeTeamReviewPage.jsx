@@ -13,6 +13,7 @@ import {
   Save,
   CheckCircle2,
   Zap,
+  Sparkles,
 } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
@@ -181,6 +182,9 @@ export function JudgeTeamReviewPage() {
   const [error, setError] = useState('')
   const [team, setTeam] = useState(null)
   const [problemStatement, setProblemStatement] = useState(null)
+  // Finals context: the team's selected Super PS + the Universal Challenges.
+  const [superProblemStatement, setSuperProblemStatement] = useState(null)
+  const [challenges, setChallenges] = useState([])
   const [submission, setSubmission] = useState(null)
   const [evaluation, setEvaluation] = useState(null)
   const [edition, setEdition] = useState(null)
@@ -229,6 +233,8 @@ export function JudgeTeamReviewPage() {
       setTeam(data.team)
       setJuryStatus(data.team?.juryStatus || '')
       setProblemStatement(data.problemStatement)
+      setSuperProblemStatement(data.superProblemStatement || null)
+      setChallenges(Array.isArray(data.challenges) ? data.challenges : [])
       setSubmission(data.submission)
       setEvaluation(data.evaluation)
       setEdition(data.edition)
@@ -590,6 +596,61 @@ export function JudgeTeamReviewPage() {
               <p className="mt-2 text-sm text-ink-500">No problem metadata.</p>
             )}
           </Card>
+
+          {/* Super PS (finals problem statement the team selected) */}
+          {superProblemStatement ? (
+            <Card className="border-amber-500/40">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <h2 className="font-display text-lg font-semibold text-ink-900">Super PS · Finals</h2>
+              </div>
+              <p className="mt-2 font-mono text-[11px] text-ink-500">{superProblemStatement.id}</p>
+              <p className="mt-1 font-display text-xl text-ink-900">{superProblemStatement.title}</p>
+              {superProblemStatement.domain ? (
+                <p className="mt-1 text-xs font-medium text-ink-500">{superProblemStatement.domain}</p>
+              ) : null}
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-ink-700">
+                {superProblemStatement.description || '—'}
+              </p>
+            </Card>
+          ) : null}
+
+          {/* Universal Challenges — common scenario challenges scored within both parts */}
+          {challenges.length > 0 ? (
+            <Card>
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-600" />
+                <h2 className="font-display text-lg font-semibold text-ink-900">
+                  Universal Challenges ({challenges.length})
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-ink-500">
+                Common scenario challenges every team had to address — their response is scored inside both parts.
+              </p>
+              <div className="mt-4 space-y-3">
+                {challenges.map((c, i) => (
+                  <div key={c.id} className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
+                    <p className="font-semibold text-ink-900">{i + 1}. {c.title}</p>
+                    {c.description ? (
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink-600">{c.description}</p>
+                    ) : null}
+                    {c.whyUniversal ? (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Why it&apos;s universal</p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-ink-600">{c.whyUniversal}</p>
+                      </div>
+                    ) : null}
+                    {c.whatToShow ? (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">What the website/demo must show</p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-ink-600">{c.whatToShow}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
 
           <Card>
             <h2 className="font-display text-lg font-semibold text-ink-900">Submission</h2>

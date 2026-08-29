@@ -280,6 +280,13 @@ export function createApi(getToken, getEventId = () => '') {
         method: 'POST',
         body: { problemStatementId },
       }),
+    // Super PS — the one-time, final finals problem-statement choice.
+    // Stored separately from the round-1 selectProblem; cannot be changed once set.
+    selectSuperProblem: (problemStatementId) =>
+      authReq('/api/participant/select-super-problem', {
+        method: 'POST',
+        body: { problemStatementId },
+      }),
     // Open Innovation — a team's own problem statement
     getOpenInnovation: () => authReq('/api/participant/open-innovation'),
     saveOpenInnovation: (body) =>

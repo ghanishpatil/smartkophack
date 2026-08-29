@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Search, ArrowRight, Filter, ChevronDown } from 'lucide-react'
+import { Flame, Search, ArrowRight, Filter, ChevronDown, Sparkles, Lock, AlertTriangle } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useParticipantWorkspace } from '@/hooks/useParticipantWorkspace.js'
 import {
@@ -15,7 +15,6 @@ import { Button } from '@/components/ui/Button.jsx'
 import { Input } from '@/components/ui/Input.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
-import { OpenInnovationCard } from '@/components/participant/OpenInnovationCard.jsx'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog.jsx'
 
 export function ParticipantProblemsPage() {
@@ -52,11 +51,6 @@ export function ParticipantProblemsPage() {
     return max != null && c >= max
   }
 
-  const publishedCount = useMemo(
-    () => problems.filter((p) => p.published !== false).length,
-    [problems],
-  )
-
   const filtered = useMemo(() => {
     const s = globalSearch.trim().toLowerCase()
     let list = problems.filter((p) => p.published !== false)
@@ -86,6 +80,27 @@ export function ParticipantProblemsPage() {
     }
     return list
   }, [problems, globalSearch, filters])
+
+  // Super PS: a separate, ONE-TIME final selection (finals problem statement).
+  const [pendingSuperPid, setPendingSuperPid] = useState('')
+  const [superBusy, setSuperBusy] = useState(false)
+  const selectedSuperId = team?.superProblemStatementId || ''
+  const hasSuperSelected = Boolean(selectedSuperId)
+
+  // Split the filtered list: Super PS (flagship) render in their own section
+  // with a one-time selection flow; everything else is the regular bank.
+  const superFiltered = useMemo(() => filtered.filter((p) => p.origin === 'super_ps'), [filtered])
+  const regularFiltered = useMemo(() => filtered.filter((p) => p.origin !== 'super_ps'), [filtered])
+  const hasAnySuper = useMemo(
+    () => problems.some((p) => p.origin === 'super_ps' && p.published !== false),
+    [problems],
+  )
+  // The team's chosen Super PS (looked up in the full list so it shows even when
+  // the current filters would otherwise hide it).
+  const selectedSuper = useMemo(
+    () => problems.find((p) => p.id === selectedSuperId) || null,
+    [problems, selectedSuperId],
+  )
 
   const activeFilterCount = Object.values(filters).filter((v) => v !== 'all').length
   function clearFilters() {
@@ -145,6 +160,28 @@ export function ParticipantProblemsPage() {
     }
   }
 
+  /** Open the one-time confirmation before locking in a Super PS. */
+  function requestSuper(pid) {
+    if (!team || hasSuperSelected) return
+    setPendingSuperPid(pid)
+  }
+
+  async function selectSuper(pid) {
+    if (!team) return
+    setSuperBusy(true)
+    setMsg('')
+    try {
+      await api.selectSuperProblem(pid)
+      await refreshTeam()
+      setMsg('Super PS locked in. This was a one-time choice and cannot be changed.')
+    } catch (e) {
+      setMsg(e.message || 'Could not select Super PS')
+    } finally {
+      setSuperBusy(false)
+      setPendingSuperPid('')
+    }
+  }
+
   const selectionLocked =
     eventCfg?.lifecyclePhase &&
     !['REGISTRATION_OPEN', 'SUBMISSION_OPEN'].includes(eventCfg.lifecyclePhase)
@@ -194,14 +231,6 @@ export function ParticipantProblemsPage() {
       {msg ? (
         <p className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-4 py-3 text-sm">{msg}</p>
       ) : null}
-
-      {/* ── Open Innovation: submit your own problem statement ── */}
-      <OpenInnovationCard
-        api={api}
-        team={team}
-        canSelect={canSelect && !selectionLocked}
-        onSaved={async () => { await refreshTeam(); await loadOwnIdea() }}
-      />
 
       {/* Warning before discarding the team's own Open Innovation idea */}
       <ConfirmDialog
@@ -298,10 +327,124 @@ export function ParticipantProblemsPage() {
         </AnimatePresence>
       </div>
 
+      {/* ── Super PS (flagship) — one-time, final finals selection ── */}
+      {hasAnySuper ? (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-display text-xl font-bold text-ink-900">Super PS (flagship)</h2>
+              <p className="text-xs text-ink-500">
+                A one-time, final selection for the finals round — choose carefully, it cannot be changed later.
+              </p>
+            </div>
+          </div>
+
+          {selectedSuper ? (
+            <Card className="border-amber-500/40 bg-amber-50/70">
+              <div className="flex items-start gap-2">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <p className="text-sm text-amber-900">
+                  Your Super PS is locked in: <strong>{selectedSuper.title}</strong>{' '}
+                  <span className="font-mono text-xs">({selectedSuper.id})</span>. This choice is final and cannot be changed.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <p className="text-sm text-amber-950">
+                Pick <strong>one</strong> Super PS below. This is a <strong>one-time</strong> choice — once you confirm it, it
+                <strong> cannot be changed</strong>.
+              </p>
+            </Card>
+          )}
+
+          {superFiltered.length === 0 ? (
+            <p className="text-sm text-ink-500">No Super PS match your filters.</p>
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {superFiltered.map((p) => {
+                const count = typeof p.selectionCount === 'number' ? p.selectionCount : 0
+                const isSel = selectedSuperId === p.id
+                return (
+                  <li key={p.id}>
+                    <Card className={`h-full transition ${isSel ? 'border-amber-500/70 bg-amber-50/50 ring-2 ring-amber-500/25' : 'border-amber-300/60'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                              <Sparkles className="h-2.5 w-2.5" /> Super PS
+                            </span>
+                            <span className="font-mono text-[10px] text-ink-500">{p.id}</span>
+                          </div>
+                          <p className="mt-1 font-display font-semibold text-ink-900">{p.title}</p>
+                          <p className="mt-1 text-xs text-ink-500">{displayCategory(p) || '—'}</p>
+                          {displayTheme(p) ? <p className="mt-0.5 text-xs text-ink-500">{displayTheme(p)}</p> : null}
+                        </div>
+                        {isSel ? <Badge tone="success">Selected</Badge> : <Badge tone="warn">{count} teams</Badge>}
+                      </div>
+                      <p className="mt-3 line-clamp-3 text-sm text-ink-600">{p.description}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          type="button"
+                          className="gap-1"
+                          onClick={() => navigate(`/dashboard/problems/${encodeURIComponent(p.id)}`)}
+                        >
+                          View details <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={superBusy || !canSelect || (hasSuperSelected && !isSel)}
+                          onClick={() => requestSuper(p.id)}
+                        >
+                          {isSel ? 'Selected ✓' : hasSuperSelected ? 'Locked' : 'Select Super PS'}
+                        </Button>
+                      </div>
+                    </Card>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {/* One-time confirmation before locking in a Super PS */}
+      <ConfirmDialog
+        open={Boolean(pendingSuperPid)}
+        title="Lock in your Super PS?"
+        description="This is a one-time, final selection. You will not be able to change your Super PS after confirming."
+        confirmLabel="Confirm — this is final"
+        cancelLabel="Go back"
+        tone="danger"
+        busy={superBusy}
+        onCancel={() => setPendingSuperPid('')}
+        onConfirm={() => void selectSuper(pendingSuperPid)}
+      >
+        {(() => {
+          const p = problems.find((x) => x.id === pendingSuperPid)
+          return p ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-50/70 p-3">
+              <p className="font-mono text-[11px] uppercase tracking-wide text-ink-500">{p.id}</p>
+              <p className="mt-0.5 font-semibold text-ink-900">{p.title}</p>
+            </div>
+          ) : null
+        })()}
+        <p className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Once confirmed, this <strong>cannot be undone</strong>. Your team will be locked to this Super PS for the finals.</span>
+        </p>
+      </ConfirmDialog>
+
       {/* Result count */}
       {!loading ? (
         <p className="text-sm text-ink-600">
-          Showing <strong className="text-ink-900">{filtered.length}</strong> of {publishedCount} problem statements
+          Showing <strong className="text-ink-900">{regularFiltered.length}</strong>{' '}
+          of {problems.filter((p) => p.published !== false && p.origin !== 'super_ps').length} problem statements
         </p>
       ) : null}
 
@@ -310,7 +453,7 @@ export function ParticipantProblemsPage() {
           <Skeleton className="h-36 w-full rounded-xl" />
           <Skeleton className="h-36 w-full rounded-xl" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : regularFiltered.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-6">
           <p className="text-sm text-ink-500">No published problems match your filters.</p>
           {(activeFilterCount > 0 || globalSearch) ? (
@@ -319,7 +462,7 @@ export function ParticipantProblemsPage() {
         </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {filtered.map((p) => {
+          {regularFiltered.map((p) => {
             const count = typeof p.selectionCount === 'number' ? p.selectionCount : 0
             const maxTeams = typeof p.maxTeams === 'number' ? p.maxTeams : null
             const full = maxTeams != null && count >= maxTeams

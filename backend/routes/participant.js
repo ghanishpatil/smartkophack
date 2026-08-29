@@ -28,7 +28,7 @@ import {
 } from '../services/teamRegistration.js'
 import { notifyTeamMemberJoined, notifyRegistrationComplete, notifySubmissionFinalized } from '../services/notificationService.js'
 import { logActivity, actorFromReq, ACTIVITY_TYPE } from '../services/activityLog.js'
-import { getActivePhase, canTeamSubmit } from '../services/competitionPhases.js'
+import { getActivePhase, canTeamSubmit, isPhaseSubmissionOpen, phaseAcceptsSubmissions } from '../services/competitionPhases.js'
 import {
   OPEN_INNOVATION_DOMAIN,
   OI_ORIGIN,
@@ -688,6 +688,87 @@ r.post('/select-problem', async (req, res, next) => {
   }
 })
 
+/**
+ * Select a Super PS (the flagship, domain-wide problem statement used in the
+ * finals). This is a SEPARATE, ONE-TIME choice stored in `superProblemStatementId`
+ * — it never touches the team's round-1 `problemStatementId`. Once set it cannot
+ * be changed (enforced both up-front and inside the transaction).
+ */
+r.post('/select-super-problem', async (req, res, next) => {
+  try {
+    const db = getDb()
+    const uid = req.user.uid
+    const prof = req.profile || {}
+    const teamId = prof.teamId
+    if (!teamId) return res.status(400).json({ error: 'Join or create a team first.' })
+
+    const { problemStatementId } = req.body || {}
+    if (!problemStatementId) return res.status(400).json({ error: 'problemStatementId required' })
+    assertValidDocId(problemStatementId, 'problemStatementId')
+
+    const eventId = req.eventId
+
+    const teamRef = db.doc(`teams/${teamId}`)
+    const preSnap = await teamRef.get()
+    if (!preSnap.exists) return res.status(404).json({ error: 'Team not found.' })
+    const preTeam = preSnap.data()
+    if (!isTeamMember(preTeam, uid)) return res.status(403).json({ error: 'Forbidden.' })
+
+    const scopePre = await ensureTeamEventScope(teamRef, preTeam, eventId)
+    if (!scopePre.ok) return res.status(403).json({ error: scopePre.error })
+
+    const blocked = participationBlockedMessage(preTeam)
+    if (blocked) return res.status(403).json({ error: blocked })
+
+    if (!preTeam.eventRegistered) {
+      return res.status(403).json({ error: 'Register your team before selecting a Super PS.' })
+    }
+    // One-time, final choice — refuse if already set.
+    if (preTeam.superProblemStatementId) {
+      return res.status(409).json({ error: 'You have already selected your Super PS. This is a one-time choice and cannot be changed.' })
+    }
+
+    const newPsRef = db.doc(`problemStatements/${problemStatementId}`)
+
+    await db.runTransaction(async (tx) => {
+      const teamSnap = await tx.get(teamRef)
+      if (!teamSnap.exists) throw Object.assign(new Error('Team not found'), { status: 404 })
+      const team = teamSnap.data()
+      if (!isTeamMember(team, uid)) throw Object.assign(new Error('Forbidden'), { status: 403 })
+      // Race-safe re-check of the one-time lock.
+      if (team.superProblemStatementId) {
+        throw Object.assign(new Error('You have already selected your Super PS. This is a one-time choice and cannot be changed.'), { status: 409 })
+      }
+
+      const newPsSnap = await tx.get(newPsRef)
+      if (!newPsSnap.exists) throw Object.assign(new Error('Super PS not found'), { status: 404 })
+      const psd = newPsSnap.data()
+      if (psd.origin !== 'super_ps') {
+        throw Object.assign(new Error('That problem statement is not a Super PS.'), { status: 400 })
+      }
+      if (!problemBelongsToEvent(psd, eventId)) {
+        throw Object.assign(new Error('Super PS is not part of this event edition.'), { status: 400 })
+      }
+      if (psd.published === false) {
+        throw Object.assign(new Error('This Super PS is not published yet.'), { status: 403 })
+      }
+
+      tx.update(newPsRef, { selectionCount: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() })
+      tx.update(teamRef, {
+        superProblemStatementId: problemStatementId,
+        superProblemStatementSelectedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+    })
+
+    logActivity({ ...actorFromReq(req), activityType: ACTIVITY_TYPE.PROBLEM_SELECTED, teamId, targetId: problemStatementId, targetType: 'problemStatement', description: 'Selected Super PS (final, one-time)', metadata: { superProblemStatementId: problemStatementId } }).catch(() => {})
+    res.json({ ok: true, superProblemStatementId: problemStatementId })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
+})
+
 /** ═══ Open Innovation — participant-authored problem statements ═══ */
 
 /**
@@ -936,8 +1017,26 @@ r.post('/submission-metadata', async (req, res, next) => {
 
     // Phase gating (only when phases configured) — uses new state machine
     const activePhase = getActivePhase(merged)
+    // Finals mode: when the event's finalists-only gate is on, the active phase
+    // becomes a fresh, independent submission window for hand-picked finalists —
+    // gated by team.finalist (NOT round-1 shortlisting) and its own lock
+    // (finalsSubmissionLocked), so a round-1-finalized team can still submit.
+    const finalsMode = merged.finalistsOnly === true
 
-    if (activePhase) {
+    if (finalsMode) {
+      if (team.finalist !== true) {
+        return res.status(403).json({ error: 'Finals submissions are open to selected finalists only.' })
+      }
+      if (team.finalsSubmissionLocked) {
+        return res.status(403).json({ error: 'Your finals submission is finalized and locked.' })
+      }
+      if (!activePhase || !phaseAcceptsSubmissions(activePhase)) {
+        return res.status(403).json({ error: 'The finals submission window is not open yet.' })
+      }
+      if (!isPhaseSubmissionOpen(activePhase)) {
+        return res.status(403).json({ error: `Submissions for "${activePhase.name}" are not currently open.` })
+      }
+    } else if (activePhase) {
       // BUG-2 FIX: Check submissionLocked even when an active phase exists.
       // canTeamSubmit() does not check this flag.
       if (team.submissionLocked) {
@@ -1027,8 +1126,23 @@ r.post('/finalize-submission', async (req, res, next) => {
     // has no phase awareness — a team could finalize even when the active
     // phase deadline had passed or they weren't shortlisted.
     const activePhaseForFinalize = getActivePhase(merged)
+    const finalsModeFinalize = merged.finalistsOnly === true
 
-    if (activePhaseForFinalize) {
+    if (finalsModeFinalize) {
+      // Finals finalization — gated by team.finalist, with its own lock.
+      if (team.finalist !== true) {
+        return res.status(403).json({ error: 'Finals submissions are open to selected finalists only.' })
+      }
+      if (team.finalsSubmissionLocked) {
+        return res.status(403).json({ error: 'Your finals submission is already finalized and locked.' })
+      }
+      if (!activePhaseForFinalize || !phaseAcceptsSubmissions(activePhaseForFinalize)) {
+        return res.status(403).json({ error: 'The finals submission window is not open yet.' })
+      }
+      if (!isPhaseSubmissionOpen(activePhaseForFinalize)) {
+        return res.status(403).json({ error: `Submissions for "${activePhaseForFinalize.name}" are not currently open.` })
+      }
+    } else if (activePhaseForFinalize) {
       // When phases are configured, use phase-aware gate
       if (!canTeamSubmit(team, activePhaseForFinalize)) {
         const isFirstPhase = activePhaseForFinalize.order === 1
@@ -1085,16 +1199,36 @@ r.post('/finalize-submission', async (req, res, next) => {
       return res.status(400).json({ error: `Upload all required files before finalizing. Missing: ${missing.join(', ')}.` })
     }
 
-    await teamRef.set({ submissionLocked: true, submissionFinalizedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
-    await db.doc(`submissions/${teamId}`).set(
-      {
-        finalizedAt: FieldValue.serverTimestamp(),
-        finalizedBy: uid,
-        status: 'submitted',
-        eventId: team.eventId || eventId || '',
-      },
-      { merge: true },
-    )
+    if (finalsModeFinalize) {
+      // Finals: lock ONLY the finals submission (round-1 `submissionLocked`
+      // stays as-is) and record finalization inside the active phase slot so
+      // round-1's artifacts/lock are never disturbed.
+      const finalsPhaseId = activePhaseForFinalize.id
+      await teamRef.set(
+        { finalsSubmissionLocked: true, finalsSubmissionFinalizedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      )
+      await db.doc(`submissions/${teamId}`).set(
+        {
+          eventId: team.eventId || eventId || '',
+          phases: {
+            [finalsPhaseId]: { finalizedAt: new Date().toISOString(), finalizedBy: uid, status: 'submitted' },
+          },
+        },
+        { merge: true },
+      )
+    } else {
+      await teamRef.set({ submissionLocked: true, submissionFinalizedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      await db.doc(`submissions/${teamId}`).set(
+        {
+          finalizedAt: FieldValue.serverTimestamp(),
+          finalizedBy: uid,
+          status: 'submitted',
+          eventId: team.eventId || eventId || '',
+        },
+        { merge: true },
+      )
+    }
 
     // Notify submission finalized (fire-and-forget)
     notifySubmissionFinalized({ teamId }).catch(() => {})
@@ -1249,6 +1383,10 @@ r.get('/team-roster', async (req, res, next) => {
       // HIGH-05: Added so SubmissionPage can use API instead of direct Firestore reads
       paymentStatus: typeof team.paymentStatus === 'string' ? team.paymentStatus : 'pending',
       shortlistedPhases: Array.isArray(team.shortlistedPhases) ? team.shortlistedPhases : [],
+      // Finals: hand-picked finalist flag + the finals-only submission lock, so
+      // the Submission Center can open a finals window gated by `finalist`.
+      finalist: team.finalist === true,
+      finalsSubmissionLocked: team.finalsSubmissionLocked === true,
     })
   } catch (e) {
     next(e)

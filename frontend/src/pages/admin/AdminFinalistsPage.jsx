@@ -72,6 +72,9 @@ export function AdminFinalistsPage() {
   const [savingGate, setSavingGate] = useState(false)
   const [busyTeam, setBusyTeam] = useState('') // teamId currently toggling
   const [search, setSearch] = useState('')
+  // This tab shows ONLY finalist teams by default. Toggle on to reveal the full
+  // roster when you need to pick/add finalists.
+  const [showAllTeams, setShowAllTeams] = useState(false)
 
   const load = useCallback(async (spin = false) => {
     if (spin) setLoading(true)
@@ -142,6 +145,9 @@ export function AdminFinalistsPage() {
     const q = search.trim().toLowerCase()
     const byDomain = new Map()
     for (const r of rows) {
+      // Default view: only teams already flagged as finalist. "Show all teams"
+      // reveals the full roster so the admin can pick/add finalists.
+      if (!showAllTeams && !r.finalist) continue
       if (q && !`${r.name} ${r.code} ${r.college} ${r.track}`.toLowerCase().includes(q)) continue
       if (!byDomain.has(r.domain)) byDomain.set(r.domain, [])
       byDomain.get(r.domain).push(r)
@@ -156,7 +162,7 @@ export function AdminFinalistsPage() {
     }
     list.sort((a, b) => a.domain.localeCompare(b.domain))
     return list
-  }, [rows, targets, search])
+  }, [rows, targets, search, showAllTeams])
 
   const totalSelected = useMemo(() => rows.filter((r) => r.finalist).length, [rows])
 
@@ -313,9 +319,14 @@ export function AdminFinalistsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Button variant="primary" size="sm" onClick={saveTargets} disabled={readOnly || savingTargets}>
-          <Save className="h-4 w-4" /> Save target counts
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setShowAllTeams((v) => !v)}>
+            {showAllTeams ? 'Show finalists only' : 'Show all teams'}
+          </Button>
+          <Button variant="primary" size="sm" onClick={saveTargets} disabled={readOnly || savingTargets}>
+            <Save className="h-4 w-4" /> Save target counts
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -323,7 +334,11 @@ export function AdminFinalistsPage() {
           {[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 w-full" />)}
         </div>
       ) : groups.length === 0 ? (
-        <Card className="text-center text-ink-500">No teams with a selected problem statement yet.</Card>
+        <Card className="text-center text-ink-500">
+          {showAllTeams
+            ? 'No teams with a selected problem statement yet.'
+            : 'No finalists selected yet. Click “Show all teams” to pick finalists.'}
+        </Card>
       ) : (
         <div className="space-y-5">
           {groups.map((g) => {
