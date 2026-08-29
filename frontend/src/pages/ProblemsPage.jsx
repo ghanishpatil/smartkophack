@@ -13,7 +13,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Copy, Check, Star,
   Filter, ExternalLink, Clock, AlertCircle, TrendingUp, Flame, ChevronLeft,
   HeartPulse, GraduationCap, Bus, Utensils, Recycle, Sprout, Factory, Lightbulb, Tag,
-  Download, FileText,
+  Download, FileText, Sparkles,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Input } from '@/components/ui/Input.jsx'
@@ -163,6 +163,12 @@ function DetailDrawer({ ps, onClose, onToggleBookmark, isBookmarked, deadline })
                 >
                   {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                 </button>
+                {ps.origin === 'super_ps' ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                    <Sparkles className="h-2.5 w-2.5" />
+                    Super PS
+                  </span>
+                ) : null}
               </div>
               <h2 className="mt-0.5 font-display text-base font-bold leading-snug text-ink-900 break-words">
                 {ps.title}
@@ -327,6 +333,7 @@ export function ProblemsPage() {
   const [eventCfg, setEventCfg] = useState(null)
   const [globalSearch, setGlobalSearch] = useState('')
   const [filters, setFilters] = useState({
+    type: 'all',
     track: 'all',
     domain: 'all',
     participation: 'all',
@@ -411,6 +418,14 @@ export function ProblemsPage() {
       )
     }
 
+    if (filters.type !== 'all') {
+      list = list.filter((p) => {
+        if (filters.type === 'super_ps') return p.origin === 'super_ps'
+        // "Regular" = anything that isn't a Super PS or an Open Innovation entry.
+        if (filters.type === 'curated') return p.origin !== 'super_ps' && p.origin !== 'open_innovation'
+        return true
+      })
+    }
     if (filters.track !== 'all') list = list.filter((p) => p.category === filters.track)
     if (filters.domain !== 'all') list = list.filter((p) => (p.theme || p.domain) === filters.domain)
 
@@ -450,9 +465,17 @@ export function ProblemsPage() {
       accessorFn: (row) => row.title || '',
       cell: ({ getValue, row }) => (
         <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-semibold text-ink-900 transition-colors group-hover:text-brand-600">
-            {getValue()}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="line-clamp-2 text-sm font-semibold text-ink-900 transition-colors group-hover:text-brand-600">
+              {getValue()}
+            </p>
+            {row.original.origin === 'super_ps' ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                <Sparkles className="h-2.5 w-2.5" />
+                Super PS
+              </span>
+            ) : null}
+          </div>
           {row.original.description ? (
             <p className="mt-0.5 line-clamp-1 text-[11px] text-ink-500">
               {row.original.description.slice(0, 100)}
@@ -566,6 +589,7 @@ export function ProblemsPage() {
   function clearFilters() {
     setGlobalSearch('')
     setFilters({
+      type: 'all',
       track: 'all',
       domain: 'all',
       participation: 'all',
@@ -685,6 +709,15 @@ export function ProblemsPage() {
               className="mb-4 overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))]"
             >
               <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                <FilterSelect
+                  label="Type"
+                  value={filters.type}
+                  options={[
+                    { value: 'super_ps', label: 'Super PS (flagship)' },
+                    { value: 'curated', label: 'Regular' },
+                  ]}
+                  onChange={(v) => setFilters((f) => ({ ...f, type: v }))}
+                />
                 <FilterSelect label="Track" value={filters.track} options={tracks} onChange={(v) => setFilters((f) => ({ ...f, track: v }))} />
                 <FilterSelect label="Domain" value={filters.domain} options={domains} onChange={(v) => setFilters((f) => ({ ...f, domain: v }))} />
                 <FilterSelect
@@ -764,7 +797,9 @@ export function ProblemsPage() {
                         <tr
                           key={ps.id}
                           onClick={() => setSelected(ps)}
-                          className="group cursor-pointer border-b border-[rgb(var(--border))] last:border-b-0 transition-colors hover:bg-brand-50/40"
+                          className={`group cursor-pointer border-b border-[rgb(var(--border))] last:border-b-0 transition-colors ${
+                            ps.origin === 'super_ps' ? 'bg-amber-50/60 hover:bg-amber-100/70' : 'hover:bg-brand-50/40'
+                          }`}
                         >
                           <td className="px-3 py-3.5" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -806,12 +841,22 @@ export function ProblemsPage() {
                     key={ps.id}
                     type="button"
                     onClick={() => setSelected(ps)}
-                    className="block w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+                    className={`block w-full rounded-xl border p-4 text-left shadow-sm transition-shadow hover:shadow-md ${
+                      ps.origin === 'super_ps'
+                        ? 'border-amber-300 bg-amber-50/50'
+                        : 'border-[rgb(var(--border))] bg-[rgb(var(--surface))]'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-[10px] font-bold text-brand-600">{ps.id}</span>
+                          {ps.origin === 'super_ps' ? (
+                            <span className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                              <Sparkles className="h-2.5 w-2.5" />
+                              Super PS
+                            </span>
+                          ) : null}
                           <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold ${track.bg} ${track.text} ${track.border}`}>
                             <span className={`h-1 w-1 rounded-full ${track.dot}`} />
                             {ps.category || 'Software'}
