@@ -14,18 +14,24 @@ import { downloadCsv } from '@/utils/csvExport.js'
 const round1 = (n) => Math.round(n * 10) / 10
 
 /**
- * The shared "Universal Challenge" criteria are merged into BOTH Part A and
- * Part B. To report project vs challenge separately we identify the challenge
- * keys from the stored `challengeCriteria` snapshot, falling back to the keys
- * present in BOTH part rubrics (the challenge is the only overlap).
+ * Identify which rubric rows are the shared "Universal Challenge" criteria so
+ * we can split each part into Project vs Challenge. Resolution order:
+ *   1) the stored `challengeCriteria` snapshot (challenges in the dedicated slot),
+ *   2) rows whose label/key say "Universal Challenge …" — handles rubrics where
+ *      the challenges were added inline into Part A/B instead of the slot,
+ *   3) legacy fallback: rows shared by both parts.
  */
 function challengeKeySet(ev) {
   if (Array.isArray(ev.challengeCriteria) && ev.challengeCriteria.length) {
     return new Set(ev.challengeCriteria.map((c) => c.key))
   }
+  const isChallenge = (c) => /universal.?challenge/i.test(`${c?.label || ''} ${c?.key || ''}`)
+  const detected = new Set()
+  for (const c of ev.evaluationCriteriaA || []) if (isChallenge(c)) detected.add(c.key)
+  for (const c of ev.evaluationCriteriaB || []) if (isChallenge(c)) detected.add(c.key)
+  if (detected.size > 0) return detected
   const aKeys = new Set((ev.evaluationCriteriaA || []).map((c) => c.key))
-  const shared = (ev.evaluationCriteriaB || []).map((c) => c.key).filter((k) => aKeys.has(k))
-  return new Set(shared)
+  return new Set((ev.evaluationCriteriaB || []).map((c) => c.key).filter((k) => aKeys.has(k)))
 }
 
 /** Split one part's combined rubric+scores into project and challenge buckets. */
