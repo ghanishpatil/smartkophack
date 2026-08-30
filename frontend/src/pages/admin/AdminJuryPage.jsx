@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckSquare, Square, Tag, BookOpen, Users, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { CheckSquare, Square, Tag, BookOpen, Users, Search, ChevronDown, ChevronRight, Upload, Download } from 'lucide-react'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
 import { useApi } from '@/hooks/useApi.js'
 import { useEvent } from '@/context/EventContext.jsx'
@@ -17,6 +17,29 @@ import { Button } from '@/components/ui/Button.jsx'
 import { Badge } from '@/components/ui/Badge.jsx'
 import { Skeleton } from '@/components/ui/Skeleton.jsx'
 import { Tabs } from '@/components/ui/Tabs.jsx'
+
+/** Normalize a team name/code for case-insensitive matching. */
+function normTeamKey(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * Parse a CSV/text file of team names — one per line; an optional
+ * "team"/"name" header row is skipped. Values may be double-quoted (Excel style).
+ */
+function parseTeamNameList(text) {
+  const cleaned = String(text || '').replace(/^\uFEFF/, '')
+  const unquote = (s) => {
+    let v = s.trim()
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1).replace(/""/g, '"')
+    return v.trim()
+  }
+  const lines = cleaned.split(/\r?\n/).map(unquote).filter(Boolean)
+  if (lines.length === 0) return []
+  const headers = ['team', 'name', 'team name', 'teamname', 'team_name', 'teams']
+  const start = headers.includes(lines[0].toLowerCase()) ? 1 : 0
+  return lines.slice(start)
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -170,6 +193,8 @@ export function AdminJuryPage() {
   const [hideAssignedElsewhere, setHideAssignedElsewhere] = useState(true) // By Team tab: hide teams already taken by another judge
   const [clearingTeams, setClearingTeams] = useState(false) // By Team tab: bulk-clear in progress
   const [showClearConfirm, setShowClearConfirm] = useState(false) // By Team tab: confirm the bulk clear
+  const [bulkCsvResult, setBulkCsvResult] = useState(null) // By Team tab: parsed CSV match result
+  const [bulkAssigning, setBulkAssigning] = useState(false) // By Team tab: bulk CSV assign in progress
   // Expandable team-status rows: show full member details on click.
   const [expandedTeamId, setExpandedTeamId] = useState('')
   const [teamMembers, setTeamMembers] = useState({}) // teamId → { loading, members }
@@ -299,6 +324,96 @@ export function AdminJuryPage() {
     } finally {
       setClearingTeams(false)
     }
+  }
+
+  // CSV bulk assign: parse a file of team names and match against loaded teams.
+  function onBulkCsvFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const names = parseTeamNameList(String(reader.result || ''))
+      const byName = new Map()
+      const byCode = new Map()
+      for (const t of teams) {
+        const nk = normTeamKey(t.name)
+        if (nk) { if (!byName.has(nk)) byName.set(nk, []); byName.get(nk).push(t) }
+        const ck = normTeamKey(t.inviteCode)
+        if (ck) byCode.set(ck, t)
+      }
+      const matched = []
+      const unmatched = []
+      const ambiguous = []
+      const seen = new Set()
+      const matchedIds = new Set()
+      for (const raw of names) {
+        const k = normTeamKey(raw)
+        if (!k || seen.has(k)) continue
+        seen.add(k)
+        const nameHits = byName.get(k) || []
+        const codeHit = byCode.get(k)
+        if (nameHits.length === 1) {
+          const t = nameHits[0]
+          if (!matchedIds.has(t.id)) { matched.push({ raw, team: t }); matchedIds.add(t.id) }
+        } else if (nameHits.length > 1) {
+          // Duplicate team names — fall back to a code match, else flag ambiguous.
+          if (codeHit && !matchedIds.has(codeHit.id)) { matched.push({ raw, team: codeHit }); matchedIds.add(codeHit.id) }
+          else ambiguous.push(raw)
+        } else if (codeHit && !matchedIds.has(codeHit.id)) {
+          matched.push({ raw, team: codeHit }); matchedIds.add(codeHit.id)
+        } else {
+          unmatched.push(raw)
+        }
+      }
+      setBulkCsvResult({ matched, unmatched, ambiguous, fileName: file.name })
+      setMsg('')
+    }
+    reader.onerror = () => setMsg('Could not read the file.')
+    reader.readAsText(file)
+  }
+
+  async function runBulkCsvAssign() {
+    if (!judgeId) { setMsg('Please select a judge first.'); return }
+    const ids = (bulkCsvResult?.matched || []).map((m) => m.team.id)
+    if (ids.length === 0) { setMsg('No matched teams to assign.'); return }
+    setBulkAssigning(true)
+    setMsg('')
+    try {
+      const res = await api.assignJudgeTeamsBulk({ judgeId, teamIds: ids })
+      setMsg(`Assigned ${res?.assigned ?? ids.length} team(s) to this judge.`)
+      setBulkCsvResult(null)
+      await refreshData()
+    } catch (e) {
+      setMsg(e.message || 'Bulk assign failed')
+    } finally {
+      setBulkAssigning(false)
+    }
+  }
+
+  // Downloads a ready-to-edit CSV pre-filled with the actual team names (one per
+  // line, `team` header). The admin deletes the rows they don't want, then
+  // re-uploads — this guarantees exact-name matches with zero typos.
+  function downloadTeamTemplate() {
+    const esc = (v) => {
+      const s = String(v ?? '')
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const names = teams
+      .map((t) => t.name)
+      .filter((n) => typeof n === 'string' && n.trim())
+      .sort((a, b) => a.localeCompare(b))
+    const rows = names.length ? names : ['Example Team Name']
+    const csv = ['team', ...rows.map(esc)].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'judge-team-assignment-template.csv'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const filteredTeams = useMemo(() => {
@@ -767,6 +882,67 @@ export function AdminJuryPage() {
                     </Button>
                   </div>
                 )}
+              </div>
+
+              {/* Bulk assign by CSV of team names → the selected judge */}
+              <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Upload className="h-4 w-4 text-brand-600" />
+                    <p className="text-sm font-semibold text-ink-900">Bulk assign by CSV (team names)</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" size="sm" variant="secondary" onClick={downloadTeamTemplate}>
+                      <Download className="h-3.5 w-3.5" /> Template
+                    </Button>
+                    <label
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-1.5 text-xs font-medium text-ink-700 hover:border-brand-500/40 ${!judgeId ? 'pointer-events-none opacity-50' : ''}`}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Choose CSV
+                      <input type="file" accept=".csv,.txt" className="hidden" disabled={!judgeId} onChange={onBulkCsvFile} />
+                    </label>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-ink-500">
+                  One team name per line (a “team” header is optional). Matched teams are added to the selected judge.
+                  {judgeId ? '' : ' Select a judge above first.'}
+                </p>
+
+                {bulkCsvResult ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge tone="success">{bulkCsvResult.matched.length} matched</Badge>
+                      {bulkCsvResult.unmatched.length > 0 ? <Badge tone="warn">{bulkCsvResult.unmatched.length} not found</Badge> : null}
+                      {bulkCsvResult.ambiguous.length > 0 ? <Badge tone="danger">{bulkCsvResult.ambiguous.length} ambiguous</Badge> : null}
+                      <span className="text-ink-400">from {bulkCsvResult.fileName}</span>
+                    </div>
+                    {(bulkCsvResult.unmatched.length > 0 || bulkCsvResult.ambiguous.length > 0) ? (
+                      <div className="max-h-28 overflow-y-auto rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 text-[11px] text-ink-600">
+                        {bulkCsvResult.unmatched.map((n, i) => (
+                          <p key={`u${i}`}>• <span className="font-medium text-amber-700">Not found:</span> {n}</p>
+                        ))}
+                        {bulkCsvResult.ambiguous.map((n, i) => (
+                          <p key={`a${i}`}>• <span className="font-medium text-red-700">Multiple teams named:</span> {n} — use the team code or assign manually</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="primary"
+                        disabled={bulkAssigning || bulkCsvResult.matched.length === 0}
+                        onClick={() => void runBulkCsvAssign()}
+                      >
+                        {bulkAssigning ? 'Assigning…' : `Assign ${bulkCsvResult.matched.length} matched team(s)`}
+                      </Button>
+                      <Button type="button" size="sm" variant="secondary" disabled={bulkAssigning} onClick={() => setBulkCsvResult(null)}>
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="relative">

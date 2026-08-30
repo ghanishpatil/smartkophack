@@ -134,6 +134,9 @@ export function createApi(getToken, getEventId = () => '') {
     // Bulk-clear all direct team→judge assignments (round-2) for the event.
     clearJudgeTeamAssignments: (body) =>
       authReq('/api/admin/judges/clear-team-assignments', { method: 'POST', body }),
+    // Bulk-assign a judge to many teams at once (backs the By Team CSV upload).
+    assignJudgeTeamsBulk: (body) =>
+      authReq('/api/admin/judges/assign-teams-bulk', { method: 'POST', body }),
     getJudgeAssignmentsOverview: () =>
       authReq('/api/admin/judges/assignments-overview'),
     recordTeamPayment: (body) =>

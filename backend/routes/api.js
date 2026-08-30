@@ -3187,6 +3187,70 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * Bulk-assign a judge to many teams at once (team.judgeIds arrayUnion).
+   * Backs the "By Team" CSV upload. Verifies the judge role, verifies each team
+   * actually exists (chunked getAll — never creates stub docs), then batch-adds
+   * the judge to each existing team. Additive / non-destructive.
+   */
+  router.post('/judges/assign-teams-bulk', async (req, res, next) => {
+    try {
+      const { judgeId } = req.body || {}
+      if (!judgeId || !isValidDocId(judgeId)) return res.status(400).json({ error: 'Valid judgeId required.' })
+      let teamIds = Array.isArray(req.body?.teamIds) ? req.body.teamIds : []
+      teamIds = [...new Set(teamIds.map((x) => String(x || '').trim()).filter(Boolean))]
+      if (!teamIds.length) return res.status(400).json({ error: 'No teamIds provided.' })
+      if (teamIds.length > 1000) return res.status(400).json({ error: 'Too many teams in one request (max 1000).' })
+      const invalid = teamIds.filter((id) => !isValidDocId(id))
+      if (invalid.length) return res.status(400).json({ error: `Invalid team id(s): ${invalid.slice(0, 5).join(', ')}` })
+
+      const judgeSnap = await db().doc(`users/${judgeId}`).get()
+      if (!judgeSnap.exists || judgeSnap.data().role !== 'judge') {
+        return res.status(400).json({ error: 'Target user is not a judge.' })
+      }
+
+      // Verify the teams exist (chunked getAll) so we never create stub docs.
+      const existing = []
+      for (let i = 0; i < teamIds.length; i += 300) {
+        const refs = teamIds.slice(i, i + 300).map((id) => db().doc(`teams/${id}`))
+        // eslint-disable-next-line no-await-in-loop
+        const snaps = await db().getAll(...refs)
+        for (const s of snaps) if (s.exists) existing.push(s.id)
+      }
+
+      let assigned = 0
+      let batch = db().batch()
+      let ops = 0
+      for (const id of existing) {
+        batch.set(
+          db().doc(`teams/${id}`),
+          { judgeIds: FieldValue.arrayUnion(judgeId), updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        )
+        assigned += 1
+        ops += 1
+        if (ops >= 400) {
+          // eslint-disable-next-line no-await-in-loop
+          await batch.commit()
+          batch = db().batch()
+          ops = 0
+        }
+      }
+      if (ops > 0) await batch.commit()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'judge.assign_teams_bulk',
+        targetType: 'user',
+        targetId: judgeId,
+        metadata: { assigned, requested: teamIds.length, skipped: teamIds.length - assigned },
+      })
+      res.json({ ok: true, assigned, skipped: teamIds.length - assigned })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /** GET /admin/judges/assignments-overview — all judges with their PS + domain/track assignments */
   router.get('/judges/assignments-overview', async (req, res, next) => {
     try {
