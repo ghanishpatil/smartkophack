@@ -131,6 +131,9 @@ export function createApi(getToken, getEventId = () => '') {
       authReq('/api/admin/judges/assign-team', { method: 'POST', body }),
     unassignJudgeTeam: (body) =>
       authReq('/api/admin/judges/unassign-team', { method: 'POST', body }),
+    // Bulk-clear all direct team→judge assignments (round-2) for the event.
+    clearJudgeTeamAssignments: (body) =>
+      authReq('/api/admin/judges/clear-team-assignments', { method: 'POST', body }),
     getJudgeAssignmentsOverview: () =>
       authReq('/api/admin/judges/assignments-overview'),
     recordTeamPayment: (body) =>

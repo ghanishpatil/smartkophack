@@ -3142,6 +3142,51 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * Bulk-clear ALL direct team→judge assignments (team.judgeIds) for the event.
+   * Used to reset round-2 direct-team assignments before finals so judges can be
+   * reassigned cleanly. Touches ONLY `judgeIds` — domain/track assignments
+   * (users.judgeAssignments) and PS assignments (users.assignedProblemStatementIds)
+   * are left untouched.
+   */
+  router.post('/judges/clear-team-assignments', async (req, res, next) => {
+    try {
+      const eventId = String(req.body?.eventId || req.eventId || '').trim()
+      let q = db().collection('teams')
+      if (eventId) q = q.where('eventId', '==', eventId)
+      const snap = await q.limit(2000).get()
+
+      let cleared = 0
+      let batch = db().batch()
+      let ops = 0
+      for (const d of snap.docs) {
+        const ids = d.data().judgeIds
+        if (!Array.isArray(ids) || ids.length === 0) continue
+        batch.set(d.ref, { judgeIds: [], updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+        cleared += 1
+        ops += 1
+        if (ops >= 400) {
+          // eslint-disable-next-line no-await-in-loop
+          await batch.commit()
+          batch = db().batch()
+          ops = 0
+        }
+      }
+      if (ops > 0) await batch.commit()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'judges.clear_team_assignments',
+        targetType: 'event',
+        targetId: eventId || 'all',
+        metadata: { cleared },
+      })
+      res.json({ ok: true, cleared })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /** GET /admin/judges/assignments-overview — all judges with their PS + domain/track assignments */
   router.get('/judges/assignments-overview', async (req, res, next) => {
     try {

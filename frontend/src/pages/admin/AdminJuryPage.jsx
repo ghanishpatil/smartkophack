@@ -168,6 +168,8 @@ export function AdminJuryPage() {
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('domain') // 'domain' | 'ps' | 'team'
   const [hideAssignedElsewhere, setHideAssignedElsewhere] = useState(true) // By Team tab: hide teams already taken by another judge
+  const [clearingTeams, setClearingTeams] = useState(false) // By Team tab: bulk-clear in progress
+  const [showClearConfirm, setShowClearConfirm] = useState(false) // By Team tab: confirm the bulk clear
   // Expandable team-status rows: show full member details on click.
   const [expandedTeamId, setExpandedTeamId] = useState('')
   const [teamMembers, setTeamMembers] = useState({}) // teamId → { loading, members }
@@ -279,6 +281,23 @@ export function AdminJuryPage() {
       setMsg(e.message || 'Failed')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Bulk reset: clear ALL direct team→judge assignments (round-2) for the event.
+  // Domain/track and PS assignments are untouched.
+  async function clearAllTeamAssignments() {
+    setMsg('')
+    setClearingTeams(true)
+    try {
+      const res = await api.clearJudgeTeamAssignments({ eventId })
+      setMsg(`Round-2 team assignments cleared (${res?.cleared ?? 0} team(s)).`)
+      setShowClearConfirm(false)
+      await refreshData()
+    } catch (e) {
+      setMsg(e.message || 'Could not clear team assignments')
+    } finally {
+      setClearingTeams(false)
     }
   }
 
@@ -722,6 +741,34 @@ export function AdminJuryPage() {
                 Hide teams already assigned to other judges
               </label>
 
+              {/* Bulk reset of round-2 direct team assignments (does NOT touch domain/track or PS assignments) */}
+              <div className="flex flex-wrap items-center gap-2">
+                {!showClearConfirm ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={saving || clearingTeams}
+                    className="border-red-500/40 text-red-700 hover:bg-red-500/5"
+                    onClick={() => setShowClearConfirm(true)}
+                  >
+                    Clear round-2 team assignments
+                  </Button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+                    <span className="text-xs text-red-800">
+                      Remove ALL direct team → judge assignments for this event? Domain/track and problem-statement assignments are not affected.
+                    </span>
+                    <Button type="button" size="sm" variant="danger" disabled={clearingTeams} onClick={() => void clearAllTeamAssignments()}>
+                      {clearingTeams ? 'Clearing…' : 'Yes, clear all'}
+                    </Button>
+                    <Button type="button" size="sm" variant="secondary" disabled={clearingTeams} onClick={() => setShowClearConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <input
@@ -767,7 +814,16 @@ export function AdminJuryPage() {
                             Assigned ✓ — Remove
                           </Button>
                         ) : assignedToOther ? (
-                          <Badge tone="warn" className="shrink-0 text-xs">Assigned</Badge>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={saving}
+                            className="shrink-0"
+                            onClick={() => void toggleTeamAssign(t.id)}
+                          >
+                            Also assign
+                          </Button>
                         ) : (
                           <Button
                             type="button"
