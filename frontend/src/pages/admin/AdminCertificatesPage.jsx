@@ -247,9 +247,9 @@ export function AdminCertificatesPage() {
       </div>
 
       {tab === 'issue' ? (
-        <div className="mt-6 grid gap-5 lg:grid-cols-[1.15fr_1fr]">
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.15fr_minmax(0,1fr)]">
           {/* ── Left: award + teams ── */}
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             {/* Award */}
             <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
               <h2 className="font-display text-sm font-bold text-ink-900">1. Choose the award</h2>
@@ -352,7 +352,7 @@ export function AdminCertificatesPage() {
           </div>
 
           {/* ── Right: preview + issued list ── */}
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
               <div className="flex items-center justify-between">
                 <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold text-ink-900"><Eye className="h-4 w-4" /> Sample preview</h2>
@@ -398,8 +398,8 @@ export function AdminCertificatesPage() {
         </div>
       ) : (
         /* ── Template editor ── */
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
+        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="min-w-0 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-display text-sm font-bold text-ink-900">Raw template (HTML)</h2>
               <span className="text-xs text-ink-400">{draft.length.toLocaleString()} chars</span>
@@ -444,7 +444,7 @@ export function AdminCertificatesPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
+          <div className="min-w-0 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
             <div className="flex items-center justify-between">
               <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold text-ink-900"><Eye className="h-4 w-4" /> Live preview</h2>
               {draft !== template && <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">Unsaved</span>}

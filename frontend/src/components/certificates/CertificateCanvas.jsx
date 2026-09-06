@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 /** A4 landscape, in millimetres — must match backend CERT_SIZE. */
 export const CERT_W_MM = 297
@@ -22,9 +22,11 @@ export const CERT_H_PX = CERT_H_MM * MM_TO_PX // ≈ 793.7
  */
 export function CertificateCanvas({ html, className = '' }) {
   const wrapRef = useRef(null)
-  const [scale, setScale] = useState(0.5)
+  const [scale, setScale] = useState(0)
 
-  useEffect(() => {
+  // useLayoutEffect so the first measurement happens before paint — otherwise
+  // the sheet flashes at the wrong size on mount.
+  useLayoutEffect(() => {
     const el = wrapRef.current
     if (!el) return undefined
     const measure = () => {
@@ -38,18 +40,34 @@ export function CertificateCanvas({ html, className = '' }) {
   }, [])
 
   return (
+    // minWidth:0 lets this shrink inside flex/grid parents instead of being
+    // forced wide by its own content.
     <div
       ref={wrapRef}
       className={className}
-      style={{ width: '100%', height: CERT_H_PX * scale, overflow: 'hidden' }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        minWidth: 0,
+        height: scale ? CERT_H_PX * scale : 0,
+        overflow: 'hidden',
+      }}
     >
+      {/* Absolutely positioned so the unscaled 1122px sheet contributes NOTHING
+          to layout. A transform shrinks paint, not layout size, so leaving this
+          in normal flow inflates any content-sized ancestor (a `1fr` grid
+          column), which in turn inflates the measured width — a feedback loop
+          that pins the scale near 1 and overflows the panel. */}
       <div
         style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
           width: CERT_W_PX,
           height: CERT_H_PX,
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
-          flexShrink: 0,
+          visibility: scale ? 'visible' : 'hidden',
         }}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html || '' }}
