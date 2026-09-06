@@ -25,6 +25,16 @@ export const CERT_SIZE = { widthMm: 297, heightMm: 210, orientation: 'landscape'
  */
 export const AWARD_CATALOG = [
   {
+    id: 'participation',
+    title: 'Participation in Smart Kopargaon Hackathon 2026',
+    citation: 'For active participation, dedication and innovative contribution in the Smart Kopargaon Hackathon 2026.',
+  },
+  {
+    id: 'grand_finale_participation',
+    title: 'Offline Grand Finale Participation',
+    citation: 'For attending and participating in the 24-hour offline Grand Finale of the Smart Kopargaon Hackathon 2026, held at Sanjivani University, Kopargaon, with dedication and innovative contribution.',
+  },
+  {
     id: 'first_prize',
     title: '1st Prize',
     citation: 'For outstanding performance, dedication and innovative contribution, securing the 1st Prize at the Grand Finale of Smart Kopargaon Hackathon 2026.',
