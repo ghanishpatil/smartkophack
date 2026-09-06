@@ -564,8 +564,22 @@ export function GrandFinalePage() {
 
       {/* ═══════════ PRIZES (dark) ═══════════ */}
       <Section dark className="py-16 sm:py-24" labelledBy="prizes">
-        <SectionHead dark n="06" kicker="The Rewards" title="&#8377;1,44,000 in prizes"
-          lead="Three overall cash prizes awarded irrespective of domain, plus a cash prize and tech gifts for the winner of each of the eight domains." />
+        <SectionHead dark n="06" kicker="The Rewards" title="&#8377;2 Lakh prize pool"
+          lead="Three overall cash prizes awarded irrespective of domain, a cash prize and tech gifts for each of the eight domain winners, and goodies making up the rest." />
+
+        {/* Pool split */}
+        <motion.div {...reveal} className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/12 bg-white/10 sm:grid-cols-3">
+          {[
+            { k: 'Total prize pool', v: '\u20B92,00,000' },
+            { k: 'Cash prizes', v: '\u20B91,44,000' },
+            { k: 'Goodies & tech gifts', v: '\u20B956,000' },
+          ].map((s) => (
+            <div key={s.k} className="bg-ink-950 px-5 py-6">
+              <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">{s.k}</p>
+              <p className="mt-2 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{s.v}</p>
+            </div>
+          ))}
+        </motion.div>
         <motion.div
           variants={container} initial="hidden" whileInView="show" viewport={{ once: true }}
           className="mt-12 grid grid-cols-1 border-t border-white/12 lg:grid-cols-3"
