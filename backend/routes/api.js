@@ -2021,11 +2021,31 @@ export function adminRouter() {
         })
       })
 
+      // What each team already holds — the source of truth for "already has a
+      // bigger award", used to exclude prize winners from the Grand Finale
+      // participation certificate.
+      const { isMajorAward } = await import('../services/certificates.js')
+      let cq = db().collection('certificates').limit(20000)
+      if (eventId) cq = cq.where('eventId', '==', eventId)
+      const cSnap = await cq.get()
+      const awardsByTeam = new Map()
+      cSnap.docs.forEach((d) => {
+        const c = d.data()
+        if (!c.teamId || c.revoked === true) return
+        if (!awardsByTeam.has(c.teamId)) awardsByTeam.set(c.teamId, new Map())
+        const m = awardsByTeam.get(c.teamId)
+        const prev = m.get(c.awardId) || { awardId: c.awardId, awardTitle: c.awardTitle || '', count: 0 }
+        prev.count += 1
+        m.set(c.awardId, prev)
+      })
+
       const teams = tSnap.docs.map((d) => {
         const t = d.data()
         const ps = t.problemStatementId ? psMap[t.problemStatementId] : null
         const members = (byTeam.get(d.id) || []).slice().sort((a, b) => a.order - b.order)
         const leader = members.find((m) => m.isLeader) || members[0] || null
+        const issuedAwards = [...(awardsByTeam.get(d.id)?.values() || [])]
+        const majorAwards = issuedAwards.filter((a) => isMajorAward(a.awardId))
         return {
           teamId: d.id,
           teamName: t.name || 'Unnamed',
@@ -2036,6 +2056,11 @@ export function adminRouter() {
           qualified: t.juryStatus === 'qualified',
           memberCount: members.length,
           members,
+          issuedAwards,
+          issuedAwardIds: issuedAwards.map((a) => a.awardId),
+          majorAwardTitles: majorAwards.map((a) => a.awardTitle).filter(Boolean),
+          hasMajorAward: majorAwards.length > 0,
+          certCount: issuedAwards.reduce((n, a) => n + a.count, 0),
         }
       })
         .filter((t) => t.memberCount > 0)

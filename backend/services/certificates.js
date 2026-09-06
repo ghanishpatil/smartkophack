@@ -26,72 +26,98 @@ export const CERT_SIZE = { widthMm: 297, heightMm: 210, orientation: 'landscape'
 export const AWARD_CATALOG = [
   {
     id: 'participation',
+    tier: 'participation',
     title: 'Participation in Smart Kopargaon Hackathon 2026',
     citation: 'For active participation, dedication and innovative contribution in the Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'grand_finale_participation',
+    tier: 'participation',
     title: 'Offline Grand Finale Participation',
     citation: 'For attending and participating in the 24-hour offline Grand Finale of the Smart Kopargaon Hackathon 2026, held at Sanjivani University, Kopargaon, with dedication and innovative contribution.',
   },
   {
     id: 'first_prize',
+    tier: 'major',
+    rank: 1,
     title: '1st Prize',
     citation: 'For outstanding performance, dedication and innovative contribution, securing the 1st Prize at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'second_prize',
-    title: '2nd Prize',
+    tier: 'major',
+    rank: 2,
+    title: '2nd Prize (1st Runner Up)',
     citation: 'For outstanding performance, dedication and innovative contribution, securing the 2nd Prize at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'third_prize',
-    title: '3rd Prize',
+    tier: 'major',
+    rank: 3,
+    title: '3rd Prize (2nd Runner Up)',
     citation: 'For outstanding performance, dedication and innovative contribution, securing the 3rd Prize at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_healthcare',
+    tier: 'major',
     title: 'Best Solution in Healthcare Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Healthcare Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_waste_management',
+    tier: 'major',
     title: 'Best Solution in Waste Management Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Waste Management Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_industry_msme',
+    tier: 'major',
     title: 'Best Solution in Industry & MSME Innovation Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Industry & MSME Innovation Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_education',
+    tier: 'major',
     title: 'Best Solution in Education Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Education Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_transportation',
+    tier: 'major',
     title: 'Best Solution in Transportation & Mobility Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Transportation & Mobility Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_food_safety',
+    tier: 'major',
     title: 'Best Solution in Food Safety & Security Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Food Safety & Security Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_open_innovation',
+    tier: 'major',
     title: 'Best Solution in Open Innovation Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Open Innovation Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
   {
     id: 'best_smart_agriculture',
+    tier: 'major',
     title: 'Best Solution in Smart Agriculture Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Smart Agriculture Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
 ]
 
 export const AWARD_BY_ID = Object.fromEntries(AWARD_CATALOG.map((a) => [a.id, a]))
+
+/**
+ * "Major" awards are the 3 overall prizes and the 8 domain awards. A team
+ * holding one of these should NOT also receive the Offline Grand Finale
+ * Participation certificate — they already hold a higher distinction.
+ */
+export const MAJOR_AWARD_IDS = AWARD_CATALOG.filter((a) => a.tier === 'major').map((a) => a.id)
+export const PARTICIPATION_AWARD_IDS = AWARD_CATALOG.filter((a) => a.tier === 'participation').map((a) => a.id)
+
+export const isMajorAward = (id) => AWARD_BY_ID[id]?.tier === 'major'
 
 /** Placeholders the admin may use in the template, surfaced in the editor UI. */
 export const TEMPLATE_PLACEHOLDERS = [

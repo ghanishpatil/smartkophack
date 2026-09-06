@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Award, Download, Mail, RefreshCw, Search, Save, RotateCcw, Code2, Eye,
-  CheckCircle2, Users, Ban, Undo2, Loader2, AlertTriangle, FileBadge,
+  CheckCircle2, Users, Ban, Undo2, Loader2, AlertTriangle, FileBadge, X, ShieldCheck,
 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -12,6 +12,9 @@ const FILTERS = [
   { id: 'all', label: 'All teams' },
   { id: 'finalist', label: 'Finalists' },
   { id: 'qualified', label: 'Qualified' },
+  { id: 'not_qualified', label: 'Not qualified' },
+  { id: 'winners', label: 'Award winners' },
+  { id: 'no_cert', label: 'No certificate yet' },
 ]
 
 export function AdminCertificatesPage() {
@@ -37,6 +40,8 @@ export function AdminCertificatesPage() {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
   const [replace, setReplace] = useState(false)
+  const [excludeMajor, setExcludeMajor] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null) // { type, onlyUnsent }
 
   const [certs, setCerts] = useState([])
   const [summary, setSummary] = useState({ total: 0, emailed: 0, revoked: 0 })
@@ -67,11 +72,16 @@ export function AdminCertificatesPage() {
 
   useEffect(() => { load(true) }, [load])
 
-  // Keep the editable award title/citation in step with the chosen award.
+  const currentAward = useMemo(() => awards.find((a) => a.id === awardId) || null, [awards, awardId])
+
+  // Keep the editable title/citation in step with the chosen award, and default
+  // the winner-exclusion guard on for the Grand Finale participation award.
   useEffect(() => {
-    const a = awards.find((x) => x.id === awardId)
-    if (a) { setAwardTitle(a.title); setCitation(a.citation) }
-  }, [awardId, awards])
+    if (!currentAward) return
+    setAwardTitle(currentAward.title)
+    setCitation(currentAward.citation)
+    setExcludeMajor(currentAward.id === 'grand_finale_participation')
+  }, [currentAward])
 
   const activeTemplate = template || defaultTemplate
 
@@ -99,6 +109,9 @@ export function AdminCertificatesPage() {
     return teams.filter((t) => {
       if (filter === 'finalist' && !t.finalist) return false
       if (filter === 'qualified' && !t.qualified) return false
+      if (filter === 'not_qualified' && t.qualified) return false
+      if (filter === 'winners' && !t.hasMajorAward) return false
+      if (filter === 'no_cert' && (t.certCount || 0) > 0) return false
       if (!s) return true
       return t.teamName.toLowerCase().includes(s)
         || (t.college || '').toLowerCase().includes(s)
@@ -107,8 +120,21 @@ export function AdminCertificatesPage() {
     })
   }, [teams, q, filter])
 
-  const selectedTeams = useMemo(() => teams.filter((t) => selected.has(t.teamId)), [teams, selected])
-  const recipientCount = selectedTeams.reduce((n, t) => n + t.memberCount, 0)
+  /* ── Effective selection: what will actually be issued ── */
+  const plan = useMemo(() => {
+    const picked = teams.filter((t) => selected.has(t.teamId))
+    const excluded = excludeMajor ? picked.filter((t) => t.hasMajorAward) : []
+    const excludedIds = new Set(excluded.map((t) => t.teamId))
+    const eligible = picked.filter((t) => !excludedIds.has(t.teamId))
+    const alreadyHas = eligible.filter((t) => (t.issuedAwardIds || []).includes(awardId))
+    return {
+      picked,
+      excluded,
+      eligible,
+      alreadyHas,
+      recipients: eligible.reduce((n, t) => n + t.memberCount, 0),
+    }
+  }, [teams, selected, excludeMajor, awardId])
 
   const toggle = (id) => setSelected((prev) => {
     const n = new Set(prev)
@@ -143,38 +169,40 @@ export function AdminCertificatesPage() {
     } catch (e) { setMsg({ type: 'err', text: e.message }) } finally { setBusy('') }
   }
 
-  async function issue() {
-    if (!selected.size) return setMsg({ type: 'err', text: 'Select at least one team.' })
-    setBusy('issue'); setMsg(null)
+  async function runIssue() {
+    setBusy('issue'); setMsg(null); setConfirmAction(null)
     try {
       const r = await api.issueCertificates({
-        teamIds: [...selected], awardId, awardTitle, citation, replace,
+        teamIds: plan.eligible.map((t) => t.teamId), awardId, awardTitle, citation, replace,
       })
       setMsg({
         type: 'ok',
         text: `Issued ${r.issued} certificate(s)${r.skipped ? `, skipped ${r.skipped} already issued` : ''}.`,
       })
-      const list = await api.listCertificates()
-      setCerts(list.certificates || [])
-      setSummary(list.summary || summary)
+      await load()
     } catch (e) { setMsg({ type: 'err', text: e.message }) } finally { setBusy('') }
   }
 
-  async function send(onlyUnsent) {
-    if (!selected.size) return setMsg({ type: 'err', text: 'Select at least one team.' })
-    const label = onlyUnsent ? 'unsent certificates' : 'ALL certificates (including re-sends)'
-    if (!window.confirm(`Email ${label} for ${selected.size} team(s)? Every member receives their own certificate at the email entered at registration.`)) return
-    setBusy('send'); setMsg(null)
+  async function runSend(onlyUnsent) {
+    setBusy('send'); setMsg(null); setConfirmAction(null)
     try {
-      const r = await api.sendCertificates({ teamIds: [...selected], awardId, onlyUnsent })
+      const r = await api.sendCertificates({
+        teamIds: plan.eligible.map((t) => t.teamId), awardId, onlyUnsent,
+      })
       setMsg({
         type: r.failed ? 'err' : 'ok',
         text: `Sent ${r.sent} email(s) to ${r.recipients} recipient(s) across ${r.teams} team(s)${r.failed ? ` — ${r.failed} failed` : ''}.`,
       })
-      const list = await api.listCertificates()
-      setCerts(list.certificates || [])
-      setSummary(list.summary || summary)
+      await load()
     } catch (e) { setMsg({ type: 'err', text: e.message }) } finally { setBusy('') }
+  }
+
+  function askConfirm(type, onlyUnsent = false) {
+    if (!plan.eligible.length) {
+      setMsg({ type: 'err', text: plan.picked.length ? 'Every selected team was excluded — nothing to do.' : 'Select at least one team.' })
+      return
+    }
+    setConfirmAction({ type, onlyUnsent })
   }
 
   async function toggleRevoke(cert) {
@@ -223,7 +251,7 @@ export function AdminCertificatesPage() {
           { icon: FileBadge, label: 'Issued', value: summary.total, tone: 'text-brand-600 bg-brand-500/10' },
           { icon: Mail, label: 'Emailed', value: summary.emailed, tone: 'text-emerald-600 bg-emerald-500/10' },
           { icon: Ban, label: 'Revoked', value: summary.revoked, tone: 'text-red-600 bg-red-500/10' },
-          { icon: Users, label: 'Selected recipients', value: recipientCount, tone: 'text-amber-600 bg-amber-500/10' },
+          { icon: Users, label: 'Will receive', value: plan.recipients, tone: 'text-amber-600 bg-amber-500/10' },
         ].map((c) => (
           <div key={c.label} className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-card">
             <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${c.tone}`}><c.icon className="h-5 w-5" /></div>
@@ -255,7 +283,12 @@ export function AdminCertificatesPage() {
               <h2 className="font-display text-sm font-bold text-ink-900">1. Choose the award</h2>
               <select value={awardId} onChange={(e) => setAwardId(e.target.value)}
                 className="mt-3 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20">
-                {awards.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                <optgroup label="Participation">
+                  {awards.filter((a) => a.tier === 'participation').map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                </optgroup>
+                <optgroup label="Prizes & domain awards">
+                  {awards.filter((a) => a.tier !== 'participation').map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                </optgroup>
               </select>
 
               <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-ink-500">Award title (printed)</label>
@@ -273,7 +306,7 @@ export function AdminCertificatesPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-sm font-bold text-ink-900">2. Select teams ({selected.size})</h2>
                 <div className="flex gap-2 text-xs">
-                  <button type="button" onClick={selectAllVisible} className="font-semibold text-brand-600 hover:underline">Select visible</button>
+                  <button type="button" onClick={selectAllVisible} className="font-semibold text-brand-600 hover:underline">Select visible ({visibleTeams.length})</button>
                   <span className="text-ink-300">·</span>
                   <button type="button" onClick={clearSelection} className="font-semibold text-ink-500 hover:underline">Clear</button>
                 </div>
@@ -298,21 +331,31 @@ export function AdminCertificatesPage() {
                 {visibleTeams.length === 0 && <p className="py-6 text-center text-sm text-ink-500">No teams match.</p>}
                 {visibleTeams.map((t) => {
                   const on = selected.has(t.teamId)
+                  const willExclude = on && excludeMajor && t.hasMajorAward
+                  const hasThis = (t.issuedAwardIds || []).includes(awardId)
                   return (
                     <label key={t.teamId}
-                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${on ? 'border-brand-500/40 bg-brand-500/[0.04]' : 'border-[rgb(var(--border))] hover:bg-[rgb(var(--surface-muted))]/50'}`}>
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${willExclude ? 'border-amber-300 bg-amber-50/60' : on ? 'border-brand-500/40 bg-brand-500/[0.04]' : 'border-[rgb(var(--border))] hover:bg-[rgb(var(--surface-muted))]/50'}`}>
                       <input type="checkbox" checked={on} onChange={() => toggle(t.teamId)}
                         className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500/30" />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-1.5">
                           <span className="truncate text-sm font-semibold text-ink-900">{t.teamName}</span>
                           {t.finalist && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700">Finalist</span>}
-                          {t.qualified && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">Qualified</span>}
+                          {t.qualified
+                            ? <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">Qualified</span>
+                            : <span className="rounded bg-ink-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink-500">Not qualified</span>}
+                          {hasThis && <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-700">Has this</span>}
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-ink-500">
                           {t.memberCount} member{t.memberCount === 1 ? '' : 's'}
                           {t.domain ? ` · ${t.domain}` : ''}{t.college ? ` · ${t.college}` : ''}
                         </span>
+                        {t.majorAwardTitles?.length > 0 && (
+                          <span className={`mt-1 block truncate text-[11px] font-medium ${willExclude ? 'text-amber-700' : 'text-ink-400'}`}>
+                            {willExclude ? 'Excluded — holds ' : 'Holds '}{t.majorAwardTitles.join(', ')}
+                          </span>
+                        )}
                       </span>
                     </label>
                   )
@@ -322,28 +365,45 @@ export function AdminCertificatesPage() {
 
             {/* Actions */}
             <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
-              <h2 className="font-display text-sm font-bold text-ink-900">3. Issue, then email</h2>
-              <p className="mt-1 text-xs text-ink-500">
-                Issuing creates one certificate per member ({recipientCount} for the current selection). Emails go to the
-                address each member gave at registration — no platform account needed.
-              </p>
+              <h2 className="font-display text-sm font-bold text-ink-900">3. Review, issue, then email</h2>
 
-              <label className="mt-3 flex items-center gap-2 text-xs text-ink-600">
+              {/* Live plan summary */}
+              <div className="mt-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-3.5 text-xs">
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                  <span className="text-ink-600"><strong className="text-ink-900">{plan.eligible.length}</strong> team(s) will receive</span>
+                  <span className="text-ink-600"><strong className="text-ink-900">{plan.recipients}</strong> certificate(s)</span>
+                  {plan.excluded.length > 0 && <span className="text-amber-700"><strong>{plan.excluded.length}</strong> excluded (already hold a prize)</span>}
+                  {plan.alreadyHas.length > 0 && <span className="text-brand-700"><strong>{plan.alreadyHas.length}</strong> already have this award</span>}
+                </div>
+              </div>
+
+              <label className="mt-3 flex items-start gap-2 text-xs text-ink-600">
+                <input type="checkbox" checked={excludeMajor} onChange={(e) => setExcludeMajor(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500/30" />
+                <span>
+                  Skip teams that already hold a prize or domain award
+                  <span className="block text-ink-400">
+                    Recommended for Offline Grand Finale Participation — winners already hold a higher distinction.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-2.5 flex items-center gap-2 text-xs text-ink-600">
                 <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)}
                   className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500/30" />
                 Re-issue if a certificate for this award already exists
               </label>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" disabled={busy === 'issue' || !selected.size} onClick={issue}
+                <button type="button" disabled={busy === 'issue'} onClick={() => askConfirm('issue')}
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 disabled:opacity-50">
                   {busy === 'issue' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />} Issue certificates
                 </button>
-                <button type="button" disabled={busy === 'send' || !selected.size} onClick={() => send(true)}
+                <button type="button" disabled={busy === 'send'} onClick={() => askConfirm('send', true)}
                   className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
                   {busy === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email unsent
                 </button>
-                <button type="button" disabled={busy === 'send' || !selected.size} onClick={() => send(false)}
+                <button type="button" disabled={busy === 'send'} onClick={() => askConfirm('send', false)}
                   className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-50">
                   <Mail className="h-4 w-4" /> Re-send all
                 </button>
@@ -457,6 +517,108 @@ export function AdminCertificatesPage() {
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]">
               <Download className="h-4 w-4" /> Download draft sample (PDF)
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmation modal ── */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button type="button" aria-label="Close" onClick={() => setConfirmAction(null)}
+            className="absolute inset-0 cursor-default bg-ink-950/50 backdrop-blur-sm" />
+          <div role="dialog" aria-modal="true" aria-labelledby="cert-confirm-title"
+            className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-lift">
+            <div className="flex items-start gap-3 border-b border-[rgb(var(--border))] p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="cert-confirm-title" className="font-display text-base font-bold text-ink-900">
+                  {confirmAction.type === 'issue' ? 'Confirm issuing certificates' : 'Confirm sending emails'}
+                </h3>
+                <p className="mt-0.5 text-xs text-ink-500">Please review before continuing — emails cannot be recalled.</p>
+              </div>
+              <button type="button" onClick={() => setConfirmAction(null)}
+                className="shrink-0 rounded-lg p-1 text-ink-400 hover:bg-[rgb(var(--surface-muted))]">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[55vh] space-y-4 overflow-y-auto p-5">
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-ink-500">Award</dt>
+                  <dd className="text-right font-semibold text-ink-900">{awardTitle}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-ink-500">Teams</dt>
+                  <dd className="font-semibold text-ink-900">{plan.eligible.length}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-ink-500">{confirmAction.type === 'issue' ? 'Certificates to create' : 'Recipients'}</dt>
+                  <dd className="font-semibold text-ink-900">{plan.recipients}</dd>
+                </div>
+                {confirmAction.type === 'send' && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-ink-500">Scope</dt>
+                    <dd className="font-semibold text-ink-900">{confirmAction.onlyUnsent ? 'Unsent only' : 'All (re-sends included)'}</dd>
+                  </div>
+                )}
+              </dl>
+
+              {plan.excluded.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+                  <p className="text-xs font-bold text-amber-800">
+                    {plan.excluded.length} team(s) excluded — they already hold a prize or domain award
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5 text-xs text-amber-700">
+                    {plan.excluded.slice(0, 12).map((t) => (
+                      <li key={t.teamId} className="truncate">{t.teamName} — {t.majorAwardTitles.join(', ')}</li>
+                    ))}
+                    {plan.excluded.length > 12 && <li className="italic">and {plan.excluded.length - 12} more…</li>}
+                  </ul>
+                </div>
+              )}
+
+              {confirmAction.type === 'issue' && plan.alreadyHas.length > 0 && (
+                <div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/50 p-3.5">
+                  <p className="text-xs font-bold text-ink-700">
+                    {plan.alreadyHas.length} team(s) already have this award
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500">
+                    {replace
+                      ? 'These will be re-issued because "Re-issue" is checked.'
+                      : 'These will be skipped automatically.'}
+                  </p>
+                </div>
+              )}
+
+              <div className="max-h-40 overflow-y-auto rounded-xl border border-[rgb(var(--border))] p-3">
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-400">Receiving</p>
+                <ul className="space-y-0.5 text-xs text-ink-600">
+                  {plan.eligible.map((t) => (
+                    <li key={t.teamId} className="flex justify-between gap-3">
+                      <span className="truncate">{t.teamName}</span>
+                      <span className="shrink-0 text-ink-400">{t.memberCount}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/40 p-4">
+              <button type="button" onClick={() => setConfirmAction(null)}
+                className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))]">
+                Cancel
+              </button>
+              <button type="button"
+                onClick={() => confirmAction.type === 'issue' ? runIssue() : runSend(confirmAction.onlyUnsent)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-brand-500/20">
+                {confirmAction.type === 'issue'
+                  ? <><Award className="h-4 w-4" /> Issue {plan.recipients}</>
+                  : <><Mail className="h-4 w-4" /> Send {plan.recipients}</>}
+              </button>
+            </div>
           </div>
         </div>
       )}
