@@ -80,9 +80,9 @@ const DOMAINS = [
 ]
 
 const POOLS = [
-  { icon: Trophy, place: '1st', pool: 'Pool 01', accent: 'text-amber-500' },
-  { icon: Medal, place: '2nd', pool: 'Pool 02', accent: 'text-slate-400' },
-  { icon: Award, place: '3rd', pool: 'Pool 03', accent: 'text-orange-500' },
+  { icon: Trophy, place: '1st', label: 'Winner', cash: '\u20B960,000', accent: 'text-amber-500' },
+  { icon: Medal, place: '2nd', label: '1st Runner Up', cash: '\u20B940,000', accent: 'text-slate-400' },
+  { icon: Award, place: '3rd', label: '2nd Runner Up', cash: '\u20B920,000', accent: 'text-orange-500' },
 ]
 
 const GUIDELINES = [
@@ -564,8 +564,8 @@ export function GrandFinalePage() {
 
       {/* ═══════════ PRIZES (dark) ═══════════ */}
       <Section dark className="py-16 sm:py-24" labelledBy="prizes">
-        <SectionHead dark n="06" kicker="The Rewards" title="Prize structure"
-          lead="Three overall prizes awarded irrespective of domain, plus one winner from each of the eight domains." />
+        <SectionHead dark n="06" kicker="The Rewards" title="&#8377;1,44,000 in prizes"
+          lead="Three overall cash prizes awarded irrespective of domain, plus a cash prize and tech gifts for the winner of each of the eight domains." />
         <motion.div
           variants={container} initial="hidden" whileInView="show" viewport={{ once: true }}
           className="mt-12 grid grid-cols-1 border-t border-white/12 lg:grid-cols-3"
@@ -576,8 +576,9 @@ export function GrandFinalePage() {
               className={['border-b border-white/12 py-10 lg:border-b-0 lg:py-12', i < 2 ? 'lg:border-r lg:pr-10' : 'lg:pl-10', i === 1 ? 'lg:pl-10' : ''].join(' ')}
             >
               <p.icon aria-hidden className={['h-7 w-7', p.accent].join(' ')} strokeWidth={1.75} />
-              <p className="mt-6 font-display text-4xl font-bold leading-none tracking-tight text-white sm:text-5xl">{p.place}</p>
-              <p className="mt-3 font-mono text-xs font-medium uppercase tracking-[0.18em] text-white/45">{p.pool}</p>
+              <p className="mt-6 font-mono text-xs font-medium uppercase tracking-[0.18em] text-white/45">{p.place} Prize &middot; {p.label}</p>
+              <p className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-white sm:text-5xl">{p.cash}</p>
+              <p className="mt-2.5 text-sm text-white/55">Cash prize</p>
             </motion.div>
           ))}
         </motion.div>
@@ -586,8 +587,20 @@ export function GrandFinalePage() {
           <motion.div {...reveal}>
             <h3 className="font-display text-lg font-bold text-white">Domain-specific awards</h3>
             <p className="mt-3 text-[15px] leading-relaxed text-white/60">
-              One winner is selected from each of the eight domains, based on that domain&apos;s ranking.
+              One winner is selected from each of the eight domains, based on that domain&apos;s ranking. Each domain
+              winner receives <strong className="font-semibold text-white">&#8377;3,000 cash</strong> plus
+              <strong className="font-semibold text-white"> tech gifts</strong>.
             </p>
+            <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
+              <div>
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">Per domain winner</p>
+                <p className="mt-1 font-display text-xl font-bold text-white">&#8377;3,000 <span className="text-sm font-medium text-white/50">+ tech gifts</span></p>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">8 domains total</p>
+                <p className="mt-1 font-display text-xl font-bold text-white">&#8377;24,000</p>
+              </div>
+            </div>
           </motion.div>
           <motion.div {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
             <h3 className="flex items-center gap-2.5 font-display text-lg font-bold text-white">
