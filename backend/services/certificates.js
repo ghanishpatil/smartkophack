@@ -141,9 +141,10 @@ export const DEFAULT_TEMPLATE = `<div class="skhc-cert" style="position:relative
   <!-- Citation -->
   <div style="position:absolute;top:135.5mm;left:53.5mm;width:190mm;text-align:center;font-size:3.6mm;line-height:1.55;color:#475569;">{{CITATION}}</div>
 
-  <!-- Verification footer -->
-  <div style="position:absolute;top:190mm;left:0;width:297mm;text-align:center;font-size:2.7mm;line-height:1.3;color:#64748b;">
-    Certificate ID <strong style="color:#1b3b8b;letter-spacing:0.35mm;">{{CERT_ID}}</strong>
+  <!-- Verification footer — sits inside the navy band at the bottom edge
+       (~200-210mm), clear of the signature captions which run to ~194mm. -->
+  <div style="position:absolute;top:203mm;left:0;width:297mm;text-align:center;font-size:2.6mm;line-height:1.3;color:#a9d4ec;">
+    Certificate ID <strong style="color:#ffffff;letter-spacing:0.35mm;">{{CERT_ID}}</strong>
     &nbsp;&middot;&nbsp; Issued {{ISSUED_DATE}}
     &nbsp;&middot;&nbsp; Verify at {{VERIFY_URL}}
   </div>
