@@ -433,6 +433,24 @@ export function createApi(getToken, getEventId = () => '') {
     },
     regDeskClearAttendance: () =>
       authReq('/api/reg-desk/attendance/clear', { method: 'DELETE' }),
+    // Certificates — admin
+    certTemplate: () => authReq('/api/admin/certificates/template'),
+    saveCertTemplate: (template) =>
+      authReq('/api/admin/certificates/template', { method: 'PUT', body: { template } }),
+    certTeams: () => authReq('/api/admin/certificates/teams'),
+    listCertificates: (params = {}) => {
+      const q = new URLSearchParams()
+      if (params.teamId) q.set('teamId', params.teamId)
+      if (params.awardId) q.set('awardId', params.awardId)
+      const qs = q.toString()
+      return authReq(`/api/admin/certificates${qs ? `?${qs}` : ''}`)
+    },
+    issueCertificates: (body) =>
+      authReq('/api/admin/certificates/issue', { method: 'POST', body }),
+    sendCertificates: (body) =>
+      authReq('/api/admin/certificates/send', { method: 'POST', body }),
+    revokeCertificate: (certId, revoked = true) =>
+      authReq('/api/admin/certificates/revoke', { method: 'POST', body: { certId, revoked } }),
     // Hero slideshow settings (banners are uploaded via multipart in the page)
     updateHeroSettings: (body) =>
       authReq('/api/hero-banners/settings', { method: 'PUT', body }),

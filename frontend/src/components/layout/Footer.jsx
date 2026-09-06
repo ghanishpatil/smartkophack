@@ -16,6 +16,7 @@ const footerLinks = {
     { to: '/contact', label: 'Contact Us' },
     { to: '/guidelines', label: 'Submission Guidelines' },
     { to: '/code-of-conduct', label: 'Code of Conduct' },
+    { to: '/verify-certificate', label: 'Verify Certificate' },
   ],
 }
 

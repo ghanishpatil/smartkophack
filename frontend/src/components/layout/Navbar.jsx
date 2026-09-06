@@ -19,6 +19,7 @@ const links = [
 
 const resourceLinks = [
   { to: '/how-to-register', label: 'How to Register' },
+  { to: '/verify-certificate', label: 'Verify Certificate' },
   { to: '/sponsors', label: 'Partners & Sponsors' },
   { to: '/guidelines', label: 'Submission Guidelines' },
   { to: '/code-of-conduct', label: 'Code of Conduct' },

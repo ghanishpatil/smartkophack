@@ -514,6 +514,50 @@ export async function sendCustomEmail({ to, name, subject, title, message, link 
   return sendEmail({ to, toName: safeName, subject: escapeHtml(finalSubject), htmlContent })
 }
 
+// 7c. Certificate Email — sent to every team member when certificates are
+// issued. Links to the public verification page for that specific certificate,
+// where the recipient can view, verify and download (print) their certificate.
+export async function sendCertificateEmail({
+  to, name, teamName, awardTitle, citation, certId, verifyUrl, eventName,
+}) {
+  const safeName = escapeHtml(name || 'Participant')
+  const safeTeam = escapeHtml(teamName || 'Your Team')
+  const safeAward = escapeHtml(awardTitle || 'Certificate of Achievement')
+  const safeCitation = escapeHtml(citation || '')
+  const safeCertId = escapeHtml(certId || '')
+  const safeEvent = escapeHtml(eventName || 'Smart Kopargaon Hackathon')
+  const url = String(verifyUrl || '').trim()
+  const safeUrl = /^https?:\/\//i.test(url) ? url : ''
+  const subject = `Your ${awardTitle || 'certificate'} — ${eventName || 'Smart Kopargaon Hackathon'}`
+
+  const bodyHtml = `
+    <p style="margin:0 0 14px;"><strong>Dear ${safeName},</strong></p>
+    <p style="margin:0 0 16px;">Congratulations! Your certificate for <strong>${safeAward}</strong> as a member of
+      team <strong>${safeTeam}</strong> at ${safeEvent} is now available.</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#185983;">Certificate Details</p>
+        <p style="margin:0 0 6px;color:#0f172a;"><strong>Award:</strong> ${safeAward}</p>
+        <p style="margin:0 0 6px;color:#0f172a;"><strong>Team:</strong> ${safeTeam}</p>
+        <p style="margin:0;color:#0f172a;"><strong>Certificate ID:</strong>
+          <span style="font-family:'Courier New',monospace;letter-spacing:0.5px;">${safeCertId}</span></p>
+      </td></tr>
+    </table>
+
+    ${safeCitation ? `<p style="margin:0 0 16px;color:#475569;font-style:italic;">&ldquo;${safeCitation}&rdquo;</p>` : ''}
+    ${safeUrl ? ctaButton('View &amp; Download Certificate', safeUrl) : ''}
+    <p style="margin:20px 0 0;color:#64748b;font-size:14px;">
+      Open the link above to view your certificate and download it as a PDF. Anyone can confirm it is genuine
+      by entering the Certificate ID on our verification page.
+    </p>
+    <p style="margin:16px 0 0;color:#64748b;font-size:14px;">Warm regards,<br/>Team ${safeEvent}</p>
+  `
+  const htmlContent = renderBrandedEmail({ title: 'Your Certificate is Ready 🎉', bodyHtml })
+  return sendEmail({ to, toName: name, subject, htmlContent })
+}
+
 // 8. Evaluation Complete Email (for teams)
 export async function sendEvaluationCompleteEmail({ to, name, teamName }) {
   const safeName = escapeHtml(name)

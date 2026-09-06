@@ -452,6 +452,79 @@ r.get('/results', async (req, res, next) => {
   }
 })
 
+/**
+ * PUBLIC certificate verification — GET /api/certificates/verify/:certId
+ *
+ * Unauthenticated by design. Certificate IDs are random (not sequential), so
+ * they cannot be enumerated. Only verification-safe fields are returned — the
+ * recipient's email address is deliberately never exposed. Deliberately
+ * uncached so a revocation takes effect immediately.
+ */
+r.get('/certificates/verify/:certId', async (req, res, next) => {
+  try {
+    const { normalizeCertId, renderTemplate, buildCertValues, formatIssuedDate } =
+      await import('../services/certificates.js')
+
+    const certId = normalizeCertId(req.params.certId)
+    if (!certId || certId.length > 64 || !isValidDocId(certId)) {
+      return res.json({ valid: false, reason: 'not_found' })
+    }
+
+    const db = getDb()
+    if (!db) return res.json({ valid: false, reason: 'unavailable' })
+
+    const snap = await db.doc(`certificates/${certId}`).get()
+    if (!snap.exists) return res.json({ valid: false, reason: 'not_found' })
+
+    const c = snap.data()
+    if (c.revoked === true) {
+      return res.json({ valid: false, reason: 'revoked', certId })
+    }
+
+    const frontend = (process.env.FRONTEND_URL || '').replace(/\/$/, '')
+    const issuedDate = c.issuedAt?.toDate ? formatIssuedDate(c.issuedAt.toDate()) : formatIssuedDate()
+
+    // Render with the event's saved template (falls back to the default).
+    let template = ''
+    try {
+      const setSnap = await db.doc(`certificateSettings/${c.eventId || '_global'}`).get()
+      if (setSnap.exists && typeof setSnap.data().template === 'string') template = setSnap.data().template
+    } catch { /* fall back to default template */ }
+
+    const html = renderTemplate(template, buildCertValues({
+      recipientName: c.recipientName,
+      teamName: c.teamName,
+      awardTitle: c.awardTitle,
+      citation: c.citation,
+      college: c.college,
+      domain: c.domain,
+      certId,
+      issuedDate,
+      verifyUrl: frontend ? `${frontend}/verify-certificate` : 'skh.sanjivaniuniversity.com/verify-certificate',
+      eventName: 'Smart Kopargaon Hackathon',
+      assetBase: frontend,
+    }))
+
+    res.json({
+      valid: true,
+      certificate: {
+        certId,
+        recipientName: c.recipientName || '',
+        teamName: c.teamName || '',
+        awardTitle: c.awardTitle || '',
+        citation: c.citation || '',
+        college: c.college || '',
+        domain: c.domain || '',
+        issuedAt: tsIso(c.issuedAt),
+        issuedDate,
+      },
+      html,
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
 r.get('/users/me', verifyFirebaseToken, loadUserRole, (req, res) => {
   const p = req.profile || {}
   res.json({
@@ -1845,6 +1918,359 @@ export function adminRouter() {
         metadata: { teamIds: ids.slice(0, 50), finalist, count: ids.length },
       })
       res.json({ ok: true, count: ids.length, finalist })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /* ══════════════════════ CERTIFICATES ══════════════════════ */
+
+  const certSettingsRef = (eventId) => db().doc(`certificateSettings/${eventId || '_global'}`)
+
+  /** Admin: the editable template, the award catalog, and the placeholder list. */
+  router.get('/certificates/template', async (req, res, next) => {
+    try {
+      const { AWARD_CATALOG, DEFAULT_TEMPLATE, TEMPLATE_PLACEHOLDERS, CERT_SIZE } =
+        await import('../services/certificates.js')
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+      const snap = await certSettingsRef(eventId).get()
+      const saved = snap.exists ? snap.data() : {}
+      res.json({
+        ok: true,
+        template: typeof saved.template === 'string' && saved.template.trim() ? saved.template : DEFAULT_TEMPLATE,
+        isCustom: Boolean(saved.template),
+        updatedAt: saved.updatedAt ? tsIso(saved.updatedAt) : null,
+        defaultTemplate: DEFAULT_TEMPLATE,
+        awards: AWARD_CATALOG,
+        placeholders: TEMPLATE_PLACEHOLDERS,
+        size: CERT_SIZE,
+      })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: save the raw template. Pass an empty string to reset to default. */
+  router.put('/certificates/template', async (req, res, next) => {
+    try {
+      const raw = typeof req.body?.template === 'string' ? req.body.template : ''
+      if (raw.length > 100000) {
+        return res.status(400).json({ error: 'Template is too large (max 100,000 characters).' })
+      }
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+      await certSettingsRef(eventId).set(
+        {
+          template: raw.trim() ? raw : FieldValue.delete(),
+          eventId,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: req.user.uid,
+        },
+        { merge: true },
+      )
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: raw.trim() ? 'certificates.template_save' : 'certificates.template_reset',
+        targetType: 'certificateSettings',
+        targetId: eventId || '_global',
+        metadata: { length: raw.length },
+      })
+      res.json({ ok: true, reset: !raw.trim() })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: teams available for certification, each with its full member roster
+   * (from memberRegistrations — the emails the leader entered at registration),
+   * domain and college. The UI filters by finalist / qualified.
+   */
+  router.get('/certificates/teams', async (req, res, next) => {
+    try {
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+
+      let tq = db().collection('teams').limit(2000)
+      if (eventId) tq = tq.where('eventId', '==', eventId)
+      const tSnap = await tq.get()
+
+      let pq = db().collection('problemStatements').limit(400)
+      if (eventId) pq = pq.where('eventId', '==', eventId)
+      const psSnap = await pq.get()
+      const psMap = {}
+      psSnap.docs.forEach((d) => {
+        const x = d.data()
+        psMap[d.id] = { title: x.title || '', domain: x.theme || x.domain || '' }
+      })
+
+      const mrSnap = await db().collection('memberRegistrations').limit(20000).get()
+      const byTeam = new Map()
+      mrSnap.docs.forEach((d) => {
+        const m = d.data()
+        if (!m.teamId) return
+        if (!byTeam.has(m.teamId)) byTeam.set(m.teamId, [])
+        byTeam.get(m.teamId).push({
+          memberId: d.id,
+          name: m.name || '',
+          email: String(m.email || '').trim(),
+          college: m.institute || m.college || '',
+          isLeader: Boolean(m.isLeader),
+          order: typeof m.order === 'number' ? m.order : 0,
+        })
+      })
+
+      const teams = tSnap.docs.map((d) => {
+        const t = d.data()
+        const ps = t.problemStatementId ? psMap[t.problemStatementId] : null
+        const members = (byTeam.get(d.id) || []).slice().sort((a, b) => a.order - b.order)
+        const leader = members.find((m) => m.isLeader) || members[0] || null
+        return {
+          teamId: d.id,
+          teamName: t.name || 'Unnamed',
+          domain: ps?.domain || '',
+          problemStatement: ps?.title || '',
+          college: leader?.college || '',
+          finalist: t.finalist === true,
+          qualified: t.juryStatus === 'qualified',
+          memberCount: members.length,
+          members,
+        }
+      })
+        .filter((t) => t.memberCount > 0)
+        .sort((a, b) => a.teamName.localeCompare(b.teamName))
+
+      res.json({ ok: true, teams })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: issued certificates, newest first. Optional ?teamId= / ?awardId=. */
+  router.get('/certificates', async (req, res, next) => {
+    try {
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+      let q = db().collection('certificates').limit(5000)
+      if (eventId) q = q.where('eventId', '==', eventId)
+      const snap = await q.get()
+
+      const teamFilter = String(req.query.teamId || '').trim()
+      const awardFilter = String(req.query.awardId || '').trim()
+
+      const rows = snap.docs
+        .map((d) => {
+          const c = d.data()
+          return {
+            certId: d.id,
+            teamId: c.teamId || '',
+            teamName: c.teamName || '',
+            recipientName: c.recipientName || '',
+            recipientEmail: c.recipientEmail || '',
+            awardId: c.awardId || '',
+            awardTitle: c.awardTitle || '',
+            college: c.college || '',
+            domain: c.domain || '',
+            revoked: c.revoked === true,
+            issuedAt: tsIso(c.issuedAt),
+            emailedAt: tsIso(c.emailedAt),
+          }
+        })
+        .filter((c) => (!teamFilter || c.teamId === teamFilter) && (!awardFilter || c.awardId === awardFilter))
+        .sort((a, b) => String(b.issuedAt || '').localeCompare(String(a.issuedAt || '')))
+
+      res.json({
+        ok: true,
+        certificates: rows,
+        summary: {
+          total: rows.length,
+          emailed: rows.filter((c) => c.emailedAt).length,
+          revoked: rows.filter((c) => c.revoked).length,
+        },
+      })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: issue certificates for the selected teams — one per team member.
+   * Body: { teamIds: string[], awardId, awardTitle?, citation?, replace?: boolean }
+   * Re-issuing the same award for a team is skipped unless replace is true.
+   */
+  router.post('/certificates/issue', async (req, res, next) => {
+    try {
+      const { AWARD_BY_ID, generateCertId } = await import('../services/certificates.js')
+      const body = req.body || {}
+
+      let ids = Array.isArray(body.teamIds) ? body.teamIds : []
+      ids = [...new Set(ids.map((x) => String(x || '').trim()).filter(Boolean))]
+      if (!ids.length) return res.status(400).json({ error: 'Select at least one team.' })
+      if (ids.length > 200) return res.status(400).json({ error: 'Too many teams in one request (max 200).' })
+      const invalid = ids.filter((id) => !isValidDocId(id))
+      if (invalid.length) return res.status(400).json({ error: `Invalid team ID(s): ${invalid.slice(0, 5).join(', ')}` })
+
+      const awardId = String(body.awardId || '').trim()
+      const preset = AWARD_BY_ID[awardId]
+      if (!preset) return res.status(400).json({ error: 'Unknown awardId.' })
+      const awardTitle = (typeof body.awardTitle === 'string' && body.awardTitle.trim()
+        ? body.awardTitle : preset.title).slice(0, 200)
+      const citation = (typeof body.citation === 'string' && body.citation.trim()
+        ? body.citation : preset.citation).slice(0, 2000)
+      const replace = body.replace === true
+
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+
+      // Team + problem statement + roster lookups.
+      const teamSnaps = await db().getAll(...ids.map((id) => db().doc(`teams/${id}`)))
+      const psIds = [...new Set(teamSnaps.filter((s) => s.exists).map((s) => s.data().problemStatementId).filter(Boolean))]
+      const psMap = {}
+      if (psIds.length) {
+        const psSnaps = await db().getAll(...psIds.map((id) => db().doc(`problemStatements/${id}`)))
+        psSnaps.forEach((s) => {
+          if (s.exists) { const x = s.data(); psMap[s.id] = x.theme || x.domain || '' }
+        })
+      }
+
+      const mrSnap = await db().collection('memberRegistrations').limit(20000).get()
+      const byTeam = new Map()
+      mrSnap.docs.forEach((d) => {
+        const m = d.data()
+        if (!m.teamId || !ids.includes(m.teamId)) return
+        if (!byTeam.has(m.teamId)) byTeam.set(m.teamId, [])
+        byTeam.get(m.teamId).push({ memberId: d.id, ...m })
+      })
+
+      // Existing certificates for this award, so re-issuing is idempotent.
+      const existingSnap = await db().collection('certificates').where('awardId', '==', awardId).limit(20000).get()
+      const existingByKey = new Map()
+      existingSnap.docs.forEach((d) => {
+        const c = d.data()
+        if (c.teamId && c.memberId) existingByKey.set(`${c.teamId}::${c.memberId}`, d)
+      })
+
+      let batch = db().batch()
+      let ops = 0
+      const created = []
+      let skipped = 0
+      const skippedTeams = []
+
+      for (const snap of teamSnaps) {
+        if (!snap.exists) { skippedTeams.push('missing'); continue }
+        const team = snap.data()
+        const teamId = snap.id
+        const members = (byTeam.get(teamId) || []).slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        if (!members.length) { skippedTeams.push(team.name || teamId); continue }
+
+        const leader = members.find((m) => m.isLeader) || members[0]
+        const domain = psMap[team.problemStatementId] || ''
+
+        for (const m of members) {
+          const key = `${teamId}::${m.memberId}`
+          const prior = existingByKey.get(key)
+          if (prior && !replace) { skipped += 1; continue }
+
+          const certId = prior ? prior.id : generateCertId()
+          batch.set(db().doc(`certificates/${certId}`), {
+            certId,
+            eventId,
+            teamId,
+            teamName: team.name || 'Unnamed',
+            memberId: m.memberId,
+            recipientName: m.name || '',
+            recipientEmail: String(m.email || '').trim(),
+            college: m.institute || m.college || leader?.institute || '',
+            domain,
+            awardId,
+            awardTitle,
+            citation,
+            revoked: false,
+            issuedAt: FieldValue.serverTimestamp(),
+            issuedBy: req.user.uid,
+            emailedAt: prior ? (prior.data().emailedAt || null) : null,
+          }, { merge: true })
+          created.push({ certId, teamId, recipientName: m.name || '', recipientEmail: m.email || '' })
+
+          if (++ops >= 450) { await batch.commit(); batch = db().batch(); ops = 0 }
+        }
+      }
+      if (ops > 0) await batch.commit()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'certificates.issue',
+        targetType: 'teams',
+        targetId: ids.length === 1 ? ids[0] : `${ids.length} teams`,
+        metadata: { awardId, awardTitle, issued: created.length, skipped, teams: ids.length },
+      })
+
+      res.json({ ok: true, issued: created.length, skipped, skippedTeams, certificates: created.slice(0, 100) })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /**
+   * Admin: email issued certificates. Each recipient gets a link to the public
+   * verification page for their own certificate.
+   * Body: { teamIds?: string[], awardId?: string, onlyUnsent?: boolean }
+   */
+  router.post('/certificates/send', async (req, res, next) => {
+    try {
+      const body = req.body || {}
+      const teamIds = Array.isArray(body.teamIds)
+        ? [...new Set(body.teamIds.map((x) => String(x || '').trim()).filter(Boolean))]
+        : null
+      const awardId = typeof body.awardId === 'string' ? body.awardId.trim() : ''
+      const onlyUnsent = body.onlyUnsent === true
+
+      const activeEvent = await getActiveEvent()
+      const { notifyCertificates } = await import('../services/notificationService.js')
+      const result = await notifyCertificates({
+        teamIds,
+        awardId,
+        onlyUnsent,
+        eventId: req.eventId || activeEvent?.id || '',
+      })
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'certificates.send',
+        targetType: 'certificates',
+        targetId: teamIds ? `${teamIds.length} teams` : 'all',
+        metadata: { sent: result.sent || 0, failed: result.failed || 0, awardId: awardId || 'any' },
+      })
+
+      res.json({ ok: true, ...result })
+    } catch (e) {
+      next(e)
+    }
+  })
+
+  /** Admin: revoke / un-revoke a certificate (verification then reports it invalid). */
+  router.post('/certificates/revoke', async (req, res, next) => {
+    try {
+      const { normalizeCertId } = await import('../services/certificates.js')
+      const certId = normalizeCertId(req.body?.certId)
+      const revoked = req.body?.revoked !== false
+      if (!certId || !isValidDocId(certId)) return res.status(400).json({ error: 'A valid certId is required.' })
+
+      const ref = db().doc(`certificates/${certId}`)
+      const snap = await ref.get()
+      if (!snap.exists) return res.status(404).json({ error: 'Certificate not found.' })
+
+      await ref.set({ revoked, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: revoked ? 'certificates.revoke' : 'certificates.unrevoke',
+        targetType: 'certificate',
+        targetId: certId,
+        metadata: { teamId: snap.data().teamId || '' },
+      })
+      res.json({ ok: true, certId, revoked })
     } catch (e) {
       next(e)
     }

@@ -6,7 +6,7 @@ import {
   Clock, CreditCard, Layers, Star, BarChart3, ClipboardList, FolderLock,
   ScrollText, Sliders, Activity, UserPlus, Handshake, ShieldCheck, Search,
   MessageCircle, BookOpen, Building2, UserCog, MonitorSmartphone, Image, Trophy, Swords,
-  Medal, Award,
+  Medal, Award, BadgeCheck,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -64,6 +64,7 @@ const nav = {
     { to: '/admin/challenges', label: 'Challenges', icon: Swords },
     { to: '/admin/finalists', label: 'Finalists', icon: Medal },
     { to: '/admin/finals-evaluations', label: 'Finals Evaluations', icon: Award },
+    { to: '/admin/certificates', label: 'Certificates', icon: BadgeCheck },
     { group: 'Operations' },
     { to: '/admin/chats', label: 'Chat Monitor', icon: MessageCircle },
     { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },

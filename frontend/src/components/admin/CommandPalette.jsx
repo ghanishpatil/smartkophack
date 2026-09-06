@@ -5,7 +5,7 @@ import {
   Search, X, ArrowRight, Users, FileText, CreditCard, Gavel,
   LayoutDashboard, Megaphone, BarChart3, ShieldCheck, Settings,
   Activity, ScrollText, Layers, Star, Handshake, UserPlus,
-  Clock, BookOpen, FileUp, ChevronRight,
+  Clock, BookOpen, FileUp, ChevronRight, BadgeCheck,
 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 
@@ -22,6 +22,7 @@ const PAGES = [
   { label: 'Mentor Management', path: '/admin/mentors', icon: Handshake, group: 'Pages' },
   { label: 'Evaluations', path: '/admin/evaluations', icon: Star, group: 'Pages' },
   { label: 'Shortlisting', path: '/admin/shortlisting', icon: Star, group: 'Pages' },
+  { label: 'Certificates', path: '/admin/certificates', icon: BadgeCheck, group: 'Pages' },
   { label: 'Announcements', path: '/admin/announcements', icon: Megaphone, group: 'Pages' },
   { label: 'Timeline', path: '/admin/timeline', icon: Clock, group: 'Pages' },
   { label: 'Reports & Analytics', path: '/admin/reports', icon: BarChart3, group: 'Pages' },

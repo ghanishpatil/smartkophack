@@ -12,6 +12,7 @@
  * sendAnnouncementEmail which is already imported and available.
  */
 
+import { FieldValue } from 'firebase-admin/firestore'
 import { getDb } from './firebaseAdmin.js'
 import {
   sendWelcomeEmail,
@@ -24,6 +25,7 @@ import {
   sendEvaluationCompleteEmail,
   sendQualifiedEmail,
   sendCustomEmail,
+  sendCertificateEmail,
 } from './emailService.js'
 
 /** Returns the configured frontend URL without trailing slash. */
@@ -48,6 +50,22 @@ async function sendInChunks(tasks) {
     completed += chunk.length
   }
   return completed
+}
+
+/**
+ * Like sendInChunks but takes THUNKS (() => Promise) instead of live promises,
+ * so only EMAIL_CHUNK_SIZE sends are ever in flight. sendInChunks batches the
+ * awaiting, not the concurrency — every promise there has already started.
+ * Returns the settled results in order.
+ */
+async function runInChunks(thunks) {
+  const out = []
+  for (let i = 0; i < thunks.length; i += EMAIL_CHUNK_SIZE) {
+    const chunk = thunks.slice(i, i + EMAIL_CHUNK_SIZE)
+    const settled = await Promise.allSettled(chunk.map((fn) => fn()))
+    out.push(...settled)
+  }
+  return out
 }
 
 /**
@@ -584,6 +602,88 @@ export async function notifyQualifiedCustom({
   } catch (err) {
     console.error('[Notify] Custom qualified emails failed:', err.message)
     return { sent: 0, qualified: 0, skipped: 0, recipients: 0, error: err.message }
+  }
+}
+
+/**
+ * Email issued certificates. Every recipient is a row in the `certificates`
+ * collection, whose `recipientEmail` came from memberRegistrations — i.e. the
+ * email the team leader entered at registration, NOT an auth account. That is
+ * how members without platform accounts still receive their certificate.
+ *
+ * - teamIds: optional array to target specific teams; omit for all.
+ * - awardId: optional, to send only one award type.
+ * - onlyUnsent: skip certificates already emailed (safe re-run after a partial
+ *   failure); false re-sends everything matched.
+ * Revoked certificates are never emailed.
+ * Returns { sent, failed, skipped, recipients, teams }.
+ */
+export async function notifyCertificates({
+  teamIds = null,
+  awardId = '',
+  onlyUnsent = false,
+  eventId = '',
+} = {}) {
+  try {
+    const db = getDb()
+    const frontend = getFrontendUrl()
+
+    let q = db.collection('certificates').limit(20000)
+    if (eventId) q = q.where('eventId', '==', eventId)
+    const snap = await q.get()
+
+    const idSet = Array.isArray(teamIds) && teamIds.length ? new Set(teamIds) : null
+    const targets = snap.docs
+      .map((d) => ({ certId: d.id, ref: d.ref, ...d.data() }))
+      .filter((c) => {
+        if (c.revoked === true) return false
+        if (!String(c.recipientEmail || '').includes('@')) return false
+        if (idSet && !idSet.has(c.teamId)) return false
+        if (awardId && c.awardId !== awardId) return false
+        if (onlyUnsent && c.emailedAt) return false
+        return true
+      })
+
+    const skipped = snap.size - targets.length
+    if (targets.length === 0) {
+      return { sent: 0, failed: 0, skipped, recipients: 0, teams: 0 }
+    }
+
+    const eventName = 'Smart Kopargaon Hackathon'
+    const thunks = targets.map((c) => () => sendCertificateEmail({
+      to: c.recipientEmail,
+      name: c.recipientName || 'Participant',
+      teamName: c.teamName || 'Your Team',
+      awardTitle: c.awardTitle || '',
+      citation: c.citation || '',
+      certId: c.certId,
+      verifyUrl: `${frontend}/verify-certificate/${encodeURIComponent(c.certId)}`,
+      eventName,
+    }))
+
+    const results = await runInChunks(thunks)
+
+    // Stamp emailedAt only on genuine successes so onlyUnsent can safely retry.
+    let sent = 0
+    let failed = 0
+    let batch = db.batch()
+    let ops = 0
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i]
+      const ok = r.status === 'fulfilled' && r.value?.success !== false
+      if (!ok) { failed += 1; continue }
+      sent += 1
+      batch.set(targets[i].ref, { emailedAt: FieldValue.serverTimestamp() }, { merge: true })
+      if (++ops >= 450) { await batch.commit(); batch = db.batch(); ops = 0 }
+    }
+    if (ops > 0) await batch.commit()
+
+    const teams = new Set(targets.map((c) => c.teamId)).size
+    console.log(`[Notify] Certificates: ${sent} sent, ${failed} failed, ${skipped} skipped across ${teams} team(s)`)
+    return { sent, failed, skipped, recipients: targets.length, teams }
+  } catch (err) {
+    console.error('[Notify] Certificate emails failed:', err.message)
+    return { sent: 0, failed: 0, skipped: 0, recipients: 0, teams: 0, error: err.message }
   }
 }
 

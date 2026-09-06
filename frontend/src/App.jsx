@@ -19,6 +19,7 @@ import { TimelinePage } from '@/pages/TimelinePage.jsx'
 import { SponsorsPage } from '@/pages/SponsorsPage.jsx'
 import { FAQPage } from '@/pages/FAQPage.jsx'
 import { ResultsPage } from '@/pages/ResultsPage.jsx'
+import { VerifyCertificatePage } from '@/pages/VerifyCertificatePage.jsx'
 import { GuidelinesPage } from '@/pages/GuidelinesPage.jsx'
 import { CodeOfConductPage } from '@/pages/CodeOfConductPage.jsx'
 import { NotFoundPage } from '@/pages/NotFoundPage.jsx'
@@ -163,6 +164,9 @@ const AdminRegistrationDeskPage = lazy(() =>
 )
 const AdminRegDeskDetailPage = lazy(() =>
   import('@/pages/admin/AdminRegDeskDetailPage.jsx').then((m) => ({ default: m.AdminRegDeskDetailPage })),
+)
+const AdminCertificatesPage = lazy(() =>
+  import('@/pages/admin/AdminCertificatesPage.jsx').then((m) => ({ default: m.AdminCertificatesPage })),
 )
 const RegDeskHomePage = lazy(() =>
   import('@/pages/regdesk/RegDeskHomePage.jsx').then((m) => ({ default: m.RegDeskHomePage })),
@@ -339,6 +343,22 @@ export default function App() {
             }
           />
           <Route
+            path="/verify-certificate"
+            element={
+              <AnimatedOutlet>
+                <VerifyCertificatePage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
+            path="/verify-certificate/:certId"
+            element={
+              <AnimatedOutlet>
+                <VerifyCertificatePage />
+              </AnimatedOutlet>
+            }
+          />
+          <Route
             path="/guidelines"
             element={
               <AnimatedOutlet>
@@ -433,6 +453,7 @@ export default function App() {
             <Route path="/admin/timeline" element={<AdminTimelinePage />} />
             <Route path="/admin/sponsors" element={<AdminSponsorsPage />} />
             <Route path="/admin/hero" element={<AdminHeroPage />} />
+            <Route path="/admin/certificates" element={<AdminCertificatesPage />} />
             <Route path="/admin/registration-desk" element={<AdminRegistrationDeskPage />} />
             <Route path="/admin/registration-desk/:uid" element={<AdminRegDeskDetailPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
