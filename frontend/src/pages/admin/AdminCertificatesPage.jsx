@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Award, Download, Mail, RefreshCw, Search, Save, RotateCcw, Code2, Eye,
   CheckCircle2, Users, Ban, Undo2, Loader2, AlertTriangle, FileBadge, X, ShieldCheck,
+  HeartHandshake, UserPlus,
 } from 'lucide-react'
 import { useApi } from '@/hooks/useApi.js'
 import { usePageSeo } from '@/hooks/usePageSeo.js'
@@ -42,6 +43,10 @@ export function AdminCertificatesPage() {
   const [replace, setReplace] = useState(false)
   const [excludeMajor, setExcludeMajor] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null) // { type, onlyUnsent }
+
+  // Organising-team tab: people pasted as "Name, Email, Role" per line.
+  const [orgText, setOrgText] = useState('')
+  const [orgReplace, setOrgReplace] = useState(false)
 
   const [certs, setCerts] = useState([])
   const [summary, setSummary] = useState({ total: 0, emailed: 0, revoked: 0 })
@@ -135,6 +140,68 @@ export function AdminCertificatesPage() {
       recipients: eligible.reduce((n, t) => n + t.memberCount, 0),
     }
   }, [teams, selected, excludeMajor, awardId])
+
+  const refreshCerts = useCallback(async () => {
+    try {
+      const list = await api.listCertificates()
+      setCerts(list.certificates || [])
+      setSummary(list.summary || { total: 0, emailed: 0, revoked: 0 })
+    } catch { /* non-fatal — the list just stays stale until next refresh */ }
+  }, [api])
+
+  // Parse "Name, Email, Role, Institute" lines (tab or comma separated).
+  const orgPeople = useMemo(() => {
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const seen = new Set()
+    return orgText.split(/\r?\n/).map((line, i) => {
+      const t = line.trim()
+      if (!t) return null
+      const parts = t.split(/\t|,/).map((x) => x.trim())
+      const name = parts[0] || ''
+      const email = (parts[1] || '').toLowerCase()
+      const role = parts[2] || ''
+      const institute = parts[3] || ''
+      let error = ''
+      if (!name) error = 'Missing name'
+      else if (!emailRe.test(email)) error = 'Invalid email'
+      else if (seen.has(email)) error = 'Duplicate email'
+      if (!error) seen.add(email)
+      return { line: i + 1, name, email, role, institute, error }
+    }).filter(Boolean)
+  }, [orgText])
+
+  const orgValid = useMemo(() => orgPeople.filter((p) => !p.error), [orgPeople])
+  const orgInvalid = useMemo(() => orgPeople.filter((p) => p.error), [orgPeople])
+  const orgAward = useMemo(() => awards.find((a) => a.id === 'organising_team'), [awards])
+
+  async function issueOrganising() {
+    if (!orgValid.length) return setMsg({ type: 'err', text: 'Add at least one valid name and email.' })
+    setBusy('org-issue'); setMsg(null)
+    try {
+      const r = await api.issueDirectCertificates({
+        awardId: 'organising_team',
+        people: orgValid.map(({ name, email, role, institute }) => ({ name, email, role, institute })),
+        replace: orgReplace,
+      })
+      setMsg({
+        type: 'ok',
+        text: `Issued ${r.issued} organising-team certificate(s)${r.skipped ? `, skipped ${r.skipped} already issued` : ''}. Now use "Email certificates" below.`,
+      })
+      await refreshCerts()
+    } catch (e) { setMsg({ type: 'err', text: e.message }) } finally { setBusy('') }
+  }
+
+  async function sendOrganising(onlyUnsent) {
+    setBusy('org-send'); setMsg(null)
+    try {
+      const r = await api.sendCertificates({ awardId: 'organising_team', onlyUnsent })
+      setMsg({
+        type: r.failed ? 'err' : 'ok',
+        text: `Sent ${r.sent} email(s) to ${r.recipients} recipient(s)${r.failed ? ` — ${r.failed} failed` : ''}.`,
+      })
+      await refreshCerts()
+    } catch (e) { setMsg({ type: 'err', text: e.message }) } finally { setBusy('') }
+  }
 
   const toggle = (id) => setSelected((prev) => {
     const n = new Set(prev)
@@ -265,6 +332,7 @@ export function AdminCertificatesPage() {
       <div className="mt-6 flex gap-2 border-b border-[rgb(var(--border))]">
         {[
           { id: 'issue', label: 'Issue & Send', icon: Award },
+          { id: 'organising', label: 'Organising Team', icon: HeartHandshake },
           { id: 'template', label: 'Certificate Template', icon: Code2 },
         ].map((t) => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
@@ -287,7 +355,7 @@ export function AdminCertificatesPage() {
                   {awards.filter((a) => a.tier === 'participation').map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </optgroup>
                 <optgroup label="Prizes & domain awards">
-                  {awards.filter((a) => a.tier !== 'participation').map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                  {awards.filter((a) => a.tier === 'major').map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </optgroup>
               </select>
 
@@ -442,6 +510,126 @@ export function AdminCertificatesPage() {
                           {c.emailedAt && !c.revoked && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">Emailed</span>}
                         </p>
                         <p className="truncate text-xs text-ink-500">{c.teamName} · {c.awardTitle}</p>
+                        <p className="font-mono text-[10px] text-ink-400">{c.certId}</p>
+                      </div>
+                      <button type="button" disabled={busy === c.certId} onClick={() => toggleRevoke(c)}
+                        title={c.revoked ? 'Restore' : 'Revoke'}
+                        className="shrink-0 rounded-lg border border-[rgb(var(--border))] p-1.5 text-ink-500 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-40">
+                        {c.revoked ? <Undo2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : tab === 'organising' ? (
+        /* ── Organising team ── */
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.15fr_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-5">
+            <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
+              <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold text-ink-900">
+                <HeartHandshake className="h-4 w-4 text-rose-500" /> Organising team certificates
+              </h2>
+              <p className="mt-1 text-xs text-ink-500">
+                For organisers, coordinators and volunteers — they aren&apos;t participants, so enter them directly.
+                One person per line as <code className="rounded bg-[rgb(var(--surface-muted))] px-1">Name, Email, Role, Institute</code>
+                {' '}(role and institute optional). Comma or tab separated, so you can paste straight from a spreadsheet.
+              </p>
+
+              <textarea
+                value={orgText}
+                onChange={(e) => setOrgText(e.target.value)}
+                rows={12}
+                spellCheck={false}
+                placeholder={'Aditi Sharma, aditi@example.com, Student Coordinator\nRahul Patil, rahul@example.com, Volunteer, Sanjivani University'}
+                className="mt-3 w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3 font-mono text-[12px] leading-relaxed focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {orgValid.length} ready
+                </span>
+                {orgInvalid.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-red-600">
+                    <AlertTriangle className="h-3.5 w-3.5" /> {orgInvalid.length} need fixing
+                  </span>
+                )}
+              </div>
+
+              {orgInvalid.length > 0 && (
+                <ul className="mt-2 max-h-28 space-y-0.5 overflow-y-auto rounded-lg bg-red-500/5 p-2.5 text-xs text-red-600">
+                  {orgInvalid.slice(0, 20).map((p) => (
+                    <li key={p.line} className="truncate">Line {p.line}: {p.error}{p.name ? ` — ${p.name}` : ''}</li>
+                  ))}
+                  {orgInvalid.length > 20 && <li className="italic">and {orgInvalid.length - 20} more…</li>}
+                </ul>
+              )}
+
+              <label className="mt-3 flex items-center gap-2 text-xs text-ink-600">
+                <input type="checkbox" checked={orgReplace} onChange={(e) => setOrgReplace(e.target.checked)}
+                  className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500/30" />
+                Re-issue if this person already has an organising-team certificate
+              </label>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" disabled={busy === 'org-issue' || !orgValid.length} onClick={issueOrganising}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 disabled:opacity-50">
+                  {busy === 'org-issue' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                  Issue {orgValid.length || ''} certificate{orgValid.length === 1 ? '' : 's'}
+                </button>
+                <button type="button" disabled={busy === 'org-send'} onClick={() => sendOrganising(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                  {busy === 'org-send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email unsent
+                </button>
+                <button type="button" disabled={busy === 'org-send'} onClick={() => sendOrganising(false)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-[rgb(var(--surface-muted))] disabled:opacity-50">
+                  <Mail className="h-4 w-4" /> Re-send all
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-ink-400">
+                Issue first, then email. Sending covers every organising-team certificate, not just the lines above.
+              </p>
+            </div>
+          </div>
+
+          {/* Preview + issued organising list */}
+          <div className="min-w-0 space-y-5">
+            <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
+              <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold text-ink-900"><Eye className="h-4 w-4" /> Preview</h2>
+              <div className="mt-3 overflow-hidden rounded-lg border border-[rgb(var(--border))]">
+                <CertificateCanvas html={renderTemplate(activeTemplate, {
+                  ...sampleValues({
+                    awardTitle: orgAward?.title || 'Organising Team',
+                    citation: orgAward?.citation || '',
+                    assetBase: window.location.origin,
+                    verifyUrl: `${window.location.origin}/verify-certificate`,
+                  }),
+                  RECIPIENT_NAME: orgValid[0]?.name || 'Aditi Sharma',
+                  TEAM_NAME: orgValid[0]?.role || 'Student Coordinator',
+                  COLLEGE: orgValid[0]?.institute || 'Sanjivani University',
+                })} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-card">
+              <h2 className="font-display text-sm font-bold text-ink-900">
+                Issued to organising team ({certs.filter((c) => c.awardId === 'organising_team').length})
+              </h2>
+              {certs.filter((c) => c.awardId === 'organising_team').length === 0 ? (
+                <p className="mt-3 text-sm text-ink-500">None issued yet.</p>
+              ) : (
+                <div className="mt-3 max-h-[20rem] divide-y divide-[rgb(var(--border))]/60 overflow-y-auto">
+                  {certs.filter((c) => c.awardId === 'organising_team').map((c) => (
+                    <div key={c.certId} className="flex items-start gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink-900">
+                          <span className="truncate">{c.recipientName || '—'}</span>
+                          {c.revoked && <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-600">Revoked</span>}
+                          {c.emailedAt && !c.revoked && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">Emailed</span>}
+                        </p>
+                        <p className="truncate text-xs text-ink-500">{c.recipientEmail}{c.teamName ? ` · ${c.teamName}` : ''}</p>
                         <p className="font-mono text-[10px] text-ink-400">{c.certId}</p>
                       </div>
                       <button type="button" disabled={busy === c.certId} onClick={() => toggleRevoke(c)}

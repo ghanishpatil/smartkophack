@@ -105,7 +105,18 @@ export const AWARD_CATALOG = [
     title: 'Best Solution in Smart Agriculture Award',
     citation: 'For outstanding performance, dedication, and innovative contribution, securing the Best Solution in Smart Agriculture Award at the Grand Finale of Smart Kopargaon Hackathon 2026.',
   },
+  {
+    // Issued to organisers/volunteers directly by name + email (they are not
+    // participants, so they have no team or memberRegistrations row).
+    id: 'organising_team',
+    tier: 'organising',
+    title: 'Organising Team',
+    citation: 'In sincere appreciation of dedicated service, commitment and invaluable contribution as a member of the Organising Team of the Smart Kopargaon Hackathon 2026, held at Sanjivani University, Kopargaon.',
+  },
 ]
+
+/** Sentinel teamId for certificates issued to people outside the team system. */
+export const DIRECT_TEAM_ID = '__organising__'
 
 export const AWARD_BY_ID = Object.fromEntries(AWARD_CATALOG.map((a) => [a.id, a]))
 

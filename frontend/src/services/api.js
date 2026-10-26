@@ -447,6 +447,8 @@ export function createApi(getToken, getEventId = () => '') {
     },
     issueCertificates: (body) =>
       authReq('/api/admin/certificates/issue', { method: 'POST', body }),
+    issueDirectCertificates: (body) =>
+      authReq('/api/admin/certificates/issue-direct', { method: 'POST', body }),
     sendCertificates: (body) =>
       authReq('/api/admin/certificates/send', { method: 'POST', body }),
     revokeCertificate: (certId, revoked = true) =>

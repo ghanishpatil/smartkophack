@@ -2275,6 +2275,118 @@ export function adminRouter() {
     }
   })
 
+  /**
+   * Admin: issue certificates DIRECTLY to people by name + email — used for the
+   * organising team, volunteers and staff, who are not participants and so have
+   * no team or memberRegistrations row.
+   *
+   * Body: { awardId, awardTitle?, citation?, replace?, people: [{ name, email, role?, institute? }] }
+   *
+   * Records are stored in the same `certificates` collection under the
+   * DIRECT_TEAM_ID sentinel, with memberId derived from the email, so the
+   * existing send, verify, revoke and idempotency logic all apply unchanged.
+   */
+  router.post('/certificates/issue-direct', async (req, res, next) => {
+    try {
+      const { AWARD_BY_ID, generateCertId, DIRECT_TEAM_ID } = await import('../services/certificates.js')
+      const body = req.body || {}
+
+      const awardId = String(body.awardId || '').trim()
+      const preset = AWARD_BY_ID[awardId]
+      if (!preset) return res.status(400).json({ error: 'Unknown awardId.' })
+      const awardTitle = (typeof body.awardTitle === 'string' && body.awardTitle.trim()
+        ? body.awardTitle : preset.title).slice(0, 200)
+      const citation = (typeof body.citation === 'string' && body.citation.trim()
+        ? body.citation : preset.citation).slice(0, 2000)
+      const replace = body.replace === true
+
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      const raw = Array.isArray(body.people) ? body.people : []
+      if (!raw.length) return res.status(400).json({ error: 'Add at least one person.' })
+      if (raw.length > 500) return res.status(400).json({ error: 'Too many people in one request (max 500).' })
+
+      const seen = new Set()
+      const people = []
+      const rejected = []
+      for (const p of raw) {
+        const name = String(p?.name || '').trim().slice(0, 120)
+        const email = String(p?.email || '').trim().toLowerCase().slice(0, 160)
+        const role = String(p?.role || '').trim().slice(0, 120)
+        const institute = String(p?.institute || '').trim().slice(0, 150)
+        if (!name || !emailRe.test(email)) { rejected.push({ name, email, reason: 'Name and a valid email are required' }); continue }
+        if (seen.has(email)) { rejected.push({ name, email, reason: 'Duplicate email' }); continue }
+        seen.add(email)
+        people.push({ name, email, role, institute })
+      }
+      if (!people.length) return res.status(400).json({ error: 'No valid entries. Each line needs a name and a valid email.', rejected })
+
+      const activeEvent = await getActiveEvent()
+      const eventId = req.eventId || activeEvent?.id || ''
+
+      // memberId is a stable slug of the email, so re-issuing the same award to
+      // the same person updates their row instead of duplicating it.
+      const slug = (email) => email.replace(/[^a-z0-9]+/gi, '_').slice(0, 120)
+
+      const existingSnap = await db().collection('certificates')
+        .where('teamId', '==', DIRECT_TEAM_ID)
+        .where('awardId', '==', awardId)
+        .limit(5000)
+        .get()
+      const existingByMember = new Map()
+      existingSnap.docs.forEach((d) => {
+        const c = d.data()
+        if (c.memberId) existingByMember.set(c.memberId, d)
+      })
+
+      let batch = db().batch()
+      let ops = 0
+      const created = []
+      let skipped = 0
+
+      for (const p of people) {
+        const memberId = slug(p.email)
+        const prior = existingByMember.get(memberId)
+        if (prior && !replace) { skipped += 1; continue }
+
+        const certId = prior ? prior.id : generateCertId()
+        batch.set(db().doc(`certificates/${certId}`), {
+          certId,
+          eventId,
+          teamId: DIRECT_TEAM_ID,
+          teamName: p.role || preset.title,
+          memberId,
+          recipientName: p.name,
+          recipientEmail: p.email,
+          college: p.institute,
+          domain: '',
+          awardId,
+          awardTitle,
+          citation,
+          revoked: false,
+          issuedAt: FieldValue.serverTimestamp(),
+          issuedBy: req.user.uid,
+          emailedAt: prior ? (prior.data().emailedAt || null) : null,
+        }, { merge: true })
+        created.push({ certId, recipientName: p.name, recipientEmail: p.email })
+
+        if (++ops >= 450) { await batch.commit(); batch = db().batch(); ops = 0 }
+      }
+      if (ops > 0) await batch.commit()
+
+      await appendAuditLog({
+        actorUid: req.user.uid,
+        action: 'certificates.issue_direct',
+        targetType: 'people',
+        targetId: `${created.length} recipients`,
+        metadata: { awardId, awardTitle, issued: created.length, skipped, rejected: rejected.length },
+      })
+
+      res.json({ ok: true, issued: created.length, skipped, rejected, certificates: created.slice(0, 100) })
+    } catch (e) {
+      next(e)
+    }
+  })
+
   /** Admin: revoke / un-revoke a certificate (verification then reports it invalid). */
   router.post('/certificates/revoke', async (req, res, next) => {
     try {
